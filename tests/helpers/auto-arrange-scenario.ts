@@ -1,0 +1,312 @@
+// 自動排座測試的資料建構與結果檢查（docs/spec/auto-arrange.md）。
+// 寫法對照規格第 5.1 節：姓名都是虛構的；員工名單依加入的先後；眷屬的顯示名稱是「{員工姓名}_眷屬」；
+// 沒有特別設定的：列出的人都已報名、都未入座；30 桌都沒有備註名稱、都是空桌；沒有工作人員。
+// 每次執行 autoArrange 都另外檢查各條規則共同的不變條件（checkInvariants），個別測試只寫該驗收條件的預期結果。
+//
+// 受測介面（src/domain/auto-arrange.ts）：
+//   autoArrange({ employees, participants, tables, mode }) → { changes, summary }
+//   - 純函式；changes 只列位置有改變的人，tableId 為 null 表示回到未入座；seatOrder 0 起算（prisma/schema.prisma）。
+//   - summary 是 src/contracts/seating.ts 的 AutoArrangeSummary：placed 排進桌次的人數、tableIds 有排進人的桌號（由小到大）、
+//     left 空位不夠留在未入座的人數。
+import { expect } from 'vitest';
+import {
+  STAFF_TABLE_ID,
+  TABLE_CAPACITY,
+  TABLE_COUNT,
+  type Employee,
+  type Participant,
+  type SeatTable,
+} from '@/contracts/entities';
+import type { AutoArrangeSummary } from '@/contracts/seating';
+import { autoArrange } from '@/domain/auto-arrange';
+
+export type ArrangeMode = 'unseatedOnly' | 'rebuild';
+export const ARRANGE_MODES: readonly ArrangeMode[] = ['unseatedOnly', 'rebuild'];
+
+export type Position = { tableId: number | null; seatOrder: number | null };
+export type ArrangeChange = { participantId: number; tableId: number | null; seatOrder: number | null };
+
+/** 「業1–業7」→ ['業1', '業2', …, '業7'] */
+export const range = (prefix: string, from: number, to: number): string[] =>
+  Array.from({ length: to - from + 1 }, (_, i) => `${prefix}${from + i}`);
+
+/** 眷屬的顯示名稱「{員工姓名}_眷屬」 */
+export const dep = (employeeName: string): string => `${employeeName}_眷屬`;
+
+const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
+const BLANK: Omit<Participant, 'id' | 'kind' | 'createdAt'> = {
+  employeeId: null,
+  hostId: null,
+  relation: null,
+  guestName: null,
+  organization: null,
+  title: null,
+  childSeat: false,
+  vegetarian: false,
+  note: null,
+  tableId: null,
+  seatOrder: null,
+};
+
+export class Scenario {
+  readonly employees: Employee[] = [];
+  readonly participants: Participant[] = [];
+  readonly tables: SeatTable[] = [
+    { id: STAFF_TABLE_ID, kind: 'STAFF', noteName: null },
+    ...Array.from({ length: TABLE_COUNT }, (_, i): SeatTable => ({ id: i + 1, kind: 'NORMAL', noteName: null })),
+  ];
+  private readonly byName = new Map<string, Participant>();
+  private readonly nameById = new Map<number, string>();
+  private employeeSeq = 0;
+  private participantSeq = 1000;
+
+  /** 加一位員工，排在員工名單最後。預設已報名、未入座；dependent 為 true 時同時加一位眷屬。 */
+  addEmployee(
+    name: string,
+    department: string,
+    team: string | null = null,
+    opts: { dependent?: boolean; registered?: boolean } = {},
+  ): this {
+    this.employeeSeq += 1;
+    const employeeId = this.employeeSeq;
+    // 員工名單順序是 sortOrder（EMP-R07）；刻意不連續，id 也不等於順序
+    this.employees.push({
+      id: employeeId + 500,
+      name,
+      englishName: null,
+      department,
+      team,
+      extension: null,
+      region: null,
+      office: null,
+      note: null,
+      sortOrder: employeeId * 10,
+    });
+    if (opts.registered === false) return this;
+    const host = this.addParticipant(name, { kind: 'EMPLOYEE', employeeId: employeeId + 500 });
+    if (opts.dependent) this.addParticipant(dep(name), { kind: 'DEPENDENT', hostId: host.id, relation: '配偶' });
+    return this;
+  }
+
+  /** 同部門、同組別的多位員工，依陣列順序加入員工名單；withDependent 是帶眷屬的人 */
+  addGroup(department: string, team: string | null, names: readonly string[], withDependent: readonly string[] = []): this {
+    for (const name of names) this.addEmployee(name, department, team, { dependent: withDependent.includes(name) });
+    return this;
+  }
+
+  addGuest(name: string): this {
+    this.addParticipant(name, { kind: 'GUEST', guestName: name });
+    return this;
+  }
+
+  /** 第 n 桌依序再坐這些人，接在這一桌原本的人後面（座位順序 0 起算） */
+  seat(tableId: number, names: readonly string[]): this {
+    for (const name of names) {
+      const p = this.get(name);
+      const from = p.tableId;
+      const start = this.participants.filter((x) => x.tableId === tableId && x !== p).length;
+      p.tableId = tableId;
+      p.seatOrder = start;
+      if (from !== null && from !== tableId) this.compact(from);
+    }
+    return this;
+  }
+
+  /** 放進工作人員桌 */
+  staff(names: readonly string[]): this {
+    return this.seat(STAFF_TABLE_ID, names);
+  }
+
+  note(tableId: number, noteName: string): this {
+    const t = this.tables.find((x) => x.id === tableId);
+    if (!t) throw new Error(`沒有第 ${tableId} 桌`);
+    t.noteName = noteName;
+    return this;
+  }
+
+  get(name: string): Participant {
+    const p = this.byName.get(name);
+    if (!p) throw new Error(`測試資料沒有「${name}」`);
+    return p;
+  }
+
+  id(name: string): number {
+    return this.get(name).id;
+  }
+
+  nameOf(id: number): string {
+    return this.nameById.get(id) ?? `#${id}`;
+  }
+
+  /** 執行自動排座並檢查共同的不變條件。reversedInput：把員工、參與人員、桌次的陣列倒過來傳入 */
+  run(mode: ArrangeMode, opts: { reversedInput?: boolean } = {}): Outcome {
+    const input = {
+      employees: clone(this.employees),
+      participants: clone(this.participants),
+      tables: clone(this.tables),
+      mode,
+    };
+    if (opts.reversedInput) {
+      input.employees.reverse();
+      input.participants.reverse();
+      input.tables.reverse();
+    }
+    const before = clone(input);
+    const result = autoArrange(input);
+    expect(input, '自動排座是純函式，不改傳入的資料').toEqual(before);
+    const outcome = new Outcome(this, mode, result.changes, result.summary);
+    checkInvariants(this, outcome);
+    return outcome;
+  }
+
+  private addParticipant(name: string, data: Partial<Participant> & Pick<Participant, 'kind'>): Participant {
+    if (this.byName.has(name)) throw new Error(`測試資料的姓名重複：${name}`);
+    this.participantSeq += 1;
+    const p: Participant = {
+      ...BLANK,
+      id: this.participantSeq,
+      createdAt: new Date(Date.UTC(2026, 9, 1) + this.participantSeq * 1000).toISOString(),
+      ...data,
+    };
+    this.participants.push(p);
+    this.byName.set(name, p);
+    this.nameById.set(p.id, name);
+    return p;
+  }
+
+  /** 有人離開後，這一桌其他人依原本的順序往前補（SEAT-R06） */
+  private compact(tableId: number): void {
+    this.participants
+      .filter((x) => x.tableId === tableId)
+      .sort((a, b) => (a.seatOrder ?? 0) - (b.seatOrder ?? 0))
+      .forEach((x, i) => {
+        x.seatOrder = i;
+      });
+  }
+}
+
+/** 自動排座的結果：原本的位置套上 changes 之後的樣子 */
+export class Outcome {
+  readonly final: ReadonlyMap<number, Position>;
+
+  constructor(
+    readonly scenario: Scenario,
+    readonly mode: ArrangeMode,
+    readonly changes: readonly ArrangeChange[],
+    readonly summary: AutoArrangeSummary,
+  ) {
+    const final = new Map<number, Position>(
+      scenario.participants.map((p) => [p.id, { tableId: p.tableId, seatOrder: p.seatOrder }]),
+    );
+    for (const c of changes) final.set(c.participantId, { tableId: c.tableId, seatOrder: c.seatOrder });
+    this.final = final;
+  }
+
+  /** 第 n 桌依座位順序的顯示名稱（名單長度就是人數，後面的位子是空位） */
+  table(tableId: number): string[] {
+    return [...this.final.entries()]
+      .filter(([, pos]) => pos.tableId === tableId)
+      .sort((a, b) => (a[1].seatOrder ?? 0) - (b[1].seatOrder ?? 0))
+      .map(([id]) => this.scenario.nameOf(id));
+  }
+
+  position(name: string): Position {
+    const pos = this.final.get(this.scenario.id(name));
+    if (!pos) throw new Error(`結果裡沒有「${name}」`);
+    return pos;
+  }
+
+  /** 未入座的人（不含工作人員），依加入資料的先後 */
+  unseated(): string[] {
+    return this.scenario.participants
+      .filter((p) => this.final.get(p.id)?.tableId === null)
+      .map((p) => this.scenario.nameOf(p.id));
+  }
+
+  /** changes 裡的人，依加入資料的先後 */
+  changedNames(): string[] {
+    const ids = new Set(this.changes.map((c) => c.participantId));
+    return this.scenario.participants.filter((p) => ids.has(p.id)).map((p) => this.scenario.nameOf(p.id));
+  }
+}
+
+/**
+ * 每次自動排座都要成立的條件：
+ * - changes 只列位置有改變的人，每人最多一筆（介面約定）
+ * - 工作人員、有備註名稱的桌上的人都不動；只排進可用的桌（ARR-R01、ARR-R02、ARR-R12）
+ * - 外部貴賓一律不排；只排未入座時已入座的人與外部貴賓都不動（ARR-R01、ARR-R03）
+ * - 清空後重排有排進人時，原本坐在可用桌的外部貴賓回到未入座（ARR-R04）
+ * - 每桌最多 10 人，座位順序從 0 起連續（SEAT-R06）
+ * - 眷屬和所屬員工都是候選人時，一定同桌、緊接在員工後面，或一起留在未入座（ARR-R05 ④、ARR-R09、D-009）
+ * - 摘要：排進的人數、有排進人的桌號（由小到大）、排不下的人數（ARR-R11、ARR-R14、ARR-R15）
+ * - 一位都沒排進去時座位都不變，清空後重排也不清空（ARR-Q02 的目前假設）
+ */
+export function checkInvariants(s: Scenario, o: Outcome): void {
+  const usable = new Set(s.tables.filter((t) => t.kind === 'NORMAL' && t.noteName === null).map((t) => t.id));
+  const noteTables = new Set(s.tables.filter((t) => t.kind === 'NORMAL' && t.noteName !== null).map((t) => t.id));
+  const original = new Map(s.participants.map((p) => [p.id, p]));
+
+  const ids = o.changes.map((c) => c.participantId);
+  expect(new Set(ids).size, 'changes 每人最多一筆').toBe(ids.length);
+
+  for (const c of o.changes) {
+    const p = original.get(c.participantId);
+    expect(p, `changes 裡的 ${c.participantId} 不是參與人員`).toBeDefined();
+    if (!p) continue;
+    const who = s.nameOf(p.id);
+    expect(c.tableId === p.tableId && c.seatOrder === p.seatOrder, `${who} 的位置沒變，不該列在 changes`).toBe(false);
+    expect(c.tableId === null, `${who} 的桌號與座位順序要同時有值或同時為 null`).toBe(c.seatOrder === null);
+    expect(p.tableId === STAFF_TABLE_ID, `${who} 是工作人員，不該被移動`).toBe(false);
+    expect(p.tableId !== null && noteTables.has(p.tableId), `${who} 坐在有備註名稱的桌，不該被移動`).toBe(false);
+    if (c.tableId !== null) expect(usable.has(c.tableId), `${who} 被排進第 ${c.tableId} 桌，不是可用的桌`).toBe(true);
+    if (p.kind === 'GUEST') {
+      expect(c.tableId, `外部貴賓 ${who} 不會被排進桌次`).toBeNull();
+      expect(o.mode, `只排未入座時外部貴賓 ${who} 不動`).toBe('rebuild');
+    }
+    if (o.mode === 'unseatedOnly') expect(p.tableId, `只排未入座時已入座的 ${who} 不動`).toBeNull();
+  }
+
+  for (let id = 1; id <= TABLE_COUNT; id++) {
+    const orders = [...o.final.values()]
+      .filter((pos) => pos.tableId === id)
+      .map((pos) => pos.seatOrder ?? -1)
+      .sort((a, b) => a - b);
+    expect(orders.length, `第 ${id} 桌超過 ${TABLE_CAPACITY} 人`).toBeLessThanOrEqual(TABLE_CAPACITY);
+    expect(orders, `第 ${id} 桌的座位順序要從 0 起連續`).toEqual(orders.map((_, i) => i));
+  }
+
+  const isCandidate = (p: Participant) =>
+    p.kind !== 'GUEST' && (p.tableId === null || (o.mode === 'rebuild' && usable.has(p.tableId)));
+  const candidates = s.participants.filter(isCandidate);
+  const placed = candidates.filter((p) => o.final.get(p.id)?.tableId != null);
+  const tablesUsed = [...new Set(placed.map((p) => o.final.get(p.id)?.tableId ?? 0))].sort((a, b) => a - b);
+  expect(o.summary.placed, '摘要：這一次排進桌次的人數').toBe(placed.length);
+  expect(o.summary.left, '摘要：排不下、留在未入座的人數').toBe(candidates.length - placed.length);
+  expect(o.summary.tableIds, '摘要：有排進人的桌號，由小到大').toEqual(tablesUsed);
+
+  if (placed.length === 0) {
+    expect(o.changes, '一位都沒排進去時座位都不變（ARR-Q02）').toEqual([]);
+  } else if (o.mode === 'rebuild') {
+    for (const p of s.participants) {
+      if (p.kind === 'GUEST' && p.tableId !== null && usable.has(p.tableId)) {
+        expect(o.final.get(p.id)?.tableId, `原本坐在第 ${p.tableId} 桌的外部貴賓 ${s.nameOf(p.id)} 回到未入座`).toBeNull();
+      }
+    }
+  }
+
+  for (const d of candidates) {
+    if (d.kind !== 'DEPENDENT' || d.hostId === null) continue;
+    const host = original.get(d.hostId);
+    if (!host || !isCandidate(host)) continue;
+    const hp = o.final.get(host.id);
+    const dp = o.final.get(d.id);
+    const who = s.nameOf(d.id);
+    if (hp?.tableId == null) {
+      expect(dp?.tableId, `${s.nameOf(host.id)} 沒排進去時 ${who} 也留在未入座`).toBeNull();
+      continue;
+    }
+    expect(dp?.tableId, `${who} 和所屬員工同桌`).toBe(hp.tableId);
+    expect(dp?.seatOrder, `${who} 緊接在所屬員工後面`).toBe((hp.seatOrder ?? 0) + 1);
+  }
+}
