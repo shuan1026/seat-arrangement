@@ -32,7 +32,17 @@ export interface EmployeeTableProps {
 
 const Dash = () => <span className="text-muted-foreground">—</span>;
 
-export function EmployeeTable({ rows, total, page, onPageChange, registered, selected, onToggle, onToggleAll, onAction }: EmployeeTableProps) {
+export function EmployeeTable({
+  rows,
+  total,
+  page,
+  onPageChange,
+  registered,
+  selected,
+  onToggle,
+  onToggleAll,
+  onAction,
+}: EmployeeTableProps) {
   const header = headerCheckState(rows, registered, selected);
   return (
     <div className="min-w-0">
@@ -68,18 +78,26 @@ export function EmployeeTable({ rows, total, page, onPageChange, registered, sel
                   {isRegistered ? (
                     <Checkbox aria-label={`${e.name} 已報名`} checked={false} disabled />
                   ) : (
-                    <Checkbox aria-label={`勾選 ${e.name}`} checked={selected.has(e.id)} onCheckedChange={(v) => onToggle(e.id, v === true)} />
+                    <Checkbox
+                      aria-label={`勾選 ${e.name}`}
+                      checked={selected.has(e.id)}
+                      onCheckedChange={(v) => onToggle(e.id, v === true)}
+                    />
                   )}
                 </TableCell>
                 <TableCell kind="primary">
                   <div className="type-sm-medium text-foreground [overflow-wrap:anywhere]">{e.name}</div>
                   {e.englishName ? (
-                    <div className="type-xs-regular text-muted-foreground [overflow-wrap:anywhere]">{e.englishName}</div>
+                    <div className="type-xs-regular text-muted-foreground [overflow-wrap:anywhere]">
+                      {e.englishName}
+                    </div>
                   ) : null}
                 </TableCell>
                 <TableCell label="部門">{e.department}</TableCell>
                 <TableCell label="組別">{e.team ?? <Dash />}</TableCell>
-                <TableCell label="分機">{e.extension ? <span className="tabular-nums">{e.extension}</span> : <Dash />}</TableCell>
+                <TableCell label="分機">
+                  {e.extension ? <span className="tabular-nums">{e.extension}</span> : <Dash />}
+                </TableCell>
                 <TableCell label="地區">{e.region ?? <Dash />}</TableCell>
                 <TableCell label="報名狀態">
                   <Badge variant={isRegistered ? 'positive' : 'pending'}>{isRegistered ? '已報名' : '未報名'}</Badge>

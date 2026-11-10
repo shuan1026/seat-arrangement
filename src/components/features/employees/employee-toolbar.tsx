@@ -58,8 +58,10 @@ export function EmployeeToolbar({
     () => [{ value: ANY, label: '不限' }, ...regions.map((r) => ({ value: r, label: r }))],
     [regions],
   );
-  const teamValue = filters.team == null ? null : (teamOpts.find((o) => o.value !== ANY && o.label === filters.team)?.value ?? null);
-  const labelOf = (v: string | null, opts: SelectOption[]) => (v == null || v === ANY ? null : (opts.find((o) => o.value === v)?.label ?? null));
+  const teamValue =
+    filters.team == null ? null : (teamOpts.find((o) => o.value !== ANY && o.label === filters.team)?.value ?? null);
+  const labelOf = (v: string | null, opts: SelectOption[]) =>
+    v == null || v === ANY ? null : (opts.find((o) => o.value === v)?.label ?? null);
 
   return (
     <div className="mb-4 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">

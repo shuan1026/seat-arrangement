@@ -148,9 +148,14 @@ export function parseRoster(rows: string[][]): RosterParseResult {
   const employees: RosterEmployee[] = [];
   const sources: RosterSourceRow[][] = [];
   for (const g of groups.values()) {
-    const employee: RosterEmployee = { ...g.first, extension: g.extensions.length ? g.extensions.join(EXTENSION_SEPARATOR) : null };
+    const employee: RosterEmployee = {
+      ...g.first,
+      extension: g.extensions.length ? g.extensions.join(EXTENSION_SEPARATOR) : null,
+    };
     // 超過資料庫欄位長度的資料不能寫入：這位員工的每一列都列為需要處理
-    const tooLong = (Object.keys(MAX_LENGTH) as (keyof RosterEmployee)[]).find((k) => (employee[k]?.length ?? 0) > MAX_LENGTH[k]);
+    const tooLong = (Object.keys(MAX_LENGTH) as (keyof RosterEmployee)[]).find(
+      (k) => (employee[k]?.length ?? 0) > MAX_LENGTH[k],
+    );
     if (tooLong) {
       const reason = ROSTER_ERROR_REASON.tooLong(FIELD_LABEL[tooLong], MAX_LENGTH[tooLong]);
       for (const s of g.sources) errors.push({ row: s.row, reason, values: s.values });

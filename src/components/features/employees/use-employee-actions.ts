@@ -109,13 +109,22 @@ export function useEmployeeActions() {
       const tempIds = new Set(pending.map((p) => p.id));
       mutate<ParticipantsResult>({
         optimistic: (d) => ({ ...d, participants: [...d.participants, ...pending] }),
-        send: () => apiFetch('/api/participants/bulk-join', { method: 'POST', json: { employeeIds: employeeIds.map(resolveId) } }),
+        send: () =>
+          apiFetch('/api/participants/bulk-join', {
+            method: 'POST',
+            json: { employeeIds: employeeIds.map(resolveId) },
+          }),
         onSuccess: (r, s) => {
           for (const p of pending) {
             const real = r.participants.find((x) => x.kind === 'EMPLOYEE' && x.employeeId === resolveId(p.employeeId!));
             if (real) rememberId(p.id, real.id);
           }
-          s.update((d) => upsertParticipants({ ...d, participants: d.participants.filter((p) => !tempIds.has(p.id)) }, r.participants));
+          s.update((d) =>
+            upsertParticipants(
+              { ...d, participants: d.participants.filter((p) => !tempIds.has(p.id)) },
+              r.participants,
+            ),
+          );
           notify(`已把 ${employeeIds.length} 位員工加入尾牙。`);
         },
       });

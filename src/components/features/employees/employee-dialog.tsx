@@ -46,7 +46,8 @@ const draftOf = (e?: Employee): Draft => ({
 /** 去掉前後空白，只有空白的欄位視為沒填（EMP-Q08 第 8 點） */
 const clean = (v: string | null): string | null => (v ?? '').trim() || null;
 
-const withCurrent = (list: string[], current: string | null) => (current && !list.includes(current) ? [...list, current] : list);
+const withCurrent = (list: string[], current: string | null) =>
+  current && !list.includes(current) ? [...list, current] : list;
 
 export interface EmployeeDialogProps {
   target: EmployeeDialogTarget | null;
@@ -149,7 +150,10 @@ function EmployeeForm({
               onBlur={(e) => setErrors((x) => ({ ...x, name: validateName(e.target.value) }))}
             />
             {sameName ? (
-              <Alert icon={<TriangleAlert />} title={`已經有一位 ${sameName.name}（${sameName.department}），請確認不是同一個人。`} />
+              <Alert
+                icon={<TriangleAlert />}
+                title={`已經有一位 ${sameName.name}（${sameName.department}），請確認不是同一個人。`}
+              />
             ) : null}
           </div>
           <Input
@@ -202,7 +206,12 @@ function EmployeeForm({
             createLabel={(q) => `新增地區「${q}」`}
             onValueChange={(region) => set('region', region)}
           />
-          <Textarea label="備註" placeholder="只給承辦人看" value={draft.note} onChange={(e) => set('note', e.target.value)} />
+          <Textarea
+            label="備註"
+            placeholder="只給承辦人看"
+            value={draft.note}
+            onChange={(e) => set('note', e.target.value)}
+          />
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onCancel}>

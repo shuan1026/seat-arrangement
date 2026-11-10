@@ -67,7 +67,10 @@ export function EmployeesView() {
   const departments = useMemo(() => departmentOptions(employees), [employees]);
   const teams = useMemo(() => teamOptions(employees, filters.department), [employees, filters.department]);
   const regions = useMemo(() => regionOptions(employees), [employees]);
-  const rows = useMemo(() => filterEmployees(employees, registered, { tab, query, filters }), [employees, registered, tab, query, filters]);
+  const rows = useMemo(
+    () => filterEmployees(employees, registered, { tab, query, filters }),
+    [employees, registered, tab, query, filters],
+  );
   const picked = useMemo(() => selectedToJoin(employees, registered, selected), [employees, registered, selected]);
 
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
@@ -190,9 +193,18 @@ export function EmployeesView() {
               picked={picked.length}
               onBulkJoin={() => setConfirm({ kind: 'bulk', employeeIds: picked })}
             />
-            <FilterChips filters={filters} onRemove={(key) => changeFilters({ ...filters, [key]: null })} onClear={clearFilters} />
+            <FilterChips
+              filters={filters}
+              onRemove={(key) => changeFilters({ ...filters, [key]: null })}
+              onClear={clearFilters}
+            />
             {empty ? (
-              <ListEmptyState state={empty} query={query} onClearSearch={() => changeQuery('')} onClearFilters={clearFilters} />
+              <ListEmptyState
+                state={empty}
+                query={query}
+                onClearSearch={() => changeQuery('')}
+                onClearFilters={clearFilters}
+              />
             ) : (
               <EmployeeTable
                 rows={pageRows}
@@ -247,7 +259,15 @@ export function EmployeesView() {
 }
 
 /** 刪除、取消報名與一次加入多位的確認（第 4.1 節文案；README 第 9 節「危險或不可復原的操作」） */
-function ConfirmDialog({ confirm, onClose, onConfirm }: { confirm: Confirm | null; onClose: () => void; onConfirm: (c: Confirm) => void }) {
+function ConfirmDialog({
+  confirm,
+  onClose,
+  onConfirm,
+}: {
+  confirm: Confirm | null;
+  onClose: () => void;
+  onConfirm: (c: Confirm) => void;
+}) {
   return (
     <AlertDialog
       open={confirm != null}
@@ -328,7 +348,9 @@ function ListEmptyState({
     case 'all-registered':
       return <EmptyState icon={<Check />} title="所有員工都已報名。" />;
     case 'none-registered':
-      return <EmptyState icon={<Users />} title="還沒有員工報名。" description="在「全部」分頁把報名的員工加入尾牙。" />;
+      return (
+        <EmptyState icon={<Users />} title="還沒有員工報名。" description="在「全部」分頁把報名的員工加入尾牙。" />
+      );
     default:
       return null;
   }

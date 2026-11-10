@@ -10,9 +10,13 @@ import { toEmployee, toParticipant } from './state';
 
 // 員工名單的寫入（docs/spec/employees.md；docs/architecture.md 第 7、8、11.1 節）。
 // 每個寫入在一個交易內完成，回傳變更後的資料讓前端校正。
+// 交易用 READ COMMITTED（docs/architecture.md 第 7.2 節）：MySQL 預設的 REPEATABLE READ 會停在第一次讀取的快照，
+// 鎖住桌次之後的讀取看不到別人在這之間提交的異動，鎖住後的檢查與重排就會用到舊資料。
 
 type Db = Prisma.TransactionClient;
 type EmployeeData = ReturnType<typeof employeeInputSchema.parse>;
+
+const WRITE_TX = { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted } as const;
 
 /** 新增的員工排在員工名單最後（docs/architecture.md 第 11.1 節） */
 async function nextSortOrder(db: Db): Promise<number> {
@@ -25,7 +29,7 @@ export async function createEmployee(input: EmployeeData): Promise<Employee> {
   return prisma.$transaction(async (tx) => {
     const row = await tx.employee.create({ data: { ...input, sortOrder: await nextSortOrder(tx) } });
     return toEmployee(row);
-  });
+  }, WRITE_TX);
 }
 
 /** PATCH /api/employees/{id}：整筆取代（辦公室等畫面沒有的欄位由前端帶回原值）；已被別人刪除時 NOT_FOUND（EMP-R40） */
@@ -34,7 +38,7 @@ export async function updateEmployee(id: number, input: EmployeeData): Promise<E
     const { count } = await tx.employee.updateMany({ where: { id }, data: input });
     if (count === 0) throw new AppError('NOT_FOUND', 'employee not found');
     return toEmployee(await tx.employee.findUniqueOrThrow({ where: { id } }));
-  });
+  }, WRITE_TX);
 }
 
 /** 依桌號由小到大鎖住桌次列，和座位異動用同一個順序，避免死結（docs/architecture.md 第 7.2 節） */
@@ -48,7 +52,10 @@ async function lockTables(tx: Db, tableIds: readonly number[]): Promise<void> {
 async function resequenceTables(tx: Db, tableIds: readonly number[]): Promise<Participant[]> {
   const changed: Participant[] = [];
   for (const tableId of [...new Set(tableIds)].sort((a, b) => a - b)) {
-    const seated = await tx.participant.findMany({ where: { tableId }, orderBy: [{ seatOrder: 'asc' }, { id: 'asc' }] });
+    const seated = await tx.participant.findMany({
+      where: { tableId },
+      orderBy: [{ seatOrder: 'asc' }, { id: 'asc' }],
+    });
     for (const [i, p] of seated.entries()) {
       if (p.seatOrder === i) continue;
       changed.push(toParticipant(await tx.participant.update({ where: { id: p.id }, data: { seatOrder: i } })));
@@ -70,7 +77,8 @@ const tablesOf = (rows: readonly { tableId: number | null }[]) =>
 
 /**
  * DELETE /api/employees/{id}：已報名的員工一併取消報名、移除眷屬（外鍵 cascade），座位空出來，
- * 同桌的人重排順序（EMP-R43）。先鎖住兩人所在的桌次，避免和同時進行的座位異動互相覆蓋。
+ * 同桌的人重排順序（EMP-R43）。先鎖住兩人所在的桌次，避免和同時進行的座位異動互相覆蓋；
+ * 鎖住後重新讀取（READ COMMITTED 才讀得到鎖之前別人提交的異動）。
  */
 export async function deleteEmployee(id: number): Promise<EmployeeDeleteResult> {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -86,7 +94,7 @@ export async function deleteEmployee(id: number): Promise<EmployeeDeleteResult> 
       await tx.employee.delete({ where: { id } });
       const participants = await resequenceTables(tx, tables);
       return { deletedEmployeeId: id, removedParticipantIds: removed.map((p) => p.id), participants };
-    });
+    }, WRITE_TX);
     if (result) return result;
   }
   throw new AppError('CONFLICT', 'seat changed while deleting');
@@ -148,5 +156,6 @@ export async function importRoster(rows: string[][], db?: Db): Promise<ImportRes
     return { imported: created + updated, created, updated, skipped: parsed.skipped, errors, header: parsed.header };
   };
 
-  return db ? run(db) : prisma.$transaction(run, { timeout: 60_000, maxWait: 10_000 });
+  // 外部傳入的 db（seed）沿用呼叫端的交易
+  return db ? run(db) : prisma.$transaction(run, { ...WRITE_TX, timeout: 60_000, maxWait: 10_000 });
 }

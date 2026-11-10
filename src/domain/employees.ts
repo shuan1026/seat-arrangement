@@ -11,7 +11,8 @@ export type EmployeeFilters = { department: string | null; team: string | null; 
 export const NO_FILTERS: EmployeeFilters = { department: null, team: null, region: null };
 
 /** EMP-R17 的五種空狀態 */
-export type EmployeeEmptyState = 'no-employees' | 'no-search-results' | 'no-filter-results' | 'all-registered' | 'none-registered';
+export type EmployeeEmptyState =
+  'no-employees' | 'no-search-results' | 'no-filter-results' | 'all-registered' | 'none-registered';
 
 export type EmployeeView = { tab: RegistrationTab; query: string; filters: EmployeeFilters };
 
@@ -104,7 +105,11 @@ const hasFilters = (f: EmployeeFilters) => f.department != null || f.team != nul
  * 分頁（Tabs）、關鍵字與每一項篩選同時生效（EMP-R15），回傳依 EMP-R07 排序的列。
  * 組別篩選只比對組別名稱（EMP-Q11）：沒選部門時會列出所有部門中同名組別的員工。
  */
-export function filterEmployees(employees: readonly Employee[], registered: ReadonlySet<number>, view: EmployeeView): Employee[] {
+export function filterEmployees(
+  employees: readonly Employee[],
+  registered: ReadonlySet<number>,
+  view: EmployeeView,
+): Employee[] {
   const { tab, query, filters } = view;
   return sortEmployees(employees).filter(
     (e) =>
@@ -187,7 +192,11 @@ export function selectedToJoin(
 }
 
 /** 同名提示：和另一位員工姓名相同（去掉前後空白後完全相同）；編輯時不和自己比（EMP-R37） */
-export function findSameNameEmployee(employees: readonly Employee[], name: string, excludeId?: number): Employee | undefined {
+export function findSameNameEmployee(
+  employees: readonly Employee[],
+  name: string,
+  excludeId?: number,
+): Employee | undefined {
   const n = name.trim();
   if (!n) return undefined;
   return byListOrder(employees).find((e) => e.name === n && e.id !== excludeId);

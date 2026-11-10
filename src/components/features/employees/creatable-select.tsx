@@ -9,7 +9,17 @@
 // - 滑鼠在按下時就開關選單（同 Radix Select）；觸控與鍵盤在 click 時開關。
 // - 鍵盤：方向鍵移動、Enter 選取、Esc 關閉、Tab 關閉；中文輸入法組字時不攔截按鍵。
 // - 離開欄位時驗證（docs/spec/README.md 第 9 節）：觸發元件在選單關閉時失去焦點才呼叫 onBlur，打開選單不算離開。
-import { forwardRef, useEffect, useId, useImperativeHandle, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  forwardRef,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { Popover } from 'radix-ui';
 import { Check, ChevronDown, Search } from 'lucide-react';
 import { cn } from '@/components/ui/cn';
@@ -42,7 +52,19 @@ const CREATE = '\u0000create';
 type Item = { value: string; label: string; create?: boolean };
 
 export const CreatableSelect = forwardRef<CreatableSelectHandle, CreatableSelectProps>(function CreatableSelect(
-  { label, options, value, onValueChange, placeholder, searchPlaceholder, createLabel, description, error, required, onBlur },
+  {
+    label,
+    options,
+    value,
+    onValueChange,
+    placeholder,
+    searchPlaceholder,
+    createLabel,
+    description,
+    error,
+    required,
+    onBlur,
+  },
   ref,
 ) {
   const ids = useFieldIds();
@@ -178,7 +200,9 @@ export const CreatableSelect = forwardRef<CreatableSelectHandle, CreatableSelect
               'relative flex h-9 cursor-pointer items-center pr-9 text-left',
             )}
           >
-            <span className={cn('min-w-0 flex-1 truncate', value == null && 'text-muted-foreground')}>{value ?? placeholder}</span>
+            <span className={cn('min-w-0 flex-1 truncate', value == null && 'text-muted-foreground')}>
+              {value ?? placeholder}
+            </span>
             <ChevronDown aria-hidden className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2" />
           </button>
         </Popover.Anchor>
@@ -196,7 +220,8 @@ export const CreatableSelect = forwardRef<CreatableSelectHandle, CreatableSelect
               if (e.target instanceof Node && triggerRef.current?.contains(e.target)) e.preventDefault();
             }}
             onPointerDownOutside={(e) => {
-              if (!(e.target instanceof Node && triggerRef.current?.contains(e.target))) pointerOutsideRef.current = true;
+              if (!(e.target instanceof Node && triggerRef.current?.contains(e.target)))
+                pointerOutsideRef.current = true;
             }}
             // 關閉後焦點回到觸發元件；點在選單外關閉時焦點留在點到的地方
             onCloseAutoFocus={(e) => {
@@ -212,7 +237,10 @@ export const CreatableSelect = forwardRef<CreatableSelectHandle, CreatableSelect
             )}
           >
             <div className="relative shrink-0 pb-2">
-              <Search aria-hidden className="pointer-events-none absolute top-4 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Search
+                aria-hidden
+                className="pointer-events-none absolute top-4 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+              />
               <input
                 ref={searchRef}
                 type="text"

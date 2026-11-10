@@ -19,10 +19,14 @@ function resequence(participants: Participant[], tableIds: Iterable<number | nul
   for (const tableId of tables) {
     participants
       .filter((p) => p.tableId === tableId)
-      .sort((a, b) => (a.seatOrder ?? Number.MAX_SAFE_INTEGER) - (b.seatOrder ?? Number.MAX_SAFE_INTEGER) || a.id - b.id)
+      .sort(
+        (a, b) => (a.seatOrder ?? Number.MAX_SAFE_INTEGER) - (b.seatOrder ?? Number.MAX_SAFE_INTEGER) || a.id - b.id,
+      )
       .forEach((p, i) => order.set(p.id, i));
   }
-  return participants.map((p) => (order.has(p.id) && order.get(p.id) !== p.seatOrder ? { ...p, seatOrder: order.get(p.id)! } : p));
+  return participants.map((p) =>
+    order.has(p.id) && order.get(p.id) !== p.seatOrder ? { ...p, seatOrder: order.get(p.id)! } : p,
+  );
 }
 
 /** 移除參與人員；員工的眷屬一併移除，空出的座位重排 */
@@ -30,7 +34,13 @@ export function removeParticipants(data: AppState, ids: Iterable<number>): AppSt
   const removed = new Set(ids);
   for (const p of data.participants) if (p.hostId != null && removed.has(p.hostId)) removed.add(p.id);
   const tables = data.participants.filter((p) => removed.has(p.id)).map((p) => p.tableId);
-  return { ...data, participants: resequence(data.participants.filter((p) => !removed.has(p.id)), tables) };
+  return {
+    ...data,
+    participants: resequence(
+      data.participants.filter((p) => !removed.has(p.id)),
+      tables,
+    ),
+  };
 }
 
 /** 用伺服器回應的參與人員覆蓋（新增或更新） */
