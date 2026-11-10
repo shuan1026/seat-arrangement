@@ -148,6 +148,16 @@ export async function zoomToRegular(page: Page) {
   expect(await zoomValue(page)).toBeGreaterThanOrEqual(80);
 }
 
+/**
+ * 縮小到精簡顯示（低於 80%，SEAT-R68、2.1.6）：適合視窗的比例已經低於 80% 時不動。
+ * 先等工具列顯示比例（量到座位圖區大小之後才有），免得把還沒算好的比例當成 0%。
+ */
+export async function zoomToCompact(page: Page) {
+  await expect(zoomText(page)).toBeVisible();
+  for (let i = 0; i < 25 && (await zoomValue(page)) >= 80; i++) await toolbarButton(page, '縮小').click();
+  expect(await zoomValue(page)).toBeLessThan(80);
+}
+
 /** 全部展開：每一桌換成名單卡片，卡片上有備註名稱與部門（SEAT-R69、2.1.7） */
 export async function expandAll(page: Page) {
   await toolbarButton(page, '全部展開').click();
@@ -360,6 +370,85 @@ export async function badgeLook(
 
 /** lucide 的 triangle-alert（docs/spec/README.md 狀態徽章「超過」的圖示）特有的 path */
 export const TRIANGLE_ALERT_PATH = 'M12 9v4';
+
+/** 圓形桌次裡狀態徽章的量測（circleBadge 的回傳）；長度都是未縮放的版面 px */
+export type CircleBadge = {
+  /** 文字元素的文字 */
+  text: string;
+  /** 文字元素的 scrollWidth、clientWidth：scrollWidth 大於 clientWidth 就是被截斷（畫面上變成「已…」「超…」） */
+  scrollWidth: number;
+  clientWidth: number;
+  /** 徽章外框相對圓形左緣的位置與大小 */
+  x: number;
+  width: number;
+  height: number;
+  /** 圓形扣掉邊框與內距後的內容框左右緣（相對圓形左緣） */
+  contentLeft: number;
+  contentRight: number;
+};
+
+/**
+ * 收合或精簡顯示時，圓形桌次裡文字正好是 text 的狀態徽章（「已滿」「超過」）。座位圖用 transform 縮放，
+ * 這裡一律換回未縮放的版面 px（用圓形的 offsetWidth 算出比例），所以和縮放比例、座位圖捲到哪裡都無關。
+ * 徽章外框取文字往上第一個有底色的元素（同 badgeLook）。找不到這段文字時是 null。
+ */
+export async function circleBadge(page: Page, n: TableRef, text: string): Promise<CircleBadge | null> {
+  return tableButton(page, n).evaluate((button, t) => {
+    const el = [button, ...Array.from(button.querySelectorAll('*'))].find((e) =>
+      Array.from(e.childNodes).some((c) => c.nodeType === Node.TEXT_NODE && (c.textContent ?? '').trim() === t),
+    );
+    if (!el) return null;
+    let badge: Element = el;
+    for (let node: Element | null = el; node && node !== button; node = node.parentElement) {
+      const bg = getComputedStyle(node).backgroundColor;
+      if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+        badge = node;
+        break;
+      }
+    }
+    const circle = button as HTMLElement;
+    const c = circle.getBoundingClientRect();
+    const scale = c.width / circle.offsetWidth;
+    const r = badge.getBoundingClientRect();
+    const s = getComputedStyle(circle);
+    return {
+      text: (el.textContent ?? '').trim(),
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+      x: (r.left - c.left) / scale,
+      width: r.width / scale,
+      height: r.height / scale,
+      contentLeft: parseFloat(s.borderLeftWidth) + parseFloat(s.paddingLeft),
+      contentRight: circle.offsetWidth - parseFloat(s.borderRightWidth) - parseFloat(s.paddingRight),
+    };
+  }, text);
+}
+
+/**
+ * 圓形桌次裡的狀態徽章完整顯示（docs/spec/README.md 第 11.1 節：徽章一律有文字；seating.md 2.1.6）：
+ * 文字正好是 text、沒有被截斷，徽章外框在圓形的內容框裡（不是靠超出內容框塞下）。回傳量測結果，給標示前後比較用。
+ */
+export async function expectWholeCircleBadge(page: Page, n: TableRef, text: string, label: string): Promise<CircleBadge> {
+  const m = await circleBadge(page, n, text);
+  if (!m) throw new Error(`${label}：${titleFor(n)}找不到「${text}」`);
+  const right = m.x + m.width;
+  expect(m.text, `${label}：徽章文字`).toBe(text);
+  const cut = `${label}：「${text}」被截斷（文字要 ${m.scrollWidth} px，只有 ${m.clientWidth} px）`;
+  expect(m.scrollWidth, cut).toBeLessThanOrEqual(m.clientWidth);
+  const left = `${label}：徽章左緣 ${m.x.toFixed(1)} px 超出圓形的內容框（${m.contentLeft} px 起）`;
+  expect(m.x, left).toBeGreaterThanOrEqual(m.contentLeft - 0.5);
+  const over = `${label}：徽章右緣 ${right.toFixed(1)} px 超出圓形的內容框（到 ${m.contentRight} px）`;
+  expect(right, over).toBeLessThanOrEqual(m.contentRight + 0.5);
+  return m;
+}
+
+/** 標示前後徽章的位置與寬度相同（容許 0.5 px）：搜尋標示只換外框，不擠壓、不移動圓形裡的內容 */
+export function expectSameBadgePlace(before: CircleBadge, after: CircleBadge, label: string) {
+  const x = `${label}：徽章左緣 ${before.x.toFixed(1)} → ${after.x.toFixed(1)} px`;
+  expect(Math.abs(after.x - before.x), x).toBeLessThanOrEqual(0.5);
+  const width = `${label}：徽章寬 ${before.width.toFixed(1)} → ${after.width.toFixed(1)} px`;
+  expect(Math.abs(after.width - before.width), width).toBeLessThanOrEqual(0.5);
+}
 
 /** 語意 token 計算後的陰影（例如 --shadow-md） */
 export async function tokenShadow(page: Page, token: string): Promise<string> {

@@ -192,7 +192,7 @@ export function MetaItem({ before, value, after = '' }: { before: string; value:
   );
 }
 
-function TableBody({ info, draggable, readOnly = false }: TableDetailProps) {
+function TableBody({ info, mobile, draggable, readOnly = false }: TableDetailProps) {
   return (
     <div className="flex flex-col gap-4">
       {readOnly ? null : <NoteField key={`${info.id}:${info.noteName ?? ''}`} tableId={info.id} noteName={info.noteName} />}
@@ -207,7 +207,8 @@ function TableBody({ info, draggable, readOnly = false }: TableDetailProps) {
         info={info}
         draggable={draggable && !readOnly}
         readOnly={readOnly}
-        hint={readOnly ? null : '拖移可以調整順序，也可以從人員面板直接拖進來。'}
+        // 手機不能拖移（SEAT-R82），名單說明不顯示（2.3.6、D-023）；只能檢視時也不顯示（SEAT-R90）
+        hint={readOnly || mobile ? null : '拖移可以調整順序，也可以從人員面板直接拖進來。'}
       />
     </div>
   );

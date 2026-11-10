@@ -2,6 +2,8 @@
 // 依據：docs/spec/participants.md 第 2.1 節、第 4.1 節的文案、PPL-R12、R16、R19～R33、R39、R40、R75、R76、R78，
 // PPL-AC01～AC08、AC09（匯入的部分）、AC10～AC24、AC71～AC75、AC77；待確認 PPL-Q13～Q16、Q18、Q19 依原型做法（D-008）；
 // docs/spec/README.md 第 9 節（整頁不能水平捲動）、第 14 節（分頁文案）。
+// 表格（768 px 以上）的顯示名稱、類別、分機、標示、桌次一行顯示、不換行，放不下時只在表格的捲動區左右捲動；
+// 手機的堆疊卡片不受這條限制（第 2.1 節表格欄位「換行」、D-024）。
 // 桌號 A1～A15、B1～B15（D-019）：測試資料用內部編號（tableId 3 = B4），畫面上是桌號；對應見 tests/helpers/table-codes.ts。
 // 這裡只測「{桌號}」的連結網址；接上之後開啟的桌次詳情在 people-seating.spec.ts，
 // 「匯出座位表」按鈕在 export-seating-button.spec.ts，頁首按鈕的手機版面在 page-head.spec.ts。
@@ -9,7 +11,13 @@
 import { expect, test, type Page } from '@playwright/test';
 import { CODES_IN_LIST_ORDER } from '../helpers/table-codes';
 import { signIn } from './helpers/auth';
-import { expectNoHorizontalScroll, isMobileWidth, requireBaseURL } from './helpers/page-checks';
+import {
+  expectNoHorizontalScroll,
+  expectOneLine,
+  expectTableScrollsInside,
+  isMobileWidth,
+  requireBaseURL,
+} from './helpers/page-checks';
 import { demoEmployees, STAFF_TABLE, withDb } from './helpers/participants-db';
 import {
   boxOf,
@@ -622,6 +630,111 @@ test.describe('手機（767 px 以下）', () => {
       expect(box.y).toBeGreaterThanOrEqual(previous.y + previous.height - 1);
       previous = box;
     }
+  });
+});
+
+// 截圖檢查的情境（D-024 背景）：部門或單位很長時，表格自動分配欄寬把短欄位擠窄，768 px 寬的類別變成「員／工」
+const LONG_DEPT_A = '國際事業發展暨策略合作推動處';
+const LONG_DEPT_B = '法務暨智慧財產與法規遵循管理部';
+const LONG_ORG = '○○國際科技股份有限公司 董事長兼總經理暨策略長';
+const LONG_NOTE = '活動當天需要提早到場協助報到，請安排靠近出入口的座位，並保留一個位置給臨時來賓。';
+
+test.describe('表格的短欄位一行顯示（第 2.1 節表格欄位「換行」、D-024）', () => {
+  test.beforeEach(desktopOnly);
+
+  /**
+   * 王小明（部門很長、分機 1234、B4 桌、兒童椅與素食、備註很長）與王小明_眷屬（配偶、B4 桌、素食）、
+   * 張志明（同一個部門、分機 2468、工作人員）、陳大文（另一個很長的部門、分機 5678、未入座）、外部貴賓林董（單位很長、兒童椅、B4 桌）
+   */
+  async function seedLongColumns() {
+    await withDb(async (db) => {
+      const { participantId: wang } = await db.registerNew(
+        { name: '王小明', department: LONG_DEPT_A, extension: '1234' },
+        { tableId: 3, childSeat: true, vegetarian: true, note: LONG_NOTE },
+      );
+      await db.dependent(wang, { relation: '配偶', tableId: 3, vegetarian: true });
+      await db.registerNew({ name: '張志明', department: LONG_DEPT_A, extension: '2468' }, { tableId: STAFF_TABLE });
+      await db.registerNew({ name: '陳大文', department: LONG_DEPT_B, extension: '5678' });
+      await db.guest('林董', { organization: LONG_ORG, childSeat: true, tableId: 3 });
+    });
+  }
+
+  const dataRowsOf = (page: Page) => page.getByRole('row').filter({ has: page.getByRole('cell') });
+
+  /** 這一列的顯示名稱（外部貴賓含「貴賓」徽章）、類別、分機、標示（兩個徽章並排）、桌次都一行顯示 */
+  async function expectShortColumnsOneLine(page: Page, name: string, label: string) {
+    const row = personRow(page, name);
+    await expect(row, `${label}：${name} 那一列`).toHaveCount(1);
+    for (const column of ['顯示名稱', '類別', '分機', '標示', '桌次'] as const) {
+      await expectOneLine(cellOf(row, column), `${label}：${name} 的${column}`);
+    }
+  }
+
+  for (const width of [768, 1024]) {
+    test(`${width} px、部門與單位很長：顯示名稱、類別（「員工」「眷屬（配偶）」「外部貴賓」）、分機、標示、桌次都一行顯示（不會變成「員／工」）；選了部門篩選也一樣；放不下時只在表格的捲動區左右捲動，整頁不水平捲動`, async ({
+      page,
+    }) => {
+      await seedLongColumns();
+      await page.setViewportSize({ width, height: 800 });
+      await gotoPeople(page);
+
+      await expect(dataRowsOf(page)).toHaveCount(5);
+      await expect(cellOf(personRow(page, '王小明'), '類別')).toHaveText('員工');
+      await expect(cellOf(personRow(page, '王小明_眷屬'), '類別')).toHaveText('眷屬（配偶）');
+      await expect(cellOf(personRow(page, '林董'), '類別')).toHaveText('外部貴賓');
+      for (const name of ['王小明', '王小明_眷屬', '張志明', '陳大文', '林董']) {
+        await expectShortColumnsOneLine(page, name, `${width} px、沒有篩選`);
+      }
+      await expectTableScrollsInside(page, '參與人員');
+
+      // 部門篩選（PPL-R24）：只剩這個部門的員工與眷屬
+      await chooseOption(page, filterSelect(page, '部門'), LONG_DEPT_A, '國際');
+      await expect(filterChip(page, LONG_DEPT_A)).toBeVisible();
+      await expect(dataRowsOf(page)).toHaveCount(3);
+      expect((await listedNames(page)).sort()).toEqual(['王小明', '王小明_眷屬', '張志明'].sort());
+      for (const name of ['王小明', '王小明_眷屬', '張志明']) {
+        await expectShortColumnsOneLine(page, name, `${width} px、部門篩選`);
+      }
+      await expectTableScrollsInside(page, '參與人員');
+    });
+  }
+});
+
+test.describe('手機 320 px：堆疊卡片不受短欄位不換行的限制（D-024）', () => {
+  test.beforeEach(async ({ page }) => {
+    test.skip(!isMobileWidth(page), '手機寬度才有堆疊卡片');
+  });
+
+  test('姓名與部門很長的員工（「阿布杜拉・穆罕默德・哈米德」）：仍是卡片；顯示名稱完整顯示在卡片裡，部門在卡片內換行、也在卡片裡；沒有整頁水平捲動（PPL-R75、PPL-R78）', async ({
+    page,
+  }) => {
+    const LONG_NAME = '阿布杜拉・穆罕默德・哈米德';
+    await withDb(async (db) => {
+      await db.registerNew(
+        { name: LONG_NAME, department: LONG_DEPT_A, extension: '1234' },
+        { tableId: 3, childSeat: true, vegetarian: true },
+      );
+    });
+    await gotoPeople(page);
+    expect(page.viewportSize()?.width).toBe(320);
+
+    // 仍是卡片：沒有表頭
+    await expect(page.getByRole('columnheader', { name: '顯示名稱' })).toBeHidden();
+    const card = personRow(page, LONG_NAME);
+    await expect(card).toBeVisible();
+    const cardBox = await boxOf(card);
+    for (const text of [LONG_NAME, LONG_DEPT_A]) {
+      const el = card.getByText(text, { exact: true });
+      await expect(el, text).toBeVisible();
+      const box = await boxOf(el);
+      expect(box.x, `${text} 的左緣在卡片裡`).toBeGreaterThanOrEqual(cardBox.x - 1);
+      expect(box.x + box.width, `${text} 的右緣在卡片裡`).toBeLessThanOrEqual(cardBox.x + cardBox.width + 1);
+      expect(box.x + box.width, `${text} 沒有超出視窗`).toBeLessThanOrEqual(320);
+      expect(await el.evaluate((e) => e.scrollWidth <= e.clientWidth + 1), `${text} 沒有被截斷`).toBe(true);
+    }
+    await expect(markIn(card, '兒童椅')).toBeVisible();
+    await expect(markIn(card, '素食')).toBeVisible();
+    await expectNoHorizontalScroll(page);
   });
 });
 

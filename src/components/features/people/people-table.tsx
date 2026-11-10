@@ -45,7 +45,7 @@ function SeatBadge({ p }: { p: Participant }) {
 function Marks({ p }: { p: Participant }) {
   if (!p.childSeat && !p.vegetarian) return <Empty />;
   return (
-    <span className="inline-flex min-w-0 flex-wrap justify-end gap-1.5 md:justify-start">
+    <span className="inline-flex min-w-0 flex-wrap justify-end gap-1.5 md:flex-nowrap md:justify-start">
       {p.childSeat ? (
         <Badge variant="third" icon={<Baby />}>
           兒童椅
@@ -103,19 +103,21 @@ export function PeopleTable({
                   {p.kind === 'GUEST' ? <Badge variant="outline">貴賓</Badge> : null}
                 </div>
               </TableCell>
-              <TableCell label="類別">
+              {/* 表格寬度（768 px 以上）顯示名稱、類別、分機、標示、桌次一行顯示，部門或單位、備註才換行（D-024）；
+                  手機的堆疊卡片照舊在卡片內換行 */}
+              <TableCell label="類別" className="md:whitespace-nowrap">
                 <span className="min-w-0">{kindLabel(p)}</span>
               </TableCell>
               <TableCell label="部門或單位">
                 {unit ? <span className="min-w-0 [overflow-wrap:anywhere]">{unit}</span> : <Empty />}
               </TableCell>
-              <TableCell label="分機">
+              <TableCell label="分機" className="md:whitespace-nowrap">
                 {extension ? <span className="tabular-nums">{extension}</span> : <Empty />}
               </TableCell>
-              <TableCell label="標示">
+              <TableCell label="標示" className="md:whitespace-nowrap">
                 <Marks p={p} />
               </TableCell>
-              <TableCell label="桌次">
+              <TableCell label="桌次" className="md:whitespace-nowrap">
                 <SeatBadge p={p} />
               </TableCell>
               <TableCell label="備註" hideOnMobile>

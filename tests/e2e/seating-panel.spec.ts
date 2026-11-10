@@ -1,13 +1,16 @@
 // 人員面板與找人：docs/spec/seating.md 2.2、4.2；SEAT-R52～R62；SEAT-AC50～AC64；
 // docs/spec/README.md COM-R11、COM-R14、COM-AC14。
+// 找人標示時精簡顯示（比例低於 80%）的「已滿」「超過」徽章仍完整顯示：2.1.6、2.1.9；README 第 11.1 節（徽章一律有文字）。
 // 面板的列表、搜尋、篩選、空狀態、列操作在桌面與手機（「人員」分頁）都測；找人與面板收合只在桌面測。
-// 桌號 A1～A15、B1～B15（D-019）：測試資料用內部編號（3 = B4、12 = B3），畫面上的字用桌號。
+// 桌號 A1～A15、B1～B15（D-019）：測試資料用內部編號（3 = B4、5 = B10、6 = B13、12 = B3），畫面上的字用桌號。
 import { expect, test, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
 import { seed } from './helpers/seating-data';
 import {
+  expectSameBadgePlace,
   expectStats,
+  expectWholeCircleBadge,
   hasBorderColor,
   isInside,
   mapTable,
@@ -23,6 +26,8 @@ import {
   tableButton,
   titleFor,
   toolbarButton,
+  zoomToCompact,
+  zoomValue,
 } from './helpers/seating-page';
 
 test.beforeEach(async ({ context, baseURL }) => {
@@ -378,6 +383,38 @@ test.describe('找人（SEAT-R62）', () => {
     if (!table || !detail) throw new Error('量不到 B3 桌或詳情');
     expect(table.x + table.width <= detail.x || table.x >= detail.x + detail.width, 'B3 桌不被詳情蓋住').toBe(true);
   });
+
+  // 精簡顯示的徽章高 28 px（2.1.6）；標示換成 2 px 的 --accent 邊框（2.1.9）時，徽章文字不能變成「已…」「超…」
+  for (const { n, code, count, status, cut } of [
+    { n: 5, code: 'B10', count: 10, status: '已滿', cut: '已…' },
+    { n: 6, code: 'B13', count: 11, status: '超過', cut: '超…' },
+  ] as const) {
+    test(`比例低於 80% 時按「全部」分頁的「${code}」：${code} 桌（${count} 位）標示的 4 秒內，「${status}」徽章完整顯示（不是「${cut}」）、高 28 px、在圓形的內容框裡；徽章的位置與寬度和標示前相同`, async ({
+      page,
+    }) => {
+      desktopOnly(page);
+      await seed(async (s) => {
+        await s.employee('王小明', { tableId: n });
+        await s.fill(n, count - 1);
+      });
+      await openSeating(page);
+      await zoomToCompact(page);
+      await panelTab(page, '全部').click();
+
+      const before = await expectWholeCircleBadge(page, n, status, '標示前');
+      expect(before.height, '標示前：精簡顯示的徽章高 28 px（2.1.6）').toBeCloseTo(28, 0);
+
+      await personRow(page, '王小明').getByRole('button', { name: code, exact: true }).click();
+      await expect.poll(() => hasBorderColor(page, mapTable(page, n), '--accent', '2px')).toBe(true);
+      expect(await zoomValue(page), '找人後仍是精簡顯示').toBeLessThan(80);
+
+      const during = await expectWholeCircleBadge(page, n, status, '標示中');
+      expect(during.height, '標示中：精簡顯示的徽章高 28 px（2.1.6）').toBeCloseTo(28, 0);
+      expectSameBadgePlace(before, during, '標示前後');
+      // 量的時候還在 4 秒的標示內
+      expect(await hasBorderColor(page, mapTable(page, n), '--accent', '2px'), '量的時候仍在標示中').toBe(true);
+    });
+  }
 });
 
 test.describe('收合人員面板（SEAT-R61、SEAT-R70）', () => {

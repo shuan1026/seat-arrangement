@@ -155,7 +155,9 @@ export function PermissionsView({ initialEditors, domain = COMPANY_EMAIL_DOMAIN 
                 onBlur={() => {
                   if (value.trim()) setError(validate(value));
                 }}
-                className={cn(controlClasses({ size: 'md', error: !!error }), 'h-9 flex-1')}
+                // flex-1 只在桌面（和按鈕同一列）；手機這一列是 contents，欄位直接排在直向的 Field 裡，
+                // flex-1 的 flex-basis 0 會把高度壓扁，所以不加
+                className={cn(controlClasses({ size: 'md', error: !!error }), 'h-9 md:flex-1')}
                 {...fieldAria(fieldIds, { description: FIELD_HELP, error })}
               />
               <Button type="submit" variant="primary" loading={submitting} className="shrink-0 max-md:order-1 max-md:mt-2 max-md:w-full">

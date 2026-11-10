@@ -119,8 +119,10 @@ export function EmployeeTable({
                     )}
                   </TableCell>
                 )}
+                {/* 表格寬度（768 px 以上）姓名、分機、地區、報名狀態一行顯示，部門、組別、英文名、備註才換行（EMP-R10、D-024）；
+                    手機的堆疊卡片照舊在卡片內換行 */}
                 <TableCell kind="primary">
-                  <div className="type-sm-medium text-foreground [overflow-wrap:anywhere]">{e.name}</div>
+                  <div className="type-sm-medium text-foreground [overflow-wrap:anywhere] md:whitespace-nowrap">{e.name}</div>
                   {e.englishName ? (
                     <div className="type-xs-regular text-muted-foreground [overflow-wrap:anywhere]">
                       {e.englishName}
@@ -129,11 +131,13 @@ export function EmployeeTable({
                 </TableCell>
                 <TableCell label="部門">{e.department}</TableCell>
                 <TableCell label="組別">{e.team ?? <Dash />}</TableCell>
-                <TableCell label="分機">
+                <TableCell label="分機" className="md:whitespace-nowrap">
                   {e.extension ? <span className="tabular-nums">{e.extension}</span> : <Dash />}
                 </TableCell>
-                <TableCell label="地區">{e.region ?? <Dash />}</TableCell>
-                <TableCell label="報名狀態">
+                <TableCell label="地區" className="md:whitespace-nowrap">
+                  {e.region ?? <Dash />}
+                </TableCell>
+                <TableCell label="報名狀態" className="md:whitespace-nowrap">
                   <Badge variant={badge.variant}>{badge.label}</Badge>
                 </TableCell>
                 <TableCell label="備註" hideOnMobile>

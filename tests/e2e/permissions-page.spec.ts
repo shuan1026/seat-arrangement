@@ -1,9 +1,11 @@
 // 權限頁 /permissions：docs/spec/permissions.md 第 2.1 節、PRM-R05～R15、第 4.1 節文案；驗收條件 PRM-AC04～AC16；
 // docs/spec/README.md AUTH-R12～R14、AUTH-AC18、COM-R07、COM-R08、第 9 節（Alert Dialog 在手機按鈕滿版、確認在上；不可整頁水平捲動）；D-021。
+// email 欄位的尺寸依 ui-design-system 03-components.md Input：`md` 高 36 px、`vertical`（說明與錯誤在欄位下方、間距 8 px）、
+// `with-button`（桌面同一列、間距 8 px，按鈕和欄位同高）。
 // 「別人剛在權限頁改了名單」用 helpers/permissions-db.ts 直接改資料庫模擬（和另一位編輯者按下按鈕的結果相同）。
 // 甲、乙、丙是 docs/spec/permissions.md 第 5 節的虛構帳號；登入用 helpers/auth.ts（signIn 會把帳號寫進名單，所以都在 signIn 之後才設定名單）。
 // 無障礙結構的假設見 helpers/permissions-page.ts 開頭。
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { BING, JIA, setSessionCookie, signIn, signInAsViewer, YI } from './helpers/auth';
 import { expectNoHorizontalScroll, fetchFromPage, isMobileWidth, requireBaseURL } from './helpers/page-checks';
 import { editorEmails, editorIdOf, makeEditor, removeEditor, setEditors } from './helpers/permissions-db';
@@ -371,6 +373,58 @@ test.describe('手機（PRM-AC16、第 2.1 節）', () => {
     expect(confirm.width, '按鈕滿版').toBeGreaterThan(dialogBox.width * 0.7);
     expect(dialogBox.x).toBeGreaterThanOrEqual(0);
     expect(dialogBox.x + dialogBox.width).toBeLessThanOrEqual(320);
+    await expectNoHorizontalScroll(page);
+  });
+});
+
+test.describe('email 欄位的尺寸（第 2.1 節；03-components.md Input `md`、`vertical`、`with-button`）', () => {
+  /**
+   * 「新增編輯者」區塊的版面：email 欄位高 36 px（Input md），「新增編輯者」和欄位同高（with-button）；
+   * 說明在欄位下方 8 px（vertical），有錯誤時錯誤也在欄位下方（PRM-R08）。
+   * 桌面：按鈕在欄位右側、間距 8 px、和欄位底邊對齊。手機（767 px 以下）：上下堆疊，按鈕滿版，排在說明與錯誤之後。
+   */
+  async function expectAddFieldLayout(page: Page, label: string, error?: Locator) {
+    const field = await emailField(page).boundingBox();
+    const button = await addEditorButton(page).boundingBox();
+    const help = await page.getByText(FIELD_HELP, { exact: true }).boundingBox();
+    const err = error ? await error.boundingBox() : null;
+    if (!field || !button || !help || (error && !err)) throw new Error(`${label}：量不到欄位、按鈕、說明或錯誤`);
+    const fieldBottom = field.y + field.height;
+
+    expect(field.height, `${label}：email 欄位高 ${field.height} px，應為 36 px（Input md）`).toBeCloseTo(36, 0);
+    expect(button.height, `${label}：「新增編輯者」高 ${button.height} px，應和欄位同高`).toBeCloseTo(field.height, 0);
+    const helpGap = help.y - fieldBottom;
+    expect(Math.abs(helpGap - 8), `${label}：說明在欄位下方 ${helpGap} px，應為 8 px`).toBeLessThanOrEqual(1);
+    if (err) expect(err.y, `${label}：錯誤在欄位下方`).toBeGreaterThanOrEqual(fieldBottom - 1);
+
+    if (isMobileWidth(page)) {
+      expect(Math.abs(button.width - field.width), `${label}：按鈕和欄位同寬（滿版）`).toBeLessThanOrEqual(1);
+      expect(button.y, `${label}：按鈕在說明下方`).toBeGreaterThanOrEqual(help.y + help.height - 1);
+      if (err) expect(button.y, `${label}：按鈕在錯誤下方`).toBeGreaterThanOrEqual(err.y + err.height - 1);
+    } else {
+      const gap = button.x - (field.x + field.width);
+      expect(Math.abs(gap - 8), `${label}：按鈕在欄位右側 ${gap} px，應為 8 px`).toBeLessThanOrEqual(1);
+      expect(Math.abs(button.y + button.height - fieldBottom), `${label}：按鈕和欄位底邊對齊`).toBeLessThanOrEqual(1);
+    }
+  }
+
+  test('欄位空白時、輸入「abc」離開欄位顯示錯誤時，email 欄位都高 36 px、和「新增編輯者」同高；桌面按鈕在欄位右側底邊對齊，手機（767 px 以下）說明與錯誤在欄位下方、按鈕滿版排在最後', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await asJiaWith(context, baseURL, [JIA.email, YI.email]);
+    await gotoPermissions(page);
+    const width = page.viewportSize()?.width ?? 0;
+
+    await expectAddFieldLayout(page, `${width} px、欄位空白`);
+
+    // 離開欄位時驗證（README 第 9 節）
+    await emailField(page).fill('abc');
+    await emailField(page).blur();
+    const error = page.getByText('請輸入正確的 email。', { exact: true });
+    await expect(error).toBeVisible();
+    await expectAddFieldLayout(page, `${width} px、顯示錯誤`, error);
     await expectNoHorizontalScroll(page);
   });
 });

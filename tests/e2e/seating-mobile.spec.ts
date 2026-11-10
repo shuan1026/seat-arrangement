@@ -1,6 +1,7 @@
 // 手機（767 px 以下，mobile-320 project）：docs/spec/seating.md 2.1.11、2.2.6、2.3.6、2.4（手機）、2.5.4；
 // SEAT-R81～R83；SEAT-AC81～AC85；SEAT-Q08（手機用「適合視窗」，30 桌全部可見）、SEAT-Q10（在「人員」分頁按「{桌號}」
-// 會切到「座位圖」分頁再標示，原型的做法，目前假設）；docs/spec/README.md 第 9 節（手機 Dialog 按鈕滿版堆疊、主要按鈕在上）。
+// 會切到「座位圖」分頁再標示，原型的做法，目前假設）；docs/spec/README.md 第 9 節（手機 Dialog 按鈕滿版堆疊、主要按鈕在上）；
+// D-023（手機的桌次詳情不顯示名單說明「拖移可以調整順序…」，只留「名單」標題；桌面見 seating-map.spec.ts）。
 // 桌號 A1～A15、B1～B15（D-019）：測試資料用內部編號（3 = B4、7 = B2、8 = B5、12 = B3），畫面上的字用桌號。
 import { expect, test, type Locator } from '@playwright/test';
 import { signIn } from './helpers/auth';
@@ -168,6 +169,26 @@ test('點 B4 桌：桌次詳情以 Dialog 顯示，有「加入人員」「調�
   await expectToast(page, '已把 B4 桌和 B2 桌對調。', { undo: true });
   expect(await rosterNames(3)).toEqual(['丙']);
   expect(await rosterNames(7)).toEqual(['甲', '乙']);
+});
+
+test('點 B4 桌：詳情 Dialog 有「名單」標題與名單，不顯示名單說明「拖移可以調整順序，也可以從人員面板直接拖進來。」（手機不能拖移；2.3.1、2.3.6、SEAT-R82、D-023）', async ({
+  page,
+}) => {
+  await seed(async (s) => {
+    for (const name of ['甲', '乙']) await s.employee(name, { tableId: 3 });
+  });
+  await openSeating(page);
+  await tableButton(page, 3).click();
+
+  const detail = page.getByRole('dialog', { name: 'B4 桌', exact: true });
+  await expect(detail).toBeVisible();
+  // 編輯者的詳情（有底部按鈕）；只能檢視時本來就沒有說明，見 viewer-seating.spec.ts 的 SEAT-AC101
+  await expect(detail.getByRole('button', { name: '加入人員', exact: true })).toBeVisible();
+  await expect(detail.getByRole('heading', { name: '名單', exact: true })).toBeVisible();
+  await expectRoster(detailRows(detail), ['甲', '乙']);
+  await expect(detail.getByText('拖移可以調整順序，也可以從人員面板直接拖進來。')).toBeHidden();
+  await expect(detail.getByText(/拖移可以調整順序/)).toBeHidden();
+  await expectNoHorizontalScroll(page);
 });
 
 test('點工作人員桌：詳情以 Dialog 顯示，用「加入人員」放進王小明；再用名單列的「移出工作人員桌」變成未入座（SEAT-R82、SEAT-R83、SEAT-AC85）', async ({

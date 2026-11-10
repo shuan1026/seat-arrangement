@@ -60,7 +60,11 @@ function useDropState(info: TableFace) {
   });
 }
 
-/** 圓形或卡片的外框：空桌虛線、已選取與可放置用 --primary、搜尋標示 2 px --accent（2.1.9） */
+/**
+ * 圓形或卡片的外框：空桌虛線、已選取與可放置用 --primary、搜尋標示 2 px --accent（2.1.9）。
+ * 搜尋標示的邊框多 1 px，呼叫端的內距要同步少 1 px（circlePadding、cardPadding），內容的位置與寬度才不變，
+ * 精簡顯示的「已滿」「超過」徽章也不會被擠到截斷
+ */
 function frameClasses(info: TableFace, { over, selected, hit }: { over: boolean; selected: boolean; hit: boolean }) {
   const empty = info.count === 0;
   return cn(
@@ -76,6 +80,11 @@ function frameClasses(info: TableFace, { over, selected, hit }: { over: boolean;
     'focus-visible:[box-shadow:var(--edge-highlight),var(--shadow-xs),var(--shadow-focus-ring)]',
   );
 }
+
+/** 圓形左右內距 8 px；搜尋標示（邊框 2 px）時 7 px */
+const circlePadding = (hit: boolean) => (hit ? 'px-[7px]' : 'px-2');
+/** 卡片內距 12 px；搜尋標示（邊框 2 px）時 11 px */
+const cardPadding = (hit: boolean) => (hit ? 'p-[11px]' : 'p-3');
 
 function CountOrFull({ info, mode }: { info: TableFace; mode: TableMode }) {
   // 精簡顯示時徽章放大：高 28 px、Text-base/Medium（2.1.6）
@@ -164,7 +173,8 @@ export function MapTable(props: MapTableProps) {
               aria-label={ariaLabel}
               onClick={props.onOpen}
               className={cn(
-                'flex size-[88px] flex-col items-center justify-center gap-px rounded-full px-2 text-center',
+                'flex size-[88px] flex-col items-center justify-center gap-px rounded-full text-center',
+                circlePadding(props.hit),
                 frameClasses(info, { over: drop.over, selected: props.selected, hit: props.hit }),
                 drop.blocked ? 'cursor-not-allowed' : 'cursor-pointer',
                 mode === 'compact' && 'gap-0',
@@ -206,7 +216,8 @@ function ExpandedCard({
     <div
       onClick={onOpen}
       className={cn(
-        'flex w-[256px] flex-col rounded-xl p-3',
+        'flex w-[256px] flex-col rounded-xl',
+        cardPadding(hit),
         rows > CAPACITY ? 'h-[246px]' : 'h-[220px]',
         frameClasses(info, { over: drop.over, selected, hit }),
         drop.blocked ? 'cursor-not-allowed' : 'cursor-pointer',
