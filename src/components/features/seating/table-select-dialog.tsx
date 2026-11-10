@@ -3,6 +3,7 @@
 // 選擇桌次對話框（docs/spec/seating.md 2.4、3.4、4.4；SEAT-R22～R25）：拖移的替代操作，支援鍵盤與觸控。
 // 人員面板、桌次詳情與參與人員頁（B 線）的列操作「入座…」「移至其他桌次…」都用這個元件。
 // 放在 AppProvider 裡即可使用：資料從 store 讀，送出後自己顯示 Sonner 與「復原」。
+// 選單類入口仍到 10 位為止（SEAT-R88、D-018）：10 位以上的桌停用並標示「已滿」，送出的指令不帶 allowOverflow。
 import { useMemo, useState } from 'react';
 import { useAppStore } from '@/client/app-provider';
 import { STAFF_TABLE_ID, TABLE_COUNT } from '@/contracts/entities';
@@ -38,7 +39,8 @@ export function TableSelectDialog({ open, onOpenChange, participantId }: TableSe
       const desc = tableDesc(t);
       out.push({
         value: String(n),
-        label: `第 ${n} 桌（剩 ${CAPACITY - t.count} 位）${desc ? `・${desc}` : ''}`,
+        // 剩餘位數最少 0：拖移或「加入人員」可以讓一桌有 11、12 位
+        label: `第 ${n} 桌（剩 ${Math.max(0, CAPACITY - t.count)} 位）${desc ? `・${desc}` : ''}`,
         disabled: t.full,
         disabledReason: t.full ? '已滿' : undefined,
       });

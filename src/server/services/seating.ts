@@ -12,7 +12,8 @@ import { toEmployee, toParticipant, toSeatTable } from './state';
 // 座位異動指令（docs/architecture.md 第 7.2、8.1 節）：一個指令一個交易。
 // 交易一開始依桌號由小到大鎖住全部桌次列（SELECT ... FOR UPDATE），所有座位指令依同一個順序取得鎖，不會死結；
 // 拿到鎖之後才讀資料，再用 src/domain/seating-rules.ts 的同一份規則驗證，只寫入有改變的列。
-// 兩人同時搶最後一個位子時，後拿到鎖的一方看到已滿，回 409 TABLE_FULL。
+// 兩人同時搶最後一個位子時，後拿到鎖的一方看到已滿，回 409：從選單入座（上限 10 位）是 TABLE_FULL，
+// 拖移或「加入人員」（allowOverflow，上限 12 位）是 TABLE_LIMIT；工作人員桌是 STAFF_TABLE_FULL／STAFF_TABLE_LIMIT（D-018）。
 
 type Tx = Prisma.TransactionClient;
 
@@ -38,7 +39,9 @@ export function registerAutoArranger(fn: AutoArranger): void {
 
 const VIOLATION_MESSAGE: Record<string, string> = {
   TABLE_FULL: 'table is full',
+  TABLE_LIMIT: 'table has reached 12 seats',
   STAFF_TABLE_FULL: 'staff table is full',
+  STAFF_TABLE_LIMIT: 'staff table has reached 12 seats',
   STAFF_EMPLOYEE_ONLY: 'only employees can join the staff table',
   NOT_FOUND: 'participant not found',
   CONFLICT: 'roster changed',
@@ -95,17 +98,20 @@ async function autoArrange(
   const after = participants.map((p) => ({ ...p }));
   const afterById = new Map(after.map((p) => [p.id, p]));
   const touched = new Set<number>();
+  const gained = new Set<number>();
   for (const c of changes) {
     const p = afterById.get(c.participantId);
     if (!p) throw new AppError('NOT_FOUND', VIOLATION_MESSAGE.NOT_FOUND);
     if (c.tableId !== null && !tables.some((t) => t.id === c.tableId)) throw new AppError('CONFLICT', 'unknown table');
     if (p.tableId !== null) touched.add(p.tableId);
     if (c.tableId !== null) touched.add(c.tableId);
+    if (c.tableId !== null && c.tableId !== p.tableId) gained.add(c.tableId);
     p.tableId = c.tableId;
     p.seatOrder = c.tableId === null ? null : c.seatOrder;
   }
-  // 寫入時仍檢查每桌最多 10 位（docs/architecture.md 第 7.2 節），座號重排成 0..n-1
-  const { overfull } = normalizeTables(after, touched);
+  // 寫入時仍檢查排進人的桌最多 10 位（ARR-R17；docs/architecture.md 第 7.2、8.1 節），座號重排成 0..n-1；
+  // 原本就有 11、12 位、這次沒有排進人的桌不擋
+  const { overfull } = normalizeTables(after, touched, gained);
   if (overfull !== null) throw new AppError('TABLE_FULL', VIOLATION_MESSAGE.TABLE_FULL);
 
   const undo: SeatingSnapshot = { participants: [], tables: [] };

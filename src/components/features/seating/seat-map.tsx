@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/cn';
 import { IconButton } from '@/components/ui/icon-button';
 import { MapTable, type TableMode } from './map-table';
-import type { TableInfo } from './model';
+import { CAPACITY, type TableInfo } from './model';
 
 const PAD = 24;
 const BAND = 56;
@@ -30,9 +30,16 @@ const LANDMARKS = [
   { label: '出入口', cols: [1, 4], bottom: true },
 ] as const;
 
-/** 收合是 88 px 圓形，展開是 280 px 卡片；同一欄的卡片列距 240 px（2.1.5、2.1.7） */
-export function geometry(expanded: boolean) {
-  const u = expanded ? { w: 296, h: 240, item: 280, itemH: 220 } : { w: 112, h: 104, item: 88, itemH: 88 };
+/**
+ * 收合是 88 px 圓形，展開是 280 px 卡片；同一欄的卡片列距 240 px（2.1.5、2.1.7）。
+ * 有桌次超過 10 位時那一桌的卡片是 12 列、高 246 px，所有卡片的列距加大為 266 px，仍不會互相重疊（D-018，原型的做法）。
+ */
+export function geometry(expanded: boolean, anyOver = false) {
+  const u = expanded
+    ? anyOver
+      ? { w: 296, h: 266, item: 280, itemH: 246 }
+      : { w: 296, h: 240, item: 280, itemH: 220 }
+    : { w: 112, h: 104, item: 88, itemH: 88 };
   const y0 = PAD + BAND + GAP;
   return { u, y0, W: PAD * 2 + 5 * u.w + u.item, H: y0 + 5 * u.h + u.itemH + GAP + BAND + PAD };
 }
@@ -78,7 +85,8 @@ export function SeatMap(props: SeatMapProps) {
   const { tables, expanded, manualPct, onManualPct, covered, hit, mobile } = props;
   const vpRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size>({ ow: 0, oh: 0, cw: 0, ch: 0 });
-  const g = useMemo(() => geometry(expanded), [expanded]);
+  const anyOver = useMemo(() => [...tables.values()].some((t) => t.count > CAPACITY), [tables]);
+  const g = useMemo(() => geometry(expanded, anyOver), [expanded, anyOver]);
   const cover = covered ? Math.min(DETAIL_WIDTH, size.ow) : 0;
   const z = manualPct != null ? manualPct / 100 : fitZoom(size, g, cover);
   const measured = size.ow > 0;

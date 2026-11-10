@@ -9,6 +9,7 @@ import {
   type Employee,
   type Participant,
 } from '@/contracts/entities';
+import { TABLE_MAX_SEATS } from '@/contracts/seating';
 import {
   departmentOf,
   displayName,
@@ -20,8 +21,14 @@ import {
   type Directory,
 } from '@/domain/display';
 import { sortParticipants } from '@/domain/participants';
+import { tableStatus, type TableStatus } from '@/domain/seating-rules';
 
+/** 每桌標準 10 位；拖移與「加入人員」最多放到 12 位（SEAT-R02、D-018） */
 export const CAPACITY = TABLE_CAPACITY;
+export const MAX_SEATS = TABLE_MAX_SEATS;
+
+/** 名單列數：標準 10 列，這一桌有 11、12 位時 12 列（2.1.7、2.3.1、2.5.2） */
+export const rosterRows = (count: number): number => (count > CAPACITY ? MAX_SEATS : CAPACITY);
 export const NOTE_SUGGESTIONS = ['主桌', '董事貴賓', '供應商', '客戶貴賓'] as const;
 export const CATEGORY_LABEL: Record<Participant['kind'], string> = { EMPLOYEE: '員工', DEPENDENT: '眷屬', GUEST: '外部貴賓' };
 
@@ -36,7 +43,12 @@ export type TableInfo = {
   /** 部門標示；沒有人時空陣列 */
   labels: string[];
   count: number;
+  /** 10 位以上（含超過）：選單類入口停用並標示「已滿」（SEAT-R23、SEAT-R88） */
   full: boolean;
+  /** 已有 12 位：拖移擋下、「加入人員」停用（SEAT-R20、SEAT-R30、SEAT-R42） */
+  max: boolean;
+  /** 人數標示：0–9 位 {n}/10、10 位「已滿」、11、12 位「超過」（SEAT-R11） */
+  status: TableStatus;
   childSeats: number;
   vegetarians: number;
 };
@@ -81,6 +93,8 @@ export function buildTables(data: AppState, dir: Directory, sorted: readonly Par
       label: labels.join('＋') || '空桌',
       count: roster.length,
       full: roster.length >= (isStaff ? STAFF_TABLE_CAPACITY : TABLE_CAPACITY),
+      max: roster.length >= MAX_SEATS,
+      status: tableStatus(roster.length),
       childSeats: roster.filter((p) => p.childSeat).length,
       vegetarians: roster.filter((p) => p.vegetarian).length,
     });
@@ -135,10 +149,14 @@ export const msg = {
   added: (x: number, n: number) => `已把 ${x} 位人員加入第 ${n} 桌。`,
   addedStaff: (x: number) => `已把 ${x} 位人員放進工作人員桌。`,
   staffFull: '工作人員桌已滿，請先移出一位。',
+  staffLimit: '工作人員桌已達 12 位，請先移出一位。',
   employeeOnly: '只有員工可以放進工作人員桌。',
   undone: '已復原。',
   saved: '已儲存',
 };
+
+/** 放進來後這一桌超過 10 位：成功的 Sonner 後面加上「這一桌已超過 10 位。」（SEAT-R89） */
+export const withOverflowNote = (text: string): string => text.replace(/。$/, '，這一桌已超過 10 位。');
 
 /** 入座或搬移到一般桌的提示（SEAT-R18、R19、R45） */
 export function seatMessage(p: Participant, name: string, to: number): string {

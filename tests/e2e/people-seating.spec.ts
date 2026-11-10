@@ -1,6 +1,7 @@
 // 參與人員頁接上座位安排（階段 3，docs/plan/implementation-plan.md 第 5.2 節「參與人員的『第 n 桌』徽章」）：
 // - 列操作「入座…」「移至其他桌次…」開啟座位安排的選擇桌次對話框（src/components/features/seating/table-select-dialog.tsx）：
-//   docs/spec/participants.md PPL-R35、PPL-AC28；seating.md 2.4、4.4、SEAT-R22～R25、SEAT-AC12（也對照 SEAT-AC08～AC11、AC17）。
+//   docs/spec/participants.md PPL-R35、PPL-AC28；seating.md 2.4、4.4、SEAT-R22～R25、SEAT-AC12（也對照 SEAT-AC08～AC11、AC17）；
+//   D-018 起 11、12 位的桌也停用並標示「已滿」（SEAT-R88、SEAT-AC94）。
 // - 「移出桌次」與 Sonner 的「復原」：復原後回到原本那一桌的原本座號（seating.md SEAT-R78；participants.md PPL-R36、PPL-AC29）。
 // - 「第 n 桌」連到 /?table=n，座位安排頁開啟那一桌的桌次詳情並標示那一桌（PPL-R33、PPL-AC06；seating.md SEAT-R62、SEAT-R72）。
 // 資料直接寫進測試資料庫（tests/e2e/helpers/participants-db.ts），都是虛構資料。
@@ -97,6 +98,31 @@ test.describe('「入座…」開啟選擇桌次對話框（PPL-R35、SEAT-R22�
     expect(labels.find((l) => l.startsWith('第 5 桌'))).toContain('已滿');
     await expect(page.getByRole('option', { name: /^第 5 桌/ })).toHaveAttribute('aria-disabled', 'true');
     await expect(page.getByRole('option', { name: /^第 6 桌/ })).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  // D-018：拖移或「加入人員」可以讓一桌有 11、12 位；選擇桌次對話框仍到 10 位為止
+  test('第 5 桌 11 位、第 6 桌 12 位：選項都停用並標示「已滿」，沒有負的剩餘位數；9 位的第 7 桌可以選（SEAT-R23、SEAT-R88、SEAT-AC94）', async ({
+    page,
+  }) => {
+    desktopOnly(page);
+    await withDb(async (db) => {
+      const { wang } = await demoEmployees(db);
+      await db.fillTable(5, 11);
+      await db.fillTable(6, 12);
+      await db.fillTable(7, 9);
+      await db.register(wang);
+    });
+    await gotoPeople(page);
+    await rowAction(page, '王小明', '入座…');
+    const dialog = selectDialog(page, '安排 王小明 入座');
+
+    const labels = await optionLabels(page, dialog, /^桌次/);
+    for (const n of [5, 6]) {
+      expect(labels.find((l) => l.startsWith(`第 ${n} 桌`)), `第 ${n} 桌`).toContain('已滿');
+      await expect(page.getByRole('option', { name: new RegExp(`^第 ${n} 桌`) })).toHaveAttribute('aria-disabled', 'true');
+    }
+    for (const l of labels) expect(l).not.toMatch(/剩\s*-/);
+    await expect(page.getByRole('option', { name: /^第 7 桌/ })).not.toHaveAttribute('aria-disabled', 'true');
   });
 
   test('沒選桌次就按「確認入座」：顯示「請選擇桌次。」，對話框不關閉，沒有入座（SEAT-R24、SEAT-AC11）', async ({ page }) => {

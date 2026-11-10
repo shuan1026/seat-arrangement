@@ -8,8 +8,14 @@ export const errorCodes = [
   'UNAUTHENTICATED',
   'FORBIDDEN_ORIGIN',
   'NOT_FOUND',
+  /** 一般桌到 10 位（選擇桌次、人員對話框） */
   'TABLE_FULL',
+  /** 一般桌到 12 位（拖移、「加入人員」、復原，D-018） */
+  'TABLE_LIMIT',
+  /** 工作人員桌到 10 位（人員對話框的「工作人員」） */
   'STAFF_TABLE_FULL',
+  /** 工作人員桌到 12 位（拖移、「加入人員」、復原，D-018） */
+  'STAFF_TABLE_LIMIT',
   'STAFF_EMPLOYEE_ONLY',
   'DUPLICATE_PARTICIPANT',
   'DEPENDENT_EXISTS',
@@ -25,7 +31,9 @@ export const errorStatus: Record<ErrorCode, number> = {
   FORBIDDEN_ORIGIN: 403,
   NOT_FOUND: 404,
   TABLE_FULL: 409,
+  TABLE_LIMIT: 409,
   STAFF_TABLE_FULL: 409,
+  STAFF_TABLE_LIMIT: 409,
   STAFF_EMPLOYEE_ONLY: 409,
   DUPLICATE_PARTICIPANT: 409,
   DEPENDENT_EXISTS: 409,

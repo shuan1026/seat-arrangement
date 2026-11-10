@@ -3,7 +3,10 @@
 // 純函式：只看傳入的資料，陣列順序不影響結果（EXP-R02、EXP-AC18）。
 // 待確認依 D-008 照目前假設：EXP-Q01 不放分機、EXP-Q02 只有 F 欄空白、EXP-Q03 工作人員超過十位往下延伸、
 // EXP-Q05 框線範圍與未入座區塊的位置。
+// 有桌次 11、12 位時（D-018），只有那一桌所在的段改為十二列，下面的列（之後的段、空白列、未入座區塊）往下移（EXP-R23）；
+// 工作人員區塊與圖例不在段裡，不受影響。
 import { STAFF_TABLE_ID, TABLE_CAPACITY, type AppState, type Participant } from '@/contracts/entities';
+import { TABLE_MAX_SEATS } from '@/contracts/seating';
 import { participantComparator } from './participants';
 import { buildDirectory, displayName, tableDepartmentLabel, type Directory } from './display';
 import { TABLE_LAYOUT } from './layout';
@@ -28,8 +31,11 @@ export const SHEET_LAST_COLUMN = 12;
 /** layout.ts 的欄 0–5（A 外、A 中、A 內、B 內、B 中、B 外）→ 桌次標題格所在的欄：B、C、D、G、H、I（EXP-R08） */
 const HEADER_COLUMNS: readonly number[] = [2, 3, 4, 7, 8, 9];
 
-/** 每段十列；layout.ts 的 row 以半格為單位，一格是兩段（EXP-R09） */
+/** 每段十列；layout.ts 的 row 以半格為單位，一格是兩段（EXP-R09）；共 11 段 */
 const SEGMENT_ROWS = TABLE_CAPACITY;
+const SEGMENT_COUNT = 11;
+/** 段裡有桌次超過 10 位時，那一段改為十二列（EXP-R23） */
+const TALL_SEGMENT_ROWS = TABLE_MAX_SEATS;
 
 /** 圖例在 A3–A5（EXP-R15） */
 const LEGEND: readonly { text: string; fill: SheetFill }[] = [
@@ -43,8 +49,7 @@ const LEGEND_ROW = 3;
 const STAFF_HEADER_COL = 11;
 const STAFF_LIST_COL = 12;
 
-/** 未入座區塊：第 111 列空白，標題格 B112，名單 C–L 欄；每欄十位、一段十欄（EXP-R17、EXP-R18） */
-const UNSEATED_TOP = 112;
+/** 未入座區塊：桌次區下面空一列（沒有段改為十二列時第 111 列空白），標題格 B112，名單 C–L 欄；每欄十位、一段十欄（EXP-R17、EXP-R18） */
 const UNSEATED_HEADER_COL = 2;
 const UNSEATED_FIRST_COL = 3;
 const UNSEATED_COLUMNS = 10;
@@ -81,22 +86,34 @@ export function buildSeatingSheet(data: AppState): SeatingSheet {
   // 圖例（EXP-R15、EXP-Q05 ② 畫框線）
   LEGEND.forEach((item, i) => put(LEGEND_ROW + i, 1, item.text, item.fill, true));
 
-  // 30 桌：標題格是所在段的十列合併；名單格在右邊一欄，依座位順序放第 1–10 位，空位留白也畫框線（EXP-R09～R12、EXP-R22）
+  // 各段的高度：段裡有桌次 11、12 位時十二列，其他十列；每一段的起始列是前面各段高度的和（EXP-R09、EXP-R23）
+  const seatedAt = (tableId: number) => data.participants.filter((p) => p.tableId === tableId).sort(bySeatOrder);
+  const segmentOf = (placement: (typeof TABLE_LAYOUT)[number]) => placement.row * 2;
+  const segmentRows = Array.from({ length: SEGMENT_COUNT }, () => SEGMENT_ROWS);
+  for (const placement of TABLE_LAYOUT) {
+    if (seatedAt(placement.id).length > TABLE_CAPACITY) segmentRows[segmentOf(placement)] = TALL_SEGMENT_ROWS;
+  }
+  const segmentTop = (k: number) => 1 + segmentRows.slice(0, k).reduce((a, b) => a + b, 0);
+  const tableRows = segmentRows.reduce((a, b) => a + b, 0);
+
+  // 30 桌：標題格是所在段的十（或十二）列合併；名單格在右邊一欄，依座位順序由上往下放，空位留白也畫框線（EXP-R09～R12、EXP-R22、EXP-R23）
   const notes = new Map(data.tables.map((t) => [t.id, t.noteName]));
   for (const placement of TABLE_LAYOUT) {
     const col = HEADER_COLUMNS[placement.col];
     if (col === undefined) continue;
-    const top = 1 + placement.row * 2 * SEGMENT_ROWS;
-    const seated = data.participants.filter((p) => p.tableId === placement.id).sort(bySeatOrder);
+    const seg = segmentOf(placement);
+    const top = segmentTop(seg);
+    const rows = segmentRows[seg] ?? SEGMENT_ROWS;
+    const seated = seatedAt(placement.id);
     const note = notes.get(placement.id);
     header(
       top,
       col,
       [`第 ${placement.id} 桌`, ...(note ? [note] : []), tableDepartmentLabel(seated, dir), `(${seated.length})`],
-      SEGMENT_ROWS,
+      rows,
     );
-    // 一桌最多 10 人（SEAT-R06），名單格固定十格
-    for (let i = 0; i < TABLE_CAPACITY; i++) putName(top + i, col + 1, seated[i]);
+    // 名單格是這一段的列數（十或十二格）
+    for (let i = 0; i < rows; i++) putName(top + i, col + 1, seated[i]);
   }
 
   // 工作人員：依參與人員的預設排序；標題格合併 K1 到 K{10 與人數取大者}，名單格都畫框線（EXP-R16、EXP-R20、EXP-Q03、EXP-Q05 ③）
@@ -107,12 +124,14 @@ export function buildSeatingSheet(data: AppState): SeatingSheet {
 
   // 未入座：不在任何一桌、也不是工作人員的參與人員，含外部貴賓；只有放了人的名單格畫框線（EXP-R17～R20、EXP-Q05 ④）
   const unseated = data.participants.filter((p) => p.tableId === null).sort(byDefaultOrder);
+  // 桌次區下面空一列，未入座區塊從再下一列開始（沒有段改為十二列時是第 112 列）
+  const unseatedTop = tableRows + 2;
   if (unseated.length > 0) {
     const perSegment = SEGMENT_ROWS * UNSEATED_COLUMNS;
     const segments = Math.ceil(unseated.length / perSegment);
-    header(UNSEATED_TOP, UNSEATED_HEADER_COL, ['未入座', `(${unseated.length})`], SEGMENT_ROWS * segments);
+    header(unseatedTop, UNSEATED_HEADER_COL, ['未入座', `(${unseated.length})`], SEGMENT_ROWS * segments);
     unseated.forEach((p, i) => {
-      const row = UNSEATED_TOP + SEGMENT_ROWS * Math.floor(i / perSegment) + (i % SEGMENT_ROWS);
+      const row = unseatedTop + SEGMENT_ROWS * Math.floor(i / perSegment) + (i % SEGMENT_ROWS);
       const col = UNSEATED_FIRST_COL + (Math.floor(i / SEGMENT_ROWS) % UNSEATED_COLUMNS);
       putName(row, col, p);
     });

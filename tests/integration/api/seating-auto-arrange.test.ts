@@ -203,3 +203,42 @@ describe('autoArrange：套用與復原（ARR-R13、SEAT-R76、SEAT-R78）', () 
     expect(await allPositions()).toEqual(before);
   });
 });
+
+// D-018：拖移或「加入人員」可以讓桌次有 11、12 位；自動排座每桌只排到 10 位（auto-arrange.md ARR-R17、docs/architecture.md 第 8.1 節）
+describe('autoArrange：桌上已有 11、12 位（ARR-R17、D-018）', () => {
+  it('排座沒有動到的桌已有 11、12 位：照樣寫入其他桌，那兩桌的名單與順序不變', async () => {
+    const table1 = await seatNewEmployees(1, 12);
+    await prisma.seatTable.update({ where: { id: 1 }, data: { noteName: '主桌' } });
+    const table4 = await seatNewEmployees(4, 11);
+    const a = await newUnseated();
+    arranger.mockReturnValue({
+      changes: [{ participantId: a, tableId: 2, seatOrder: 0 }],
+      summary: { placed: 1, tableIds: [2], left: 0 },
+    });
+
+    const result = await operate({ type: 'autoArrange', mode: 'unseatedOnly' });
+
+    expect(result.summary).toEqual({ placed: 1, tableIds: [2], left: 0 });
+    expect(await roster(2)).toEqual([a]);
+    expect(await roster(1)).toEqual(table1);
+    expect(await roster(4)).toEqual(table4);
+    await expectAllContiguous();
+  });
+
+  it('排座結果把人排進已有 10 位以上的桌（成為第 11、12 位）：409 TABLE_FULL，整批不寫入', async () => {
+    await seatNewEmployees(4, 11);
+    const a = await newUnseated();
+    const b = await newUnseated();
+    const before = await allPositions();
+    arranger.mockReturnValue({
+      changes: [
+        { participantId: a, tableId: 2, seatOrder: 0 },
+        { participantId: b, tableId: 4, seatOrder: 11 },
+      ],
+      summary: { placed: 2, tableIds: [2, 4], left: 0 },
+    });
+
+    await expectError(await postOperation({ type: 'autoArrange', mode: 'unseatedOnly' }), 409, 'TABLE_FULL');
+    expect(await allPositions()).toEqual(before);
+  });
+});

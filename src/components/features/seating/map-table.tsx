@@ -1,8 +1,10 @@
 'use client';
 
 // 座位圖上的一桌與工作人員桌（docs/spec/seating.md 2.1.5～2.1.9、2.5.1；原型 seating.html 的 tableHTML、staffTableHTML）。
-// 收合：88 px 圓形；精簡（縮放低於 80%）：只有大號桌號與人數；展開：280 px 名單卡片，固定 10 列、兩欄各 5 列。
-import { GripVertical } from 'lucide-react';
+// 收合：88 px 圓形；精簡（縮放低於 80%）：只有大號桌號與人數；展開：280 px 名單卡片，固定 10 列、兩欄各 5 列，
+// 這一桌有 11、12 位時 12 列、兩欄各 6 列，卡片跟著變高（D-018）。
+// 人數：0–9 位「{n}/10」，10 位正向徽章「已滿」，11、12 位待處理徽章「超過」（triangle-alert 圖示，SEAT-R11、2.1.9）。
+import { GripVertical, TriangleAlert } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useAppStore } from '@/client/app-provider';
 import type { Participant } from '@/contracts/entities';
@@ -12,7 +14,7 @@ import { cn } from '@/components/ui/cn';
 import { IconButton } from '@/components/ui/icon-button';
 import { Tooltip } from '@/components/ui/tooltip';
 import { dropAttr, useDragState, useIsDragging, useSeatingDraggable } from './drag';
-import { CAPACITY, tableTooltip, type TableInfo } from './model';
+import { CAPACITY, rosterRows, tableTooltip, type TableInfo } from './model';
 import { SeatMarks } from './person-parts';
 
 export type TableMode = 'collapsed' | 'compact' | 'expanded';
@@ -73,9 +75,18 @@ function frameClasses(info: TableInfo, { over, selected, hit }: { over: boolean;
 }
 
 function CountOrFull({ info, mode }: { info: TableInfo; mode: TableMode }) {
-  if (info.full) {
+  // 精簡顯示時徽章放大：高 28 px、Text-base/Medium（2.1.6）
+  const large = mode === 'compact' && 'h-7! px-2! type-base-medium! [&_svg]:size-4!';
+  if (info.status === 'over') {
     return (
-      <Badge variant="positive" className={cn(mode === 'compact' && 'h-7! px-2! type-base-medium! [&_svg]:size-4!')}>
+      <Badge variant="pending" icon={<TriangleAlert />} className={cn(large)}>
+        超過
+      </Badge>
+    );
+  }
+  if (info.status === 'full') {
+    return (
+      <Badge variant="positive" className={cn(large)}>
         已滿
       </Badge>
     );
@@ -180,12 +191,14 @@ function ExpandedCard({
   drop,
 }: MapTableProps & { name: string; ariaLabel: string; drop: ReturnType<typeof useDropState> }) {
   const dir = useAppStore((s) => s.dir);
+  const rows = rosterRows(info.count);
   return (
-    // 整張卡片（把手以外）都能點開詳情（SEAT-R72）；鍵盤用標頭的按鈕
+    // 整張卡片（把手以外）都能點開詳情（SEAT-R72）；鍵盤用標頭的按鈕。12 列時卡片從 220 px 加高到 246 px（多一列 24 px 與列距 2 px）
     <div
       onClick={onOpen}
       className={cn(
-        'flex h-[220px] w-[280px] flex-col rounded-xl p-3',
+        'flex w-[280px] flex-col rounded-xl p-3',
+        rows > CAPACITY ? 'h-[246px]' : 'h-[220px]',
         frameClasses(info, { over: drop.over, selected, hit }),
         drop.blocked ? 'cursor-not-allowed' : 'cursor-pointer',
       )}
@@ -211,8 +224,13 @@ function ExpandedCard({
       </div>
       {info.noteName ? <div className="truncate type-sm-medium">{info.noteName}</div> : null}
       <div className="mb-2 truncate type-xs-regular text-muted-foreground">{info.label}</div>
-      <ol className="m-0 grid list-none grid-flow-col grid-cols-2 grid-rows-5 gap-x-2 gap-y-0.5 p-0">
-        {Array.from({ length: CAPACITY }, (_, i) => (
+      <ol
+        className={cn(
+          'm-0 grid list-none grid-flow-col grid-cols-2 gap-x-2 gap-y-0.5 p-0',
+          rows > CAPACITY ? 'grid-rows-6' : 'grid-rows-5',
+        )}
+      >
+        {Array.from({ length: rows }, (_, i) => (
           <CardRow
             key={info.roster[i]?.id ?? `empty-${i}`}
             tableId={info.id}

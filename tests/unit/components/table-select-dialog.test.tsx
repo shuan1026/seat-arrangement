@@ -1,5 +1,6 @@
 // 選擇桌次對話框：docs/spec/seating.md 2.4、4.4、SEAT-R22～R25（入座…、移至其他桌次…）、SEAT-R18、R19（成功的 Sonner 與「復原」）、
-// SEAT-R76、R79（復原）、SEAT-R84（只用鍵盤完成）、SEAT-R86（桌次被別人坐滿時的既有提示）、SEAT-Q05（空桌沒有備註名稱時省略「・」，原型的做法）；
+// SEAT-R76、R79（復原）、SEAT-R84（只用鍵盤完成）、SEAT-R86（桌次被別人坐滿時的既有提示）、SEAT-Q05（空桌沒有備註名稱時省略「・」，原型的做法）、
+// SEAT-R88、SEAT-AC94、SEAT-AC97（D-018：選單類入口仍到 10 位為止，10 位以上的桌停用並標示「已滿」）；
 // docs/spec/README.md COM-R07、COM-R08、第 14 節「已復原。」。
 // 這個對話框也給參與人員頁（B 線）的列操作使用（SEAT-AC12），所以單獨測元件。
 //
@@ -230,7 +231,7 @@ describe('未入座的人：入座…（SEAT-R22、SEAT-R25、SEAT-AC08）', () 
     expect(operations()).toHaveLength(0);
   });
 
-  it('桌次已被別人坐滿：重新載入最新資料，顯示「第 7 桌已滿，請先移出一位。」（SEAT-R86、COM-R07、COM-R08、SEAT-AC88）', async () => {
+  it('桌次已被別人坐滿：重新載入最新資料，顯示「第 7 桌已滿，請先移出一位。」（SEAT-R86、COM-R07、COM-R08、SEAT-AC97）', async () => {
     const { user, notify, sent } = renderDialog(buildState(null), () => ({
       status: 409,
       body: { error: { code: 'TABLE_FULL', message: 'table full' } },
@@ -265,6 +266,97 @@ describe('未入座的人：入座…（SEAT-R22、SEAT-R25、SEAT-AC08）', () 
 
     await waitFor(() => expect(operations()).toHaveLength(1));
     expect(operations()[0]!.body).toMatchObject({ type: 'seat', participantId: WANG, tableId: 7 });
+  });
+});
+
+/**
+ * D-018：拖移或「加入人員」可以讓一桌有 11、12 位；選擇桌次對話框仍到 10 位為止（SEAT-R23、SEAT-R88）。
+ * 王小明未入座或坐第 3 桌；第 5 桌 10 位、第 6 桌 11 位、第 9 桌 12 位（都是業務部）、第 7 桌 9 位。
+ */
+function buildOverflowState(wangTable: number | null): AppState {
+  const people: [table: number, count: number, firstId: number][] = [
+    [5, 10, 500],
+    [6, 11, 600],
+    [9, 12, 900],
+    [7, 9, 700],
+  ];
+  const employees = [employee(WANG, { name: '王小明', department: '研發一部' })];
+  const participants: Participant[] = [asEmployee(WANG, wangTable === null ? {} : { tableId: wangTable, seatOrder: 0 })];
+  for (const [table, count, first] of people) {
+    for (let i = 0; i < count; i++) {
+      employees.push(employee(first + i, { department: '業務部' }));
+      participants.push(asEmployee(first + i, { tableId: table, seatOrder: i }));
+    }
+  }
+  return { employees, participants, tables: allTables() };
+}
+
+describe('D-018 選單類入口仍到 10 位為止（SEAT-R23、SEAT-R88、SEAT-AC94）', () => {
+  it.each([5, 6, 9])('第 %i 桌（10 位以上）停用並標示「已滿」，選不到', async (n) => {
+    const { user, operations } = renderDialog(buildOverflowState(null));
+    const options = await openOptions(user);
+    const full = options.find((o) => labelOf(o).startsWith(`第 ${n} 桌`))!;
+    expect(full.getAttribute('aria-disabled')).toBe('true');
+    expect(labelOf(full)).toContain('已滿');
+
+    await user.click(full);
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: '確認入座' }));
+    expect(await screen.findByText('請選擇桌次。')).toBeTruthy();
+    expect(operations()).toHaveLength(0);
+  });
+
+  it('只有 10 位以上的桌停用：9 位的第 7 桌「剩 1 位」可以選', async () => {
+    const { user } = renderDialog(buildOverflowState(null));
+    const options = await openOptions(user);
+    const disabled = options
+      .filter((o) => o.getAttribute('aria-disabled') === 'true')
+      .map((o) => /^第 \d+ 桌/.exec(labelOf(o))?.[0]);
+    expect(disabled.sort()).toEqual(['第 5 桌', '第 6 桌', '第 9 桌'].sort());
+    const seven = options.find((o) => labelOf(o).startsWith('第 7 桌（'))!;
+    expect(labelOf(seven)).toBe('第 7 桌（剩 1 位）・業務部');
+  });
+
+  it('11、12 位的桌的選項不會出現負的剩餘位數（「剩 -1 位」）', async () => {
+    const { user } = renderDialog(buildOverflowState(null));
+    const options = await openOptions(user);
+    for (const o of options) expect(labelOf(o), labelOf(o)).not.toMatch(/剩\s*-/);
+  });
+
+  it('從選單入座送出的指令不帶 allowOverflow（上限 10 位，docs/architecture.md 第 8.1 節）', async () => {
+    const { user, operations } = renderDialog(buildOverflowState(null));
+    await openOptions(user);
+    await user.click(screen.getByRole('option', { name: /^第 7 桌/ }));
+    await user.click(screen.getByRole('button', { name: '確認入座' }));
+
+    await waitFor(() => expect(operations()).toHaveLength(1));
+    const body = operations()[0]!.body as { type: string; tableId: number; allowOverflow?: boolean };
+    expect(body).toMatchObject({ type: 'seat', participantId: WANG, tableId: 7 });
+    expect(body.allowOverflow === undefined || body.allowOverflow === false).toBe(true);
+  });
+
+  it('已入座的人「移至其他桌次…」：11、12 位的桌也停用並標示「已滿」', async () => {
+    const { user } = renderDialog(buildOverflowState(3));
+    const options = await openOptions(user);
+    for (const n of [6, 9]) {
+      const o = options.find((x) => labelOf(x).startsWith(`第 ${n} 桌`))!;
+      expect(o.getAttribute('aria-disabled')).toBe('true');
+      expect(labelOf(o)).toContain('已滿');
+    }
+  });
+
+  it('確認時第 7 桌已被別人坐到 10 位：回 409 TABLE_FULL，重新載入並顯示「第 7 桌已滿，請先移出一位。」（SEAT-R86、SEAT-AC97）', async () => {
+    const { user, notify, sent } = renderDialog(buildOverflowState(null), () => ({
+      status: 409,
+      body: { error: { code: 'TABLE_FULL', message: 'table full' } },
+    }));
+    await openOptions(user);
+    await user.click(screen.getByRole('option', { name: /^第 7 桌/ }));
+    await user.click(screen.getByRole('button', { name: '確認入座' }));
+
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('第 7 桌已滿，請先移出一位。'));
+    expect(sent.some((s) => s.url === '/api/state')).toBe(true);
+    expect(notify).not.toHaveBeenCalledWith('第 7 桌已達 12 位，請先移出一位。');
   });
 });
 

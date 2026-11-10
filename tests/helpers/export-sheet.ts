@@ -120,6 +120,92 @@ export function unseatedAddress(i: number): string {
   return toAddress(row, col);
 }
 
+/** 第 n 桌所在的段（1–11）：沒有超過時第 k 段是第 10k−9 到 10k 列（EXP-R09、本檔 3.3） */
+export function segmentOf(n: number): number {
+  const b = TABLE_BLOCKS.get(n);
+  if (!b) throw new Error(`沒有第 ${n} 桌`);
+  const { row } = parseAddress(b.range.split(':')[0] ?? '');
+  return (row - 1) / 10 + 1;
+}
+
+/**
+ * 有桌次 11、12 位時的版面（docs/spec/export.md EXP-R23）：tallSegments 是改為十二列的段（1–11）。
+ * 只有那幾段改為十二列，每多一段，下面所有的列（之後的段、第 111 列的空白列、未入座區塊）往下移兩列。
+ * 工作人員區塊（K、L 欄）與圖例（A3–A5）不在段裡，不受影響。
+ */
+export function overflowLayout(tallSegments: Iterable<number>) {
+  const tall = new Set(tallSegments);
+  const segmentRows = (k: number): number => (tall.has(k) ? 12 : 10);
+  const segmentTop = (k: number): number => {
+    let row = 1;
+    for (let j = 1; j < k; j++) row += segmentRows(j);
+    return row;
+  };
+  const shift = 2 * tall.size;
+
+  /** 第 n 桌：標題格、合併範圍、名單格（十或十二格） */
+  const block = (n: number): { header: string; range: string; list: string[] } => {
+    const b = TABLE_BLOCKS.get(n);
+    if (!b) throw new Error(`沒有第 ${n} 桌`);
+    const { col } = parseAddress(b.range.split(':')[0] ?? '');
+    const seg = segmentOf(n);
+    const top = segmentTop(seg);
+    const rows = segmentRows(seg);
+    const header = toAddress(top, col);
+    return { header, range: `${header}:${toAddress(top + rows - 1, col)}`, list: column(b.listCol, top, top + rows - 1) };
+  };
+
+  /** 未入座第 i 位（1 起算）的位址 */
+  const unseated = (i: number): string => {
+    const a = parseAddress(unseatedAddress(i));
+    return toAddress(a.row + shift, a.col);
+  };
+
+  /** 未入座 count 位時，標題格的合併範圍 */
+  const unseatedRange = (count: number): string => {
+    const segments = Math.ceil(count / 100);
+    return `B${112 + shift}:B${111 + shift + 10 * segments}`;
+  };
+
+  return {
+    tall: [...tall].sort((a, b) => a - b),
+    segmentTop,
+    segmentRows,
+    block,
+    /** 桌次區最後一列（沒有超過時是 110） */
+    lastTableRow: 110 + shift,
+    /** 空白列（沒有超過時是 111） */
+    blankRow: 111 + shift,
+    /** 未入座區塊的起始列（沒有超過時是 112） */
+    unseatedTop: 112 + shift,
+    unseatedAddress: unseated,
+    unseatedRange,
+  };
+}
+
+/**
+ * 從檔案的合併範圍找出改為十二列的段（EXP-R23）：依段的順序往下，看這一段第一桌的標題格合併了十列還是十二列。
+ * 給資料庫可能留著其他測試資料的 E2E 用：先找出哪幾段超過，再照 overflowLayout 比對每一桌的位置。
+ */
+export function tallSegmentsIn(merges: readonly string[]): number[] {
+  const set = new Set(merges);
+  const tall: number[] = [];
+  let top = 1;
+  for (let k = 1; k <= 11; k++) {
+    const n = TABLE_IDS.find((id) => segmentOf(id) === k);
+    if (n === undefined) throw new Error(`第 ${k} 段沒有桌次`);
+    const { col } = parseAddress(TABLE_BLOCKS.get(n)?.range.split(':')[0] ?? '');
+    const letter = colLetter(col);
+    if (set.has(`${letter}${top}:${letter}${top + 11}`)) {
+      tall.push(k);
+      top += 12;
+    } else {
+      top += 10;
+    }
+  }
+  return tall;
+}
+
 /** 用 Excel 位址讀版面模型；沒列在 cells 的格是空白、沒有底色、沒有框線 */
 export class SheetReader {
   private readonly byAddress = new Map<string, ModelCell>();

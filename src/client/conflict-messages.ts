@@ -6,12 +6,16 @@ import type { ErrorCode } from '@/contracts/errors';
 export const CONFLICT_FALLBACK = '資料已被其他人更新，已重新載入。';
 
 const BY_CODE: Partial<Record<ErrorCode, string>> = {
-  // docs/spec/seating.md SEAT-R41、SEAT-R42、SEAT-R86
+  // docs/spec/seating.md SEAT-R41、SEAT-R42、SEAT-R86；工作人員桌到 10 位（人員對話框）與到 12 位（拖移、加入人員，D-018）
   STAFF_TABLE_FULL: '工作人員桌已滿，請先移出一位。',
+  STAFF_TABLE_LIMIT: '工作人員桌已達 12 位，請先移出一位。',
   STAFF_EMPLOYEE_ONLY: '只有員工可以放進工作人員桌。',
 };
 
 export const conflictMessage = (code: ErrorCode): string => BY_CODE[code] ?? CONFLICT_FALLBACK;
 
-/** 桌次已滿（SEAT-R20、SEAT-R86） */
+/** 桌次已滿：從選單入座時到 10 位（SEAT-R23、SEAT-R86） */
 export const tableFullMessage = (tableId: number) => `第 ${tableId} 桌已滿，請先移出一位。`;
+
+/** 桌次已達 12 位：拖移或「加入人員」時（SEAT-R20、SEAT-R86、D-018） */
+export const tableLimitMessage = (tableId: number) => `第 ${tableId} 桌已達 12 位，請先移出一位。`;
