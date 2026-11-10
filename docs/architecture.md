@@ -586,6 +586,7 @@ E2E 測試不經過 Google：測試環境用測試專用的 `NEXTAUTH_SECRET` �
 - 依 `docs/standard/LOG_Design_Guideline.md` 輸出單行 JSON 到 stdout／stderr，平台的網站監控頁可以直接看。
 - `service` 固定為 `seat-arrangement`；每個 API 請求一筆 `api_request_completed`（method、path、status、durationMs、requestId）。
 - 業務事件：`seating_operation_completed`（指令類型、影響人數）、`import_completed`（成功與需要處理的筆數）、`export_completed`。
+- seed 事件：`seed_imported`（摘要筆數）、`seed_skipped`（原因）、`seed_rows_skipped`（WARNING，哪個資料檔、略過幾列與各原因的筆數）、`seed_failed`。
 - 登入者以 `userId` 欄位記錄 Google 帳號的 ID（`sub`），不記 email。
 - 登入事件：`auth_sign_in_succeeded`、`auth_sign_in_denied`（只記被拒的原因與網域）。
 - **不記錄姓名、分機、email 與 CSV 內容**，只記 ID 與數量。
