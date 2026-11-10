@@ -326,7 +326,7 @@ model Setting {
   - Log 只記筆數（匯入、對不到、略過），不記姓名（第 15.2 節）；對不到與略過的人名在部署前用本機試跑確認（D-007）。
   - 員工表已有資料、或資料檔不存在時跳過，並記一筆 Log；所以重新部署與冷啟動都不會蓋掉上線後的修改。
   - 匯入摘要（員工、參與人員、眷屬的筆數，以及對不到員工名單的報名者）寫進 Log，不印電子郵件。
-- 初始編輯者（D-021）：伺服器啟動時，`src/instrumentation.ts` 在 seed 之後呼叫 `server/services/editors.ts` 的 bootstrap。這一步不看 `SEED_IMPORT`，本機開發也會執行。`Editor` 表是空的時，把 `INITIAL_EDITOR_EMAILS` 的 email 依 `domain/editors.ts` 正規化，只收格式正確、網域等於 `ALLOWED_EMAIL_DOMAIN` 的，用 `createMany({ skipDuplicates: true })` 寫入；多個執行個體同時啟動時靠 email 的 unique 不會重複。表不是空的就跳過，所以改變數不會增減編輯者。選「名單是空的時寫入」而不是「沒有編輯者時把變數裡的人視為編輯者」：後者在第一位編輯者新增別人之後，名單就不再是空的，變數裡的人會突然失去權限。表是空的、變數又沒有有效的 email 時記 WARNING，這時沒有人能編輯，要設定變數後重新部署。寫入失敗就結束程序，和 seed 相同。
+- 初始編輯者（D-021）：伺服器啟動時，`src/instrumentation.ts` 在 seed 之後呼叫 `server/services/editors.ts` 的 bootstrap。這一步不看 `SEED_IMPORT`，本機開發也會執行；但 `INITIAL_EDITOR_EMAILS` 沒有設定時直接跳過、不碰資料庫（E2E 的伺服器比重建測試資料庫更早啟動，不能在啟動時讀寫資料庫）。`Editor` 表是空的時，把 `INITIAL_EDITOR_EMAILS` 的 email 依 `domain/editors.ts` 正規化，只收格式正確、網域等於 `ALLOWED_EMAIL_DOMAIN` 的，用 `createMany({ skipDuplicates: true })` 寫入；多個執行個體同時啟動時靠 email 的 unique 不會重複。表不是空的就跳過，所以改變數不會增減編輯者。選「名單是空的時寫入」而不是「沒有編輯者時把變數裡的人視為編輯者」：後者在第一位編輯者新增別人之後，名單就不再是空的，變數裡的人會突然失去權限。表是空的、變數又沒有有效的 email 時記 WARNING，這時沒有人能編輯，要設定變數後重新部署。寫入失敗就結束程序，和 seed 相同。
 - 資料表變更只能新增 migration，不改已部署過的 migration。
 
 ### 7.4 資料量估算
