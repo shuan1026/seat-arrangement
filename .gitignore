@@ -1,0 +1,36 @@
+# 真實員工資料（只放本機）
+docs/glossary/
+# 原型的真實名單資料檔：由 docs/glossary/ 轉成，發佈線上原型時從本機打包（D-002）
+ui-design-system/source-reference/html/prototype/roster.js
+ui-design-system/source-reference/html/prototype/registrations-2026.js
+# 正式版 seed 匯入用的真實名單，只在第一次手動部署的 ZIP 帶上（D-007）
+prisma/seed-data/
+
+# 依賴與建置產物
+node_modules/
+.next/
+out/
+build/
+dist/
+src/generated/
+*.tsbuildinfo
+next-env.d.ts
+
+# 環境變數（只提交 .env.example）
+.env
+.env.*
+!.env.example
+
+# 測試產物
+coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# 系統與編輯器
+.DS_Store
+*.log
+
+# 原型發佈的建置產物
+.agents/skills/publish-prototype/.build/

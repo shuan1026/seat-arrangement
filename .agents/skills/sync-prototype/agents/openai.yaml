@@ -1,0 +1,5 @@
+interface:
+  display_name: "Sync Prototype"
+  short_description: "把規格改動同步到 HTML 原型並截圖驗證"
+policy:
+  allow_implicit_invocation: false

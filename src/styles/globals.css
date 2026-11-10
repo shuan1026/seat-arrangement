@@ -1,0 +1,206 @@
+/* 全站樣式：Tailwind 只用來排版，顏色、字級、間距、圓角、陰影一律接設計系統的語意 token。
+   tokens.css 從 ui-design-system/token-gallery/data/tokens.css 複製，設計系統更新時同步複製。 */
+@import 'tailwindcss';
+@import './tokens.css';
+
+/* 不用 Tailwind 內建色盤，只留語意 token（AGENTS.md：不引入非中性的 Tailwind 色盤） */
+@theme inline {
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-text: var(--destructive-text);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-status-positive-bg: var(--status-positive-bg);
+  --color-status-positive-fg: var(--status-positive-fg);
+  --color-status-pending-bg: var(--status-pending-bg);
+  --color-status-pending-fg: var(--status-pending-fg);
+
+  --spacing: 4px;
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-full: var(--radius-full);
+  --font-sans: var(--font-sans);
+}
+
+/* 字級只用 text-styles 的 token（docs/spec/README.md 第 11.2 節） */
+@utility type-2xl-bold { font: var(--text-2xl-bold); font-family: var(--font-sans); }
+@utility type-xl-semi-bold { font: var(--text-xl-semi-bold); font-family: var(--font-sans); }
+@utility type-lg-semi-bold { font: var(--text-lg-semi-bold); font-family: var(--font-sans); }
+@utility type-lg-medium { font: var(--text-lg-medium); font-family: var(--font-sans); }
+@utility type-base-medium { font: var(--text-base-medium); font-family: var(--font-sans); }
+@utility type-sm-regular { font: var(--text-sm-regular); font-family: var(--font-sans); }
+@utility type-sm-medium { font: var(--text-sm-medium); font-family: var(--font-sans); }
+@utility type-sm-semi-bold { font: var(--text-sm-semi-bold); font-family: var(--font-sans); }
+@utility type-xs-regular { font: var(--text-xs-regular); font-family: var(--font-sans); }
+@utility type-xs-medium { font: var(--text-xs-medium); font-family: var(--font-sans); }
+@utility edge-card { box-shadow: var(--edge-highlight), var(--shadow-xs); }
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  html {
+    background: var(--background);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background: var(--background);
+    color: var(--foreground);
+    font: var(--text-sm-regular);
+    font-family: var(--font-sans);
+  }
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-ring);
+    border-radius: var(--radius-sm);
+  }
+  svg.lucide {
+    stroke-width: var(--stroke-width);
+  }
+}
+
+/* ---- UI kit ---- */
+/* src/components/ui 共用的狀態色、陰影、捲軸與手機表格。值都由語意 token 推導，依據 03-components.md 各元件的 hover／focus 規則。 */
+@theme inline {
+  /* hover 填色與邊框（Button、Icon Button、Menu、Tabs、Pagination、Input） */
+  --color-hover: color-mix(in srgb, var(--foreground) 6%, transparent);
+  --color-hover-destructive: color-mix(in srgb, var(--destructive) 6%, transparent);
+  --color-primary-hover: color-mix(in srgb, var(--primary) 92%, var(--primary-foreground));
+  --color-destructive-hover: color-mix(in srgb, var(--destructive) 92%, var(--primary-foreground));
+  --color-foreground-hover: color-mix(in srgb, var(--foreground) 92%, var(--primary-foreground));
+  --color-border-hover: color-mix(in srgb, var(--foreground) 25%, var(--border));
+  --color-border-strong: color-mix(in srgb, var(--foreground) 35%, var(--border));
+  --color-border-destructive: color-mix(in srgb, var(--destructive) 45%, var(--border));
+  /* Badge outline 邊框、Dialog 遮罩、Sonner 圖示 */
+  --color-semantic-border: var(--semantic-border);
+  --color-overlay: var(--background-color);
+  --color-icon-success: var(--color-green);
+  --color-icon-warning: var(--color-amber);
+  --color-icon-danger: var(--color-red);
+}
+
+/* Alert 內文（03-components.md Alert Typography：Text-sm/Light） */
+@utility type-sm-light { font: var(--text-sm-light); font-family: var(--font-sans); }
+
+/* 陰影：focus ring、primary 光、浮層、Toast、選中的 Tabs 與目前頁、只有頂邊的卡片 */
+@utility focus-ring { box-shadow: var(--shadow-focus-ring); }
+@utility focus-ring-glow { box-shadow: var(--shadow-focus-ring), var(--shadow-glow); }
+@utility glow-button { box-shadow: var(--shadow-glow); }
+@utility edge-popover { box-shadow: var(--edge-highlight), var(--shadow-lg); }
+@utility edge-toast { box-shadow: var(--edge-highlight), var(--shadow-md); }
+@utility edge-top { box-shadow: var(--edge-highlight); }
+@utility edge-raised { box-shadow: var(--shadow-sm); }
+
+/* 空狀態圖示後方的光暈（docs/spec/README.md 第 9 節） */
+@utility glow-empty { background-image: var(--glow-empty); }
+
+/* Skeleton 在 --muted 與淡化的 --muted 之間循環（03-components.md Skeleton Motion） */
+@utility skeleton-shimmer {
+  background: linear-gradient(90deg, var(--muted), color-mix(in srgb, var(--muted) 44%, var(--card)), var(--muted));
+  background-size: 200% 100%;
+  animation: ui-skeleton-shimmer 1.6s ease-in-out infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+@keyframes ui-skeleton-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* Scrollbar：8px、圓角、兩端內縮 16px（03-components.md Scrollbar）。
+   Chrome 設了 scrollbar-color 會忽略 ::-webkit-scrollbar，所以標準屬性只給不支援 ::-webkit-scrollbar 的瀏覽器。 */
+@utility scrollbar-inset {
+  &::-webkit-scrollbar { width: 8px; height: 8px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-track:horizontal { margin-inline: 16px; }
+  &::-webkit-scrollbar-track:vertical { margin-block: 16px; }
+  &::-webkit-scrollbar-corner { background: transparent; }
+  &::-webkit-scrollbar-thumb {
+    min-width: 40px;
+    min-height: 40px;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--foreground) 15%, transparent);
+    transition: background-color 0.15s ease;
+  }
+  &::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--foreground) 35%, transparent); }
+  &::-webkit-scrollbar-thumb:active { background: color-mix(in srgb, var(--foreground) 45%, transparent); }
+  @supports not selector(::-webkit-scrollbar) {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--foreground) 15%, transparent) transparent;
+  }
+}
+
+/* 手機寬度把表格列改成卡片（原型 prototype.css 的 .table--stack；04-patterns-and-ux.md Mobile Table Strategy）。
+   儲存格用 data-label 顯示欄名，data-cell="primary|actions|check" 決定位置，data-hide-mobile 在手機隱藏。 */
+@utility table-stack {
+  @media (width < 48rem) {
+    &, & tbody, & tr, & td { display: block; width: 100%; }
+    & thead { display: none; }
+    & tbody tr {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      padding: var(--space-4);
+      border-bottom: 1px solid var(--border);
+    }
+    & tbody tr:last-child { border-bottom: 0; }
+    & td {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-1) 0;
+      border: 0;
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+    & td::before {
+      content: attr(data-label);
+      flex: 0 0 auto;
+      color: var(--muted-foreground);
+      font: var(--text-xs-regular);
+      font-family: var(--font-sans);
+      text-align: left;
+    }
+    & td:not([data-label])::before { content: none; }
+    & td:not([data-label]) { justify-content: flex-end; }
+    & td[data-cell="primary"] { order: -1; display: block; padding: 0 var(--space-10) var(--space-2) 0; text-align: left; }
+    & td[data-cell="primary"]::before,
+    & td[data-cell="actions"]::before,
+    & td[data-cell="check"]::before { content: none; }
+    & td[data-hide-mobile] { display: none; }
+    & td[data-cell="actions"] { position: absolute; top: var(--space-3); right: var(--space-3); width: auto; padding: 0; }
+    & td[data-cell="check"] { position: absolute; top: var(--space-4); left: var(--space-4); width: auto; padding: 0; }
+    &:has(td[data-cell="check"]) td[data-cell="primary"] { padding-left: var(--space-8); }
+  }
+}

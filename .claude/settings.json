@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git stash *)",
+      "Bash(git tag *)",
+      "Bash(git push *)",
+      "Bash(gh pr create *)",
+      "Bash(glab mr create *)",
+      "PowerShell(git add *)",
+      "PowerShell(git commit *)",
+      "PowerShell(git stash *)",
+      "PowerShell(git tag *)",
+      "PowerShell(git push *)",
+      "PowerShell(gh pr create *)",
+      "PowerShell(glab mr create *)"
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+# 映像只放執行需要的檔案；文件、設計系統、測試與真實資料都不進映像
+.git
+node_modules
+.next
+src/generated
+docs
+ui-design-system
+tests
+test-results
+playwright-report
+coverage
+.agents
+.claude
+.cursor
+.env
+.env.*
+!.env.example
+*.md
+docker-compose.yml
+docker/mysql-init

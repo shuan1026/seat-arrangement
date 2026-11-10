@@ -1,0 +1,5 @@
+interface:
+  display_name: "Publish Prototype"
+  short_description: "把本機 HTML 原型驗證後更新到線上連結"
+policy:
+  allow_implicit_invocation: false

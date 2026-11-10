@@ -1,0 +1,68 @@
+<!-- page: 登入 -->
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>登入｜Seat Arrangement</title>
+<link rel="stylesheet" href="../../token-gallery/data/tokens.css">
+<link rel="stylesheet" href="prototype/prototype.css">
+</head>
+<body data-page="login">
+<main class="login-page">
+  <div class="login-glow" aria-hidden="true"></div>
+  <section class="login-card panel" aria-labelledby="login-title">
+    <div class="login-logo" id="login-logo"></div>
+    <div class="login-head">
+      <h1 id="login-title">用公司帳號登入</h1>
+      <p id="login-desc"></p>
+    </div>
+    <div id="view"></div>
+  </section>
+</main>
+<script src="prototype/roster.js"></script><script src="prototype/registrations-2026.js"></script><script src="prototype/data.js"></script><script src="prototype/core.js"></script><script src="prototype/ui.js"></script><script src="prototype/shell.js"></script>
+<script>
+const { $, esc, C } = GH;
+const { icon } = UI;
+// 原型不連 Google：按下登入後依示範工具列的「登入結果」決定（第 4.3 節、第 7.1.3 節）
+const RESULTS = [{ value: 'ok', label: '登入成功' }, { value: 'denied', label: '非公司帳號' }, { value: 'failed', label: '登入失敗' }];
+const ERRORS = {
+  denied: ['這個帳號不能登入。', `只能使用公司的 Google 帳號（@${C.EMAIL_DOMAIN}），請換一個帳號再試一次。`],
+  failed: ['登入沒有完成。', '請檢查網路後再試一次。'],
+};
+let error = null;
+let busy = false;
+// 登入後回到原本要開的頁面；只接受原型內的頁面，直接開登入頁時進入座位安排
+const nextPage = () => {
+  const n = new URLSearchParams(location.search).get('next') || '';
+  return /^[a-z-]+\.html(\?[^#]*)?$/.test(n) && !n.startsWith('login.html') ? n : 'seating.html';
+};
+GH.act({
+  signIn() {
+    if (busy) return;
+    busy = true; error = null; GH.refresh();
+    setTimeout(() => {
+      const result = GH.state.loginResult || 'ok';
+      if (result === 'ok') { GH.state.signedIn = true; GH.save(true); location.href = nextPage(); return; }
+      busy = false; error = result; GH.refresh();
+    }, 700);
+  },
+});
+GH.page({
+  shell: false,
+  modeless: true,
+  demoSelect: () => UI.select({
+    sm: true, ariaLabel: '登入結果', prefix: '登入', value: GH.state.loginResult || 'ok', options: RESULTS,
+    onChange: v => { GH.state.loginResult = v; error = null; GH.save(true); GH.refresh(); },
+  }),
+  render(view) {
+    $('#login-logo').innerHTML = UI.logoFull();
+    $('#login-desc').innerHTML = `請使用公司的 Google 帳號（@${esc(C.EMAIL_DOMAIN)}）登入。`;
+    const alert = error ? UI.alert(ERRORS[error][0], { role: 'alert', icon: 'triangle-alert', body: ERRORS[error][1] }) : '';
+    const btn = `<button type="button" class="btn btn--primary login-btn ${busy ? 'is-loading' : ''}" data-act="signIn" ${busy ? 'aria-busy="true"' : ''}>${busy ? '<span class="spinner" aria-hidden="true"></span>' : icon('log-in')}<span>使用公司 Google 帳號登入</span></button>`;
+    view.innerHTML = `<div class="stack">${alert}${btn}</div>`;
+  },
+});
+</script>
+</body>
+</html>

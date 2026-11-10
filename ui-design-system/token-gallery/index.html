@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UI Token Gallery</title>
+    <link rel="stylesheet" href="./data/tokens.css" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="gallery-shell">
+      <section class="gallery-hero" aria-labelledby="galleryTitle">
+        <div class="hero-brand">
+          <span>UI Design System</span>
+        </div>
+        <h1 id="galleryTitle">Design System</h1>
+      </section>
+
+      <nav class="gallery-tabs-bar" aria-label="Token layers">
+        <div class="layer-tabs" id="layerTabs" role="tablist" aria-label="Token layers"></div>
+      </nav>
+
+      <section class="gallery-controls" aria-label="Token filters">
+        <label class="search-field">
+          <span>搜尋</span>
+          <input id="searchInput" type="search" autocomplete="off" placeholder="搜尋 token / component" />
+        </label>
+
+        <div class="select-field">
+          <span id="collectionLabel">來源集合</span>
+          <div class="ds-dropdown-sample source-collection-menu" id="collectionDropdown">
+            <button
+              class="ds-dropdown-trigger"
+              id="collectionTrigger"
+              type="button"
+              aria-expanded="false"
+              aria-haspopup="listbox"
+              aria-labelledby="collectionLabel collectionValue"
+            >
+              <span class="ds-dropdown-value" id="collectionValue">All</span>
+              <span class="ds-caret">⌄</span>
+            </button>
+            <div class="ds-dropdown-menu" id="collectionMenu" role="listbox" aria-labelledby="collectionLabel"></div>
+          </div>
+        </div>
+
+        <section class="filter-section" aria-labelledby="categoryLabel">
+          <div class="section-label" id="categoryLabel">分類</div>
+          <div class="segmented-list" id="categoryList"></div>
+        </section>
+      </section>
+
+      <section class="surface-toolbar" aria-live="polite">
+        <div>
+          <p class="section-kicker" id="surfaceIndex">01</p>
+          <h2 id="surfaceTitle">Tokens</h2>
+        </div>
+        <p id="resultCount"></p>
+      </section>
+
+      <section class="gallery-sections" id="tokenGrid" aria-label="Token gallery"></section>
+    </main>
+
+    <dialog class="trace-dialog" id="traceDialog" aria-labelledby="traceDialogTitle">
+      <div class="trace-dialog-shell" id="traceDialogContent"></div>
+    </dialog>
+
+    <script src="./data/token-gallery-data.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

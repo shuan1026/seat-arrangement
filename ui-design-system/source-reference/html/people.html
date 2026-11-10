@@ -1,0 +1,105 @@
+<!-- page: 參與人員 -->
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>參與人員｜Seat Arrangement</title>
+<link rel="stylesheet" href="../../token-gallery/data/tokens.css">
+<link rel="stylesheet" href="prototype/prototype.css">
+</head>
+<body data-page="people" data-nav="people">
+<section class="page-content page-content--full">
+  <div class="page-static">
+    <header class="page-head">
+      <div>
+        <h1>參與人員</h1>
+        <p>管理報名尾牙的員工、他們的眷屬與外部貴賓。</p>
+      </div>
+      <div class="page-actions" id="page-actions"></div>
+    </header>
+  </div>
+  <div id="view"></div>
+</section>
+<script src="prototype/roster.js"></script><script src="prototype/registrations-2026.js"></script><script src="prototype/data.js"></script><script src="prototype/core.js"></script><script src="prototype/ui.js"></script><script src="prototype/shell.js"></script>
+<script>
+const { $, $$, esc, C } = GH;
+const { node, icon } = UI;
+// 從員工名單的「查看參與資料」進來時，直接以該員工的姓名搜尋
+let q = '';
+let page = 1;
+const blankFilters = () => ({ cat: '', dept: '', seated: '', table: '' });
+let filters = blankFilters();
+const SEATED = { seated: '已入座', unseated: '未入座', staff: '工作人員' };
+const hasFilters = () => Object.values(filters).some(Boolean);
+// 入座狀態：工作人員不安排座位，自成一類（第 7.3.1 節）
+const seatState = p => (GH.isStaff(p) ? 'staff' : GH.tableOf(p.id) ? 'seated' : 'unseated');
+const passFilters = p => {
+  const t = GH.tableOf(p.id);
+  if (filters.cat && p.cat !== filters.cat) return false;
+  if (filters.dept && GH.deptOf(p) !== filters.dept) return false;
+  if (filters.seated && seatState(p) !== filters.seated) return false;
+  if (filters.table && (!t || t.no !== +filters.table)) return false;
+  return true;
+};
+const visible = () => GH.sortedPeople().filter(p => passFilters(p) && GH.matches(p, q));
+
+function toolbar() {
+  const bar = node('<div class="toolbar"></div>');
+  const search = node(`<div class="input-icon grow">${icon('search')}<input class="input" placeholder="搜尋姓名、分機、部門或單位" aria-label="搜尋姓名、分機、部門或單位" value="${esc(q)}"></div>`);
+  $('input', search).addEventListener('input', e => { q = e.target.value; page = 1; GH.refresh(); const i = $('.toolbar input'); i && i.focus(); i && i.setSelectionRange(i.value.length, i.value.length); });
+  bar.append(search);
+  const sel = (key, label, options, extra = {}) => bar.append(UI.select({ value: filters[key], prefix: filters[key] ? label : '', placeholder: label, ariaLabel: label, options: [{ value: '', label: '不限' }, ...options], onChange: v => { filters[key] = v; page = 1; GH.refresh(); }, ...extra }));
+  sel('cat', '類別', C.CATEGORIES.map(c => ({ value: c, label: c })));
+  sel('dept', '部門', GH.depts().map(d => ({ value: d, label: d })), { searchable: true, searchPlaceholder: '搜尋部門' });
+  sel('seated', '入座狀態', Object.entries(SEATED).map(([value, label]) => ({ value, label })));
+  sel('table', '桌次', GH.tables().map(t => ({ value: String(t.no), label: `第 ${t.no} 桌` })), { searchable: true, searchPlaceholder: '搜尋桌號' });
+  return bar;
+}
+function chips() {
+  if (!hasFilters()) return null;
+  const label = { cat: v => v, dept: v => v, seated: v => SEATED[v], table: v => `第 ${v} 桌` };
+  return node(`<div class="filter-chips">${Object.entries(filters).filter(([, v]) => v).map(([k, v]) => `<button type="button" class="badge badge--outline" data-act="removeFilter" data-key="${k}" aria-label="移除篩選 ${esc(label[k](v))}">${esc(label[k](v))}${icon('x')}</button>`).join('')}${UI.btn('清除篩選', { v: 'link', act: 'clearFilters' })}</div>`);
+}
+function emptyHTML() {
+  if (!GH.people().length) return UI.empty({ icon: 'users', title: '還沒有參與人員。', body: '到員工名單把報名的員工加入尾牙，或新增貴賓與眷屬後，就可以開始安排座位。', btn: UI.btn('前往員工名單', { v: 'primary', icon: 'id-card', href: 'employees.html' }) + UI.btn('新增人員', { icon: 'plus', act: 'newPerson' }) });
+  if (q) return UI.empty({ icon: 'search', title: `找不到「${q}」。`, btn: UI.btn('清除搜尋', { act: 'clearSearch' }) });
+  return UI.empty({ icon: 'search', title: '找不到符合條件的人員。', btn: UI.btn('清除篩選', { act: 'clearFilters' }) });
+}
+
+GH.page({
+  render(v) {
+    if (GH.qs('employee') && !q) { const e = GH.employee(GH.qs('employee')); if (e) q = e.name; }
+    $('#page-actions').innerHTML = UI.btn('新增人員', { v: 'primary', icon: 'plus', act: 'newPerson' }) + UI.btn('匯入參與人員', { icon: 'upload', act: 'importPeople' }) + UI.btn('匯出座位表', { icon: 'download', act: 'exportSeating' });
+    v.innerHTML = '';
+    if (GH.people().length) { v.append(toolbar()); const c = chips(); if (c) v.append(c); }
+    const rows = visible();
+    if (!rows.length) { v.append(node(emptyHTML())); return; }
+    v.append(UI.table({
+      rows, page, pageSize: 20, rowKey: p => p.id, onPage: p => { page = p; GH.refresh(); },
+      columns: [
+        { label: '顯示名稱', primary: true, render: p => UI.nameLine(p, { child: false, veg: false }) },
+        { label: '類別', render: p => esc(p.cat === '眷屬' && p.relation ? `眷屬（${p.relation}）` : p.cat) },
+        { label: '部門或單位', render: p => esc((p.cat === '外部貴賓' ? p.org : GH.deptOf(p)) || '—') },
+        { label: '分機', render: p => (GH.extOf(p) ? `<span class="num">${esc(GH.extOf(p))}</span>` : '<span class="muted">—</span>') },
+        // 兒童椅與素食合併成一欄，有才顯示徽章（第 7.3.1 節）
+        { label: '標示', render: p => (p.childSeat || p.veg ? `<span class="badges">${p.childSeat ? `<span class="badge badge--third">${icon('baby')}兒童椅</span>` : ''}${p.veg ? `<span class="badge badge--third">${icon('leaf')}素食</span>` : ''}</span>` : '<span class="muted">—</span>') },
+        { label: '桌次', render: p => UI.seatBadge(p, { link: true }) },
+        { label: '備註', hideMobile: true, render: p => (p.note ? `<span class="wrap-anywhere">${esc(p.note)}</span>` : '<span class="muted">—</span>') },
+        { label: '', actions: true, render: p => UI.rowMenu('personMenu', p.id) },
+      ],
+    }));
+  },
+});
+GH.act({
+  newPerson() { UI.personDialog({}); },
+  importPeople() { UI.importDialog(); },
+  exportSeating() { UI.exportSeating(); },
+  clearSearch() { q = ''; page = 1; history.replaceState(null, '', 'people.html'); GH.refresh(); },
+  clearFilters() { filters = blankFilters(); page = 1; GH.refresh(); },
+  removeFilter(el) { filters[el.dataset.key] = ''; page = 1; GH.refresh(); },
+  personMenu(el) { const p = GH.person(el.dataset.id); if (p) UI.personMenu(el, p, { items: ['edit', 'seat', 'unseat', 'delete'] }); },
+});
+</script>
+</body>
+</html>

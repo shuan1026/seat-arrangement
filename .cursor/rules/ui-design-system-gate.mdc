@@ -1,0 +1,23 @@
+---
+description: UI Design System Gate - Trigger this for any UI implementation, styling, component usage, or layout changes.
+globs: **/*.tsx, **/*.ts, **/*.jsx, **/*.js, **/*.css, **/*.styl, **/*.html
+---
+
+# UI Design System Gate
+
+Resolve the design system root before reading skill paths:
+
+- If `source-reference/html/` exists at the project root, `<root>` is `.`
+- Otherwise, if `ui-design-system/source-reference/html/` exists, `<root>` is `ui-design-system/`
+
+When you are asked to create or modify UI components, layouts, styling, or perform UI retrofit, you MUST use the `ui-design-system` skill.
+
+1. **DO NOT** rely on the existing codebase's UI as the source of truth when this package is the active design source. Existing code may keep business logic only.
+2. **DO NOT** invent new colors, spacing, or component structures.
+3. **DO NOT** introduce page-level horizontal overflow; responsive layouts must work from 320px mobile to desktop widths.
+4. **DO NOT** fix Dropdown / Popover clipping from table/card/scroll wrappers by raising `z-index`; use portal / floating layer behavior from `03-components.md`.
+5. **DO NOT** introduce non-neutral Tailwind palettes unless the user explicitly requests a specific Tailwind color.
+6. **DO NOT** invent a page structure. If `<root>/source-reference/html/` has a file for the requested page, follow that HTML for regions, copy, and arrangement, and map each region to an existing component in `03-components.md`. If no project HTML exists, use `04-patterns-and-ux.md` `New Feature Unit Composition` to choose the closest base pattern.
+7. **DO NOT** treat loaded reference sections as loose inspiration; follow the Spec Execution Protocol in `SKILL.md` and implement the required layout, tokens, variants, states, accessibility, and responsive rules.
+8. **DO NOT** read every reference file by default. Follow the Progressive Loading Protocol in `SKILL.md` and load only the relevant component/page/reference sections.
+9. Read `<root>/.cursor/skills/ui-design-system/SKILL.md` and follow it. Cursor, Claude Code, and Codex enter through `AGENTS.md`; the specification stays in that skill file.

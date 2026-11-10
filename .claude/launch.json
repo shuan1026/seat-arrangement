@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "prototype",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".agents/skills/sync-prototype/scripts/serve.js", "ui-design-system", "4173"],
+      "port": 4173
+    },
+    {
+      "name": "prototype-build",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".agents/skills/sync-prototype/scripts/serve.js", ".agents/skills/publish-prototype/.build/site", "4175"],
+      "port": 4175
+    }
+  ]
+}

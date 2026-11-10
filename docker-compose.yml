@@ -1,0 +1,27 @@
+# 本機開發與測試用的 MySQL 8.4（和 aiborn 平台的專案資料庫同版本）。
+# 所有 worktree 共用這一個 MySQL；開發庫與各線的測試庫用不同的資料庫名稱（docs/plan/implementation-plan.md 第 5.3 節）。
+# 用 3317 埠，避免和其他專案的 MySQL（3306）衝突。
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: seat-arrangement-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: seat_root_dev
+      MYSQL_DATABASE: seat_dev
+      MYSQL_USER: seat
+      MYSQL_PASSWORD: seat_dev
+      TZ: Asia/Taipei
+    ports:
+      - "3317:3306"
+    volumes:
+      - seat-mysql-data:/var/lib/mysql
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pseat_root_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  seat-mysql-data:

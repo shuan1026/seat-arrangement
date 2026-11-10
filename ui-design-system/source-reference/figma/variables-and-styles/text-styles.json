@@ -1,0 +1,1176 @@
+{
+  "styles": {
+    "textStyles": [
+      {
+        "name": "Text-xs/Black",
+        "token": "text-xs-black",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "900",
+        "fontSize": "12px",
+        "lineHeight": "16px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xs/Extra Bold",
+        "token": "text-xs-extra-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "12px",
+        "lineHeight": "16px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xs/Bold",
+        "token": "text-xs-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "12px",
+        "lineHeight": "16px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xs/Semi Bold",
+        "token": "text-xs-semi-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "12px",
+        "lineHeight": "16px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xs/Medium",
+        "token": "text-xs-medium",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "500",
+        "fontSize": "12px",
+        "lineHeight": "16px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xs/Regular",
+        "token": "text-xs-regular",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "400",
+        "fontSize": "12px",
+        "lineHeight": "16px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xs/Light",
+        "token": "text-xs-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "12px",
+        "lineHeight": "16px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xs/Extra Light",
+        "token": "text-xs-extra-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "12px",
+        "lineHeight": "16px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xs/Thin",
+        "token": "text-xs-thin",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "100",
+        "fontSize": "12px",
+        "lineHeight": "16px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-sm/Black",
+        "token": "text-sm-black",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "900",
+        "fontSize": "14px",
+        "lineHeight": "20px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-sm/Extra Bold",
+        "token": "text-sm-extra-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "14px",
+        "lineHeight": "20px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-sm/Bold",
+        "token": "text-sm-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "14px",
+        "lineHeight": "20px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-sm/Semi Bold",
+        "token": "text-sm-semi-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "14px",
+        "lineHeight": "20px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-sm/Medium",
+        "token": "text-sm-medium",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "500",
+        "fontSize": "14px",
+        "lineHeight": "20px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-sm/Regular",
+        "token": "text-sm-regular",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "400",
+        "fontSize": "14px",
+        "lineHeight": "20px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-sm/Light",
+        "token": "text-sm-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "14px",
+        "lineHeight": "20px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-sm/Extra Light",
+        "token": "text-sm-extra-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "14px",
+        "lineHeight": "20px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-sm/Thin",
+        "token": "text-sm-thin",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "100",
+        "fontSize": "14px",
+        "lineHeight": "20px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-base/Black",
+        "token": "text-base-black",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "900",
+        "fontSize": "16px",
+        "lineHeight": "24px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-base/Extra Bold",
+        "token": "text-base-extra-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "16px",
+        "lineHeight": "24px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-base/Bold",
+        "token": "text-base-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "16px",
+        "lineHeight": "24px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-base/Semi Bold",
+        "token": "text-base-semi-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "16px",
+        "lineHeight": "24px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-base/Medium",
+        "token": "text-base-medium",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "500",
+        "fontSize": "16px",
+        "lineHeight": "24px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-base/Regular",
+        "token": "text-base-regular",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "400",
+        "fontSize": "16px",
+        "lineHeight": "24px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-base/Light",
+        "token": "text-base-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "16px",
+        "lineHeight": "24px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-base/Extra Light",
+        "token": "text-base-extra-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "16px",
+        "lineHeight": "24px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-base/Thin",
+        "token": "text-base-thin",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "100",
+        "fontSize": "16px",
+        "lineHeight": "24px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-lg/Black",
+        "token": "text-lg-black",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "900",
+        "fontSize": "18px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-lg/Extra Bold",
+        "token": "text-lg-extra-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "18px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-lg/Bold",
+        "token": "text-lg-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "18px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-lg/Semi Bold",
+        "token": "text-lg-semi-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "18px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-lg/Medium",
+        "token": "text-lg-medium",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "500",
+        "fontSize": "18px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-lg/Regular",
+        "token": "text-lg-regular",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "400",
+        "fontSize": "18px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-lg/Light",
+        "token": "text-lg-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "18px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-lg/Extra Light",
+        "token": "text-lg-extra-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "18px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-lg/Thin",
+        "token": "text-lg-thin",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "100",
+        "fontSize": "18px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xl/Black",
+        "token": "text-xl-black",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "900",
+        "fontSize": "20px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xl/Extra Bold",
+        "token": "text-xl-extra-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "20px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xl/Bold",
+        "token": "text-xl-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "20px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xl/Semi Bold",
+        "token": "text-xl-semi-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "20px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xl/Medium",
+        "token": "text-xl-medium",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "500",
+        "fontSize": "20px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xl/Regular",
+        "token": "text-xl-regular",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "400",
+        "fontSize": "20px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xl/Light",
+        "token": "text-xl-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "20px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xl/Extra Light",
+        "token": "text-xl-extra-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "20px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-xl/Thin",
+        "token": "text-xl-thin",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "100",
+        "fontSize": "20px",
+        "lineHeight": "28px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-2xl/Black",
+        "token": "text-2xl-black",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "900",
+        "fontSize": "24px",
+        "lineHeight": "32px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-2xl/Extra Bold",
+        "token": "text-2xl-extra-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "24px",
+        "lineHeight": "32px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-2xl/Bold",
+        "token": "text-2xl-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "24px",
+        "lineHeight": "32px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-2xl/Semi Bold",
+        "token": "text-2xl-semi-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "24px",
+        "lineHeight": "32px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-2xl/Medium",
+        "token": "text-2xl-medium",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "500",
+        "fontSize": "24px",
+        "lineHeight": "32px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-2xl/Regular",
+        "token": "text-2xl-regular",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "400",
+        "fontSize": "24px",
+        "lineHeight": "32px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-2xl/Light",
+        "token": "text-2xl-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "24px",
+        "lineHeight": "32px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-2xl/Extra Light",
+        "token": "text-2xl-extra-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "24px",
+        "lineHeight": "32px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-2xl/Thin",
+        "token": "text-2xl-thin",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "100",
+        "fontSize": "24px",
+        "lineHeight": "32px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-3xl/Black",
+        "token": "text-3xl-black",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "900",
+        "fontSize": "30px",
+        "lineHeight": "36px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-3xl/Extra Bold",
+        "token": "text-3xl-extra-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "30px",
+        "lineHeight": "36px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-3xl/Bold",
+        "token": "text-3xl-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "30px",
+        "lineHeight": "36px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-3xl/Semi Bold",
+        "token": "text-3xl-semi-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "30px",
+        "lineHeight": "36px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-3xl/Medium",
+        "token": "text-3xl-medium",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "500",
+        "fontSize": "30px",
+        "lineHeight": "36px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-3xl/Regular",
+        "token": "text-3xl-regular",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "400",
+        "fontSize": "30px",
+        "lineHeight": "36px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-3xl/Light",
+        "token": "text-3xl-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "30px",
+        "lineHeight": "36px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-3xl/Extra Light",
+        "token": "text-3xl-extra-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "30px",
+        "lineHeight": "36px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-3xl/Thin",
+        "token": "text-3xl-thin",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "100",
+        "fontSize": "30px",
+        "lineHeight": "36px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-4xl/Black",
+        "token": "text-4xl-black",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "900",
+        "fontSize": "36px",
+        "lineHeight": "40px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-4xl/Extra Bold",
+        "token": "text-4xl-extra-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "36px",
+        "lineHeight": "40px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-4xl/Bold",
+        "token": "text-4xl-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "36px",
+        "lineHeight": "40px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-4xl/Semi Bold",
+        "token": "text-4xl-semi-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "36px",
+        "lineHeight": "40px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-4xl/Medium",
+        "token": "text-4xl-medium",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "500",
+        "fontSize": "36px",
+        "lineHeight": "40px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-4xl/Regular",
+        "token": "text-4xl-regular",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "400",
+        "fontSize": "36px",
+        "lineHeight": "40px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-4xl/Light",
+        "token": "text-4xl-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "36px",
+        "lineHeight": "40px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-4xl/Extra Light",
+        "token": "text-4xl-extra-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "36px",
+        "lineHeight": "40px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-4xl/Thin",
+        "token": "text-4xl-thin",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "100",
+        "fontSize": "36px",
+        "lineHeight": "40px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-5xl/Black",
+        "token": "text-5xl-black",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "900",
+        "fontSize": "48px",
+        "lineHeight": "48px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-5xl/Extra Bold",
+        "token": "text-5xl-extra-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "48px",
+        "lineHeight": "48px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-5xl/Bold",
+        "token": "text-5xl-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "48px",
+        "lineHeight": "48px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-5xl/Semi Bold",
+        "token": "text-5xl-semi-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "48px",
+        "lineHeight": "48px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-5xl/Medium",
+        "token": "text-5xl-medium",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "500",
+        "fontSize": "48px",
+        "lineHeight": "48px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-5xl/Regular",
+        "token": "text-5xl-regular",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "400",
+        "fontSize": "48px",
+        "lineHeight": "48px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-5xl/Light",
+        "token": "text-5xl-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "48px",
+        "lineHeight": "48px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-5xl/Extra Light",
+        "token": "text-5xl-extra-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "48px",
+        "lineHeight": "48px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-5xl/Thin",
+        "token": "text-5xl-thin",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "100",
+        "fontSize": "48px",
+        "lineHeight": "48px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-6xl/Black",
+        "token": "text-6xl-black",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "900",
+        "fontSize": "60px",
+        "lineHeight": "60px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-6xl/Extra Bold",
+        "token": "text-6xl-extra-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "60px",
+        "lineHeight": "60px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-6xl/Bold",
+        "token": "text-6xl-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "60px",
+        "lineHeight": "60px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-6xl/Semi Bold",
+        "token": "text-6xl-semi-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "60px",
+        "lineHeight": "60px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-6xl/Medium",
+        "token": "text-6xl-medium",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "500",
+        "fontSize": "60px",
+        "lineHeight": "60px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-6xl/Regular",
+        "token": "text-6xl-regular",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "400",
+        "fontSize": "60px",
+        "lineHeight": "60px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-6xl/Light",
+        "token": "text-6xl-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "60px",
+        "lineHeight": "60px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-6xl/Extra Light",
+        "token": "text-6xl-extra-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "60px",
+        "lineHeight": "60px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-6xl/Thin",
+        "token": "text-6xl-thin",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "100",
+        "fontSize": "60px",
+        "lineHeight": "60px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-7xl/Black",
+        "token": "text-7xl-black",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "900",
+        "fontSize": "72px",
+        "lineHeight": "72px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-7xl/Extra Bold",
+        "token": "text-7xl-extra-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "72px",
+        "lineHeight": "72px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-7xl/Bold",
+        "token": "text-7xl-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "72px",
+        "lineHeight": "72px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-7xl/Semi Bold",
+        "token": "text-7xl-semi-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "72px",
+        "lineHeight": "72px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-7xl/Medium",
+        "token": "text-7xl-medium",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "500",
+        "fontSize": "72px",
+        "lineHeight": "72px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-7xl/Regular",
+        "token": "text-7xl-regular",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "400",
+        "fontSize": "72px",
+        "lineHeight": "72px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-7xl/Light",
+        "token": "text-7xl-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "72px",
+        "lineHeight": "72px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-7xl/Extra Light",
+        "token": "text-7xl-extra-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "72px",
+        "lineHeight": "72px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-7xl/Thin",
+        "token": "text-7xl-thin",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "100",
+        "fontSize": "72px",
+        "lineHeight": "72px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-8xl/Black",
+        "token": "text-8xl-black",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "900",
+        "fontSize": "96px",
+        "lineHeight": "96px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-8xl/Extra Bold",
+        "token": "text-8xl-extra-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "96px",
+        "lineHeight": "96px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-8xl/Bold",
+        "token": "text-8xl-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "96px",
+        "lineHeight": "96px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-8xl/Semi Bold",
+        "token": "text-8xl-semi-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "96px",
+        "lineHeight": "96px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-8xl/Medium",
+        "token": "text-8xl-medium",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "500",
+        "fontSize": "96px",
+        "lineHeight": "96px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-8xl/Regular",
+        "token": "text-8xl-regular",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "400",
+        "fontSize": "96px",
+        "lineHeight": "96px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-8xl/Light",
+        "token": "text-8xl-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "96px",
+        "lineHeight": "96px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-8xl/Extra Light",
+        "token": "text-8xl-extra-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "96px",
+        "lineHeight": "96px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-8xl/Thin",
+        "token": "text-8xl-thin",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "100",
+        "fontSize": "96px",
+        "lineHeight": "96px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-9xl/Black",
+        "token": "text-9xl-black",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "900",
+        "fontSize": "128px",
+        "lineHeight": "128px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-9xl/Extra Bold",
+        "token": "text-9xl-extra-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "128px",
+        "lineHeight": "128px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-9xl/Bold",
+        "token": "text-9xl-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "128px",
+        "lineHeight": "128px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-9xl/Semi Bold",
+        "token": "text-9xl-semi-bold",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "700",
+        "fontSize": "128px",
+        "lineHeight": "128px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-9xl/Medium",
+        "token": "text-9xl-medium",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "500",
+        "fontSize": "128px",
+        "lineHeight": "128px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-9xl/Regular",
+        "token": "text-9xl-regular",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "400",
+        "fontSize": "128px",
+        "lineHeight": "128px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-9xl/Light",
+        "token": "text-9xl-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "128px",
+        "lineHeight": "128px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-9xl/Extra Light",
+        "token": "text-9xl-extra-light",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "300",
+        "fontSize": "128px",
+        "lineHeight": "128px",
+        "letterSpacing": "0px"
+      },
+      {
+        "name": "Text-9xl/Thin",
+        "token": "text-9xl-thin",
+        "type": "text",
+        "fontFamily": "Inter",
+        "fontWeight": "100",
+        "fontSize": "128px",
+        "lineHeight": "128px",
+        "letterSpacing": "0px"
+      }
+    ]
+  }
+}

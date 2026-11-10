@@ -1,0 +1,5 @@
+interface:
+  display_name: "To Questionnaire"
+  short_description: "把待確認事項做成問卷並回收答案"
+policy:
+  allow_implicit_invocation: false

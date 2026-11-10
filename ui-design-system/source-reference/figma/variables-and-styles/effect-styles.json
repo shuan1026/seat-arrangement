@@ -1,0 +1,206 @@
+{
+  "styles": {
+    "effectStyles": [
+      {
+        "name": "Box Shadow/shadow-2xs",
+        "token": "box-shadow-shadow-2xs",
+        "type": "effect",
+        "value": "box-shadow: 0px 1px 0px 0px rgba(0, 0, 0, 0.05)",
+        "effects": [
+          {
+            "type": "drop-shadow",
+            "x": 0,
+            "y": 1,
+            "blur": 0,
+            "spread": 0,
+            "color": "rgba(0, 0, 0, 0.05)"
+          }
+        ]
+      },
+      {
+        "name": "Box Shadow/shadow-xs",
+        "token": "box-shadow-shadow-xs",
+        "type": "effect",
+        "value": "box-shadow: 0px 1px 2px 0px rgba(0, 0, 0, 0.1)",
+        "effects": [
+          {
+            "type": "drop-shadow",
+            "x": 0,
+            "y": 1,
+            "blur": 2,
+            "spread": 0,
+            "color": "rgba(0, 0, 0, 0.1)"
+          }
+        ]
+      },
+      {
+        "name": "Box Shadow/shadow-sm",
+        "token": "box-shadow-shadow-sm",
+        "type": "effect",
+        "value": "box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.1)",
+        "effects": [
+          {
+            "type": "drop-shadow",
+            "x": 0,
+            "y": 1,
+            "blur": 3,
+            "spread": 0,
+            "color": "rgba(0, 0, 0, 0.1)"
+          }
+        ]
+      },
+      {
+        "name": "Box Shadow/shadow-md",
+        "token": "box-shadow-shadow-md",
+        "type": "effect",
+        "value": "box-shadow: 0px 2px 4px -2px rgba(0, 0, 0, 0.1), 0px 4px 6px -1px rgba(0, 0, 0, 0.1)",
+        "effects": [
+          {
+            "type": "drop-shadow",
+            "x": 0,
+            "y": 2,
+            "blur": 4,
+            "spread": -2,
+            "color": "rgba(0, 0, 0, 0.1)"
+          },
+          {
+            "type": "drop-shadow",
+            "x": 0,
+            "y": 4,
+            "blur": 6,
+            "spread": -1,
+            "color": "rgba(0, 0, 0, 0.1)"
+          }
+        ]
+      },
+      {
+        "name": "Box Shadow/shadow-lg",
+        "token": "box-shadow-shadow-lg",
+        "type": "effect",
+        "value": "box-shadow: 0px 4px 6px -4px rgba(0, 0, 0, 0.1), 0px 10px 15px -3px rgba(0, 0, 0, 0.1)",
+        "effects": [
+          {
+            "type": "drop-shadow",
+            "x": 0,
+            "y": 4,
+            "blur": 6,
+            "spread": -4,
+            "color": "rgba(0, 0, 0, 0.1)"
+          },
+          {
+            "type": "drop-shadow",
+            "x": 0,
+            "y": 10,
+            "blur": 15,
+            "spread": -3,
+            "color": "rgba(0, 0, 0, 0.1)"
+          }
+        ]
+      },
+      {
+        "name": "Box Shadow/shadow-xl",
+        "token": "box-shadow-shadow-xl",
+        "type": "effect",
+        "value": "box-shadow: 0px 8px 10px -6px rgba(0, 0, 0, 0.1), 0px 20px 25px -5px rgba(0, 0, 0, 0.1)",
+        "effects": [
+          {
+            "type": "drop-shadow",
+            "x": 0,
+            "y": 8,
+            "blur": 10,
+            "spread": -6,
+            "color": "rgba(0, 0, 0, 0.1)"
+          },
+          {
+            "type": "drop-shadow",
+            "x": 0,
+            "y": 20,
+            "blur": 25,
+            "spread": -5,
+            "color": "rgba(0, 0, 0, 0.1)"
+          }
+        ]
+      },
+      {
+        "name": "Box Shadow/shadow-2xl",
+        "token": "box-shadow-shadow-2xl",
+        "type": "effect",
+        "value": "box-shadow: 0px 25px 50px -12px rgba(0, 0, 0, 0.25)",
+        "effects": [
+          {
+            "type": "drop-shadow",
+            "x": 0,
+            "y": 25,
+            "blur": 50,
+            "spread": -12,
+            "color": "rgba(0, 0, 0, 0.25)"
+          }
+        ]
+      },
+      {
+        "name": "Box Shadow/shadow-inner",
+        "token": "box-shadow-shadow-inner",
+        "type": "effect",
+        "value": "box-shadow: inset 0px 2px 4px 0px rgba(0, 0, 0, 0.06)",
+        "effects": [
+          {
+            "type": "inner-shadow",
+            "x": 0,
+            "y": 2,
+            "blur": 4,
+            "spread": 0,
+            "color": "rgba(0, 0, 0, 0.06)"
+          }
+        ]
+      },
+      {
+        "name": "Box Shadow/shadow-none",
+        "token": "box-shadow-shadow-none",
+        "type": "effect",
+        "value": "box-shadow: 0px 0px 0px 0px rgba(0, 0, 0, 0)",
+        "effects": [
+          {
+            "type": "drop-shadow",
+            "x": 0,
+            "y": 0,
+            "blur": 0,
+            "spread": 0,
+            "color": "rgba(0, 0, 0, 0)"
+          }
+        ]
+      },
+      {
+        "name": "Box Shadow/Focus ring",
+        "token": "box-shadow-focus-ring",
+        "type": "effect",
+        "value": "box-shadow: 0px 0px 0px 3px rgba(110, 101, 98, 0.5)",
+        "effects": [
+          {
+            "type": "drop-shadow",
+            "x": 0,
+            "y": 0,
+            "blur": 0,
+            "spread": 3,
+            "color": "rgba(110, 101, 98, 0.5)"
+          }
+        ]
+      },
+      {
+        "name": "Box Shadow/Destructive",
+        "token": "box-shadow-destructive",
+        "type": "effect",
+        "value": "box-shadow: 0px 0px 0px 3px rgba(220, 38, 38, 0.2)",
+        "effects": [
+          {
+            "type": "drop-shadow",
+            "x": 0,
+            "y": 0,
+            "blur": 0,
+            "spread": 3,
+            "color": "rgba(220, 38, 38, 0.2)"
+          }
+        ]
+      }
+    ]
+  }
+}

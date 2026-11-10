@@ -1,0 +1,5 @@
+interface:
+  display_name: "Grill Me"
+  short_description: "逐輪追問，釐清需求並寫回文件"
+policy:
+  allow_implicit_invocation: false

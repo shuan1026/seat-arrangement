@@ -1,0 +1,76 @@
+// 資料設計見 docs/architecture.md 第 7 節。
+// 部門、組別、顯示名稱、桌次部門標示、工作人員身分都由資料推導，不另外存。
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Employee {
+  id          Int          @id @default(autoincrement())
+  name        String       @db.VarChar(50)
+  englishName String?      @db.VarChar(100)
+  department  String       @db.VarChar(50)
+  team        String?      @db.VarChar(50) // 組別，選填
+  extension   String?      @db.VarChar(50) // 多個分機合併為「1234／1235」；N/A 存 null
+  region      String?      @db.VarChar(20)
+  office      String?      @db.VarChar(50)
+  note        String?      @db.VarChar(500)
+  sortOrder   Int // 員工名單順序，決定部門與組別的排序
+  participant Participant? @relation("EmployeeParticipant")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([name, department])
+  @@index([sortOrder])
+}
+
+enum ParticipantKind {
+  EMPLOYEE
+  DEPENDENT
+  GUEST
+}
+
+model Participant {
+  id           Int             @id @default(autoincrement())
+  kind         ParticipantKind
+  // EMPLOYEE：一位員工最多報名一次
+  employeeId   Int?            @unique
+  employee     Employee?       @relation("EmployeeParticipant", fields: [employeeId], references: [id], onDelete: Cascade)
+  // DEPENDENT：所屬員工的參與人員；unique 確保每位員工最多一位眷屬
+  hostId       Int?            @unique
+  host         Participant?    @relation("Dependent", fields: [hostId], references: [id], onDelete: Cascade)
+  dependent    Participant?    @relation("Dependent")
+  relation     String?         @db.VarChar(20) // 眷屬稱謂
+  guestName    String?         @db.VarChar(50) // 外部貴賓姓名
+  organization String?         @db.VarChar(100) // 外部貴賓單位
+  title        String?         @db.VarChar(50) // 外部貴賓頭銜
+  childSeat    Boolean         @default(false)
+  vegetarian   Boolean         @default(false)
+  note         String?         @db.VarChar(500)
+  // null = 未入座；工作人員桌的 id 是 0
+  tableId      Int?
+  table        SeatTable?      @relation(fields: [tableId], references: [id])
+  seatOrder    Int? // 桌內名單順序，0 起算
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([tableId, seatOrder])
+}
+
+enum TableKind {
+  NORMAL
+  STAFF
+}
+
+model SeatTable {
+  id           Int           @id // 1–30 為桌號；工作人員桌固定為 0
+  kind         TableKind
+  noteName     String?       @db.VarChar(50) // 備註名稱
+  participants Participant[]
+  updatedAt    DateTime      @updatedAt
+}

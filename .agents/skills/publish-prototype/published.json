@@ -1,0 +1,54 @@
+{
+  "version": "1794276034-c96f",
+  "recordedAt": "2026-11-10",
+  "files": {
+    "employees.html": {
+      "sha256": "b17a435bb6350e93465b22600c018df7115a7b6ef272f35a8e6ef0652a9063e9",
+      "bytes": 10730
+    },
+    "index.html": {
+      "sha256": "6688b2c3211bc8ab94a2646582dae80a621830df252508c05185d41ae16d277f",
+      "bytes": 517
+    },
+    "people.html": {
+      "sha256": "87913edaa58e0f313710abaafc060cd4d538b8c5d031da2d1dfd3d71756f8beb",
+      "bytes": 6982
+    },
+    "seating.html": {
+      "sha256": "8d2d5be9f28eed9c9489c4fefc7ee17184b5fe9855281786f79bc0b2d0263217",
+      "bytes": 38645
+    },
+    "shared/core.js": {
+      "sha256": "9781210efcc242ca5bb19b3486d7be3bfe3d2e5b71ed5959f44357547601328c",
+      "bytes": 19760
+    },
+    "shared/data.js": {
+      "sha256": "09f1e4479a6658bbb0787501aba7a67804ce9676c267611501c614e3d2b6af2a",
+      "bytes": 8328
+    },
+    "shared/prototype.css": {
+      "sha256": "6577737085c786a33163c42ed94878a4ba86844e274f749dd323a2298feb8929",
+      "bytes": 46751
+    },
+    "shared/roster.js": {
+      "sha256": "748b424335cc2fa60295bade782531ddeaf72a7421e9cecb590094483c84724f",
+      "bytes": 22622
+    },
+    "shared/seating-2025.js": {
+      "sha256": "11b1ef7a287a956bef86cc261cb3adbea545ee3b0dee052753e74f0ea310279c",
+      "bytes": 5803
+    },
+    "shared/shell.js": {
+      "sha256": "d1abcd466101b0c825210e351e9fdd0fdede94ac77094133115144f03a2561f8",
+      "bytes": 18785
+    },
+    "shared/tokens.css": {
+      "sha256": "b4a849613f164daee1cebb59bd68df240b88ce8294fb5aab57d312d5e940aa7f",
+      "bytes": 39790
+    },
+    "shared/ui.js": {
+      "sha256": "b487235417a4841c6d25dac5c3899420b68f26cf5976fc1d0df154a34565ed9c",
+      "bytes": 64092
+    }
+  }
+}
