@@ -6,6 +6,9 @@ ui-design-system/source-reference/html/prototype/registrations-2026.js
 # 正式版 seed 匯入用的真實名單，只在第一次手動部署的 ZIP 帶上（D-007）
 prisma/seed-data/
 
+# 階段 2 各功能線的 git worktree（docs/plan/implementation-plan.md 第 5.3 節）
+.worktrees/
+
 # 依賴與建置產物
 node_modules/
 .next/

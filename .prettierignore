@@ -1,4 +1,5 @@
 docs
+.worktrees
 ui-design-system
 .agents
 .claude

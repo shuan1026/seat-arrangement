@@ -1,5 +1,6 @@
 # 映像只放執行需要的檔案；文件、設計系統、測試與真實資料都不進映像
 .git
+.worktrees
 node_modules
 .next
 src/generated

@@ -115,14 +115,14 @@
 
 ### 5.3 平行時的規則
 
-| 線 | 分支 | 測試資料庫 | E2E 埠號 |
-|---|---|---|---|
-| A | `lane/a-employees` | `seat_test_a` | 3101 |
-| B | `lane/b-participants` | `seat_test_b` | 3102 |
-| C | `lane/c-seating` | `seat_test_c` | 3103 |
-| D | `lane/d-arrange-export` | `seat_test_d` | 3104 |
+| 線 | 分支 | worktree | 測試資料庫 | E2E 埠號 |
+|---|---|---|---|---|
+| A | `lane/a-employees` | `.worktrees/a-employees` | `seat_test_a` | 3101 |
+| B | `lane/b-participants` | `.worktrees/b-participants` | `seat_test_b` | 3102 |
+| C | `lane/c-seating` | `.worktrees/c-seating` | `seat_test_c` | 3103 |
+| D | `lane/d-arrange-export` | `.worktrees/d-arrange-export` | `seat_test_d` | 3104 |
 
-- 每條線在自己的 worktree（從基準版建立）開發，先 `npm ci`，再用上表的資料庫與埠號。
+- 每條線在自己的 worktree（從階段 2 開始時的主分支建立）開發，先 `npm ci`，再複製主目錄的 `.env` 並改成上表的資料庫與埠號。`.worktrees/` 在 `.gitignore` 裡，主目錄的型別檢查、lint 與建置都會略過它。
 - 只改自己擁有的檔案。需要改共用檔案時停下來回報主 agent；主 agent 在主分支改好、使用者 commit 後，各線再合併主分支的更新。
 - 每次改動都跑全部測試（`npm test`），全部通過才算完成那一步。
 - agent 不 commit。線完成時回報：改了哪些檔案、測試結果、截圖與發現的問題；由使用者在該 worktree commit，再合併回主分支。

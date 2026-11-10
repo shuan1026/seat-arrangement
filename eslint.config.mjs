@@ -7,6 +7,7 @@ const config = [
   {
     ignores: [
       '.next/**',
+      '.worktrees/**',
       'node_modules/**',
       'src/generated/**',
       'ui-design-system/**',
