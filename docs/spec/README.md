@@ -125,7 +125,7 @@ Seat Arrangement 是尾牙承辦人在活動前安排座位的工具，只服務
 | 區域 | 做法 |
 |---|---|
 | Sidebar | 桌面展開 240 px、收合為 48 px 圖示列，固定在視窗內距 24 px，底色 `--sidebar`，外框 `--sidebar-border`。切換鈕在 Header；視窗低於 1024 px 時預設收合 |
-| Logo 區 | 展開 208 × 72 px 放完整 Logo（符號加字標），收合 24 × 24 px 只放符號；瀏覽器分頁圖示也用符號。單色：淺色表面用 `--color-text`，深色表面用白色版；深色主題時 Sidebar 與 Drawer 的 Logo 用白色版（D-020）。檔案在 `ui-design-system/assets/logo/`：`logo-dark.svg`、`logo-light.svg`（完整 Logo）與 `symbol-dark.svg`、`symbol-light.svg`（符號），`dark`／`light` 指 Logo 本身的顏色。Logo 與配色已確認：Logo 用這組圓桌座位標誌，色彩用多彩活力 |
+| Logo 區 | 展開 208 × 72 px 放完整 Logo（符號加字標），收合 24 × 24 px 只放符號；瀏覽器分頁圖示也用符號。單色：淺色表面用 `--color-text`，深色表面用白色版；深色主題時 Sidebar、Drawer 與登入頁的 Logo 都用白色版（D-020）。檔案在 `ui-design-system/assets/logo/`：`logo-dark.svg`、`logo-light.svg`（完整 Logo）與 `symbol-dark.svg`、`symbol-light.svg`（符號），`dark`／`light` 指 Logo 本身的顏色。Logo 與配色已確認：Logo 用這組圓桌座位標誌，色彩用多彩活力 |
 | 導覽項目 | 座位安排、參與人員、員工名單、權限，各配一個 Lucide 圖示（`armchair`、`users`、`id-card`、`key-round`）；「權限」只有編輯者看得到（第 4 節）。圖示用 `--muted-foreground`；目前頁面用 `--primary` 12% 的淡色底加 `Text-sm/Medium`；收合時以 Tooltip 顯示名稱 |
 | 使用者區塊 | 依設計系統的 Sidebar User Footer 放在 Sidebar 底部：32 px 圓形頭像（`--sidebar-avatar-bg` 底、`--sidebar-avatar-fg` 字，放姓名的第一個字），旁邊兩行是姓名 `Text-sm/Semi Bold` 與 email `Text-xs/Regular`，最右是 `chevrons-up-down` 圖示。Sidebar 收合時只剩頭像，滑過以 Tooltip 顯示姓名。點開是 Dropdown Menu `user-menu`，在觸發區右側、底邊對齊：第一列是姓名與 email，下面只有「登出」（`log-out` 圖示）。手機放在 Drawer 底部，選單往上開、和觸發區同寬 |
 | Header | 約 48 px，跟著頁面捲動，沒有底色。左側是 Sidebar 切換鈕，右側依序是介面配色鈕（COM-R17）與儲存狀態（第 6 節）；只能檢視時儲存狀態的位置改為中性徽章「只能檢視」（COM-R20）。桌面與手機的 Header 都不顯示產品名稱與頁面標題 |
@@ -214,7 +214,7 @@ Seat Arrangement 是尾牙承辦人在活動前安排座位的工具，只服務
 | COM-R14 | 搜尋姓名的地方都能用分機搜尋。 |
 | COM-R15 | 同一人有多個分機時以「／」合併顯示，例如「1234／1235」。 |
 | COM-R16 | 匯入的錯誤清單與完成訊息裡的列號，是這一列在檔案中的列號，和用 Excel 開啟時看到的一致：表頭是第 1 列，空白列也算一列，儲存格內的換行不另算一列。適用於匯入員工名單與匯入參與人員。 |
-| COM-R17 | 介面配色有「淺色」「深色」兩種，預設是淺色（D-020）。Header 的介面配色鈕（Icon Button，`palette` 圖示，無障礙名稱與 Tooltip「介面配色」）開啟 Dropdown Menu，對齊按鈕右緣：最上面是 `Text-xs/Regular` 的淡色標題「介面配色」，下面是「淺色」「深色」兩個單選項目，各有 16 px 圓形色塊（`--theme-swatch-vivid`、`--theme-swatch-dark`），目前的配色右邊打勾。選了立即套用、不重新整理，選單關閉、焦點回到按鈕，以 Sonner 顯示「已切換為淺色。」或「已切換為深色。」。 |
+| COM-R17 | 介面配色有「淺色」「深色」兩種，預設是淺色（D-020）。Header 的介面配色鈕（Icon Button，`palette` 圖示，無障礙名稱與 Tooltip「介面配色」）開啟 Dropdown Menu，對齊按鈕右緣：最上面是 `Text-xs/Regular` 的淡色標題「介面配色」，下面是「淺色」「深色」兩個單選項目，各有 16 px 圓形色塊（`--theme-swatch-vivid`、`--theme-swatch-dark`），目前的配色右邊打勾。選了立即套用、不重新整理，選單關閉、焦點回到按鈕，以 Sonner 顯示「已切換為淺色。」或「已切換為深色。」。選了目前的配色時只關閉選單，不顯示 Sonner。 |
 | COM-R18 | 配色記在這個瀏覽器（換電腦或瀏覽器要再選一次），不跟著作業系統的深色模式。開啟任何頁面時在畫面第一次繪製前就套用，不會先閃淺色。登入頁與發布頁 `/seats` 沿用這個瀏覽器的選擇，但沒有介面配色鈕。配色只換顏色，版面、元件與文案都不變；匯出的座位表不受配色影響（`export.md`）。 |
 
 ## 11. 設計規範
