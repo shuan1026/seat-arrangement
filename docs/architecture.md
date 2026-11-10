@@ -291,7 +291,7 @@ model SeatTable {
 
 | 規則 | 檢查方式 |
 |---|---|
-| 一般桌最多 10 位；工作人員桌最多 10 位且只放員工 | 交易開始先 `SELECT ... FOR UPDATE` 鎖住涉及的桌次列（依桌號由小到大鎖，避免死結），再計算人數 |
+| 一般桌與工作人員桌標準 10 位、最多 12 位（D-018）：拖移與「加入人員」的指令帶 `allowOverflow` 時上限 12，其他入口（選擇桌次、人員對話框的桌次與工作人員）上限 10；工作人員桌只放員工 | 交易開始先 `SELECT ... FOR UPDATE` 鎖住涉及的桌次列（依桌號由小到大鎖，避免死結），再計算人數 |
 | 眷屬的所屬員工必須已報名 | `hostId` 指向 `kind = EMPLOYEE` 的參與人員 |
 | 各類別的必填欄位 | zod schema 依 `kind` 區分 |
 | 桌內順序連續 | 每次異動後把該桌 `seatOrder` 重排為 0..n-1 |
@@ -349,7 +349,7 @@ model SeatTable {
 
 ```ts
 type SeatingOperation =
-  | { type: "seat"; participantId: number; tableId: number; index?: number } // 入座、加入、搬移、拖進工作人員桌
+  | { type: "seat"; participantId: number; tableId: number; index?: number; allowOverflow?: boolean } // 入座、加入、搬移、拖進工作人員桌
   | { type: "unseat"; participantId: number }                               // 移出桌次或工作人員桌
   | { type: "reorder"; tableId: number; participantIds: number[] }          // 桌內調整順序
   | { type: "clear"; tableId: number }                                       // 清空
@@ -370,6 +370,7 @@ type SeatingOperationResult = {
 ```
 
 - 每個指令都回傳 `undo`，前端只保留最近一次；按「復原」就送 `{ type: "restore", snapshot }`。復原記錄只存在瀏覽器記憶體，重新整理後就沒有了。
+- `seat`、`seatMany` 帶 `allowOverflow: true`（拖移與「加入人員」）時每桌上限 12 位，不帶時上限 10 位（選擇桌次對話框）；`restore`、`swap` 上限 12 位；`autoArrange` 每桌只排到 10 位（D-018）。超過上限時回 409，錯誤碼區分 10 位（`TABLE_FULL`）與 12 位（`TABLE_LIMIT`），前端照 `seating.md` SEAT-R86 顯示不同提示。
 - 新增、編輯、刪除、加入尾牙、取消報名、匯入不走這個端點，也不能復原。
 
 ### 8.2 錯誤格式
