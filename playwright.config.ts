@@ -8,6 +8,7 @@ const port = Number(process.env.E2E_PORT || 3100);
 const testDb = process.env.TEST_DATABASE_NAME || 'seat_test';
 const baseURL = `http://localhost:${port}`;
 const channel = process.env.PLAYWRIGHT_CHANNEL || 'chrome';
+const standaloneServer = 'node .next/standalone/server.js';
 
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -39,20 +40,25 @@ export default defineConfig({
       },
     },
   ],
-  // 用正式建置跑 E2E：開發模式邊跑邊編譯頁面，編譯完會觸發整頁重新載入，測試會不穩定；
-  // 正式建置也比較接近 aiborn 上實際跑的版本。設 E2E_DEV=1 可改用 next dev（除錯用）。
-  // npm run test:e2e（scripts/e2e.mjs）先建置一次再分組，各組設 E2E_SKIP_BUILD=1 只啟動伺服器。
+  // 用正式建置跑 E2E：開發模式邊跑邊編譯頁面，編譯完會觸發整頁重新載入，測試會不穩定。
+  // 啟動方式和 aiborn 上的 Docker 映像相同：standalone 伺服器 node .next/standalone/server.js，
+  // 以 PORT、HOSTNAME 指定埠號與位址（scripts/prepare-standalone.mjs 先複製靜態檔）。設 E2E_DEV=1 可改用 next dev（除錯用）。
+  // npm run test:e2e（scripts/e2e.mjs）先建置、準備 standalone 一次再分組，各組設 E2E_SKIP_BUILD=1 只啟動伺服器。
   webServer: {
     command:
       process.env.E2E_DEV === '1'
         ? `npx next dev --port ${port}`
         : process.env.E2E_SKIP_BUILD === '1'
-          ? `npx next start --port ${port}`
-          : `npx next build && npx next start --port ${port}`,
+          ? standaloneServer
+          : `npx next build && node scripts/prepare-standalone.mjs && ${standaloneServer}`,
     url: `${baseURL}/api/health`,
     reuseExistingServer: false,
     timeout: 300_000,
     env: {
+      // standalone 伺服器讀 PORT、HOSTNAME（Docker 映像是 8080、0.0.0.0）。測試只綁本機位址，
+      // 明確設定也避免沿用 shell 既有的 HOSTNAME（有些環境是主機名稱）
+      PORT: String(port),
+      HOSTNAME: '127.0.0.1',
       DATABASE_NAME: testDb,
       NEXTAUTH_URL: baseURL,
       NEXTAUTH_SECRET: process.env.E2E_NEXTAUTH_SECRET || 'e2e-only-secret-not-for-production',
