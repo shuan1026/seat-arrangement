@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 版本 | v1.0（2026-11-10） |
+| 版本 | v1.1（2026-11-10，中性徽章加上「不參加」，D-014） |
 | 範圍 | 本檔寫產品定位、頁面、App Shell、儲存、多人操作、登入、通用狀態、設計與文案規範；各功能見第 3 節 |
 | 視覺 | `ui-design-system/`，視覺一律以它為準 |
 | 頁面版型 | `ui-design-system/source-reference/html/` 的原型頁面決定頁面區塊、排列與文案位置 |
@@ -212,7 +212,7 @@ Seat Arrangement 是尾牙承辦人在活動前安排座位的工具，只服務
 |---|---|---|---|
 | 正向 | `--status-positive-bg`／`--status-positive-fg` | `check` | 已滿、已報名 |
 | 待處理 | `--status-pending-bg`／`--status-pending-fg` | `clock` | 未入座、未報名 |
-| 中性 | `--muted`／`--muted-foreground` | 無 | 空桌、工作人員 |
+| 中性 | `--muted`／`--muted-foreground` | 無 | 空桌、工作人員、不參加（D-014） |
 
 不代表狀態的標示：類別「貴賓」用 Badge `outline`；「兒童椅」與「素食」用 `third` 的 16 px 小徽章，分別只放 `baby` 與 `leaf` 圖示、滑過顯示 Tooltip；桌次「第 {n} 桌」用 `outline`（可按下，在座位圖標示那一桌）。眷屬已經寫在顯示名稱裡（「_眷屬」），不另加徽章。徽章內的圖示暫定 12 px，放在文字前，間距 `--space-1`。
 

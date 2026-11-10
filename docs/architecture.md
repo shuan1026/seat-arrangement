@@ -141,7 +141,7 @@ flowchart LR
 | 功能模組 | domain | server/services | API |
 |---|---|---|---|
 | 員工名單 | `employees.ts`、`roster-import.ts` | `employees.ts` | `/api/employees` |
-| 參與人員 | `participants.ts`、`participant-import.ts` | `participants.ts` | `/api/participants` |
+| 參與人員 | `participants.ts`、`registration-import.ts` | `participants.ts` | `/api/participants` |
 | 座位安排 | `seating-rules.ts`、`auto-arrange.ts`、`layout.ts` | `seating.ts` | `/api/seating`、`/api/tables` |
 | 匯出座位表 | `seating-sheet.ts` | `export.ts` | `/api/export/seating` |
 | 登入 | `auth-policy.ts`（公司網域檢查） | `server/auth.ts`（Auth.js 設定） | `/api/auth/*`、`src/proxy.ts` |
@@ -158,7 +158,7 @@ seat-arrangement/
 ├── prisma/
 │   ├── schema.prisma
 │   ├── migrations/
-│   └── seed-data/                # roster.csv、registrations.csv；不進 repo，只在第一次手動部署的 ZIP 帶上（D-007）。匯入程式在 src/server/seed.ts
+│   └── seed-data/                # roster.csv、registrations.csv，可選的 staff.csv、tables.csv；不進 repo，只在第一次手動部署的 ZIP 帶上（D-007）。匯入程式在 src/server/seed.ts
 ├── src/
 │   ├── proxy.ts                  # 登入檢查（第 9 節；Next.js 16 的 proxy，舊名 middleware）
 │   ├── app/
@@ -225,6 +225,7 @@ model Employee {
   region      String?      @db.VarChar(20)
   office      String?      @db.VarChar(50)
   note        String?      @db.VarChar(500)
+  declined    Boolean      @default(false)   // 承辦人標記為不參加（D-014）；有參與人員時一律視為已報名，加入尾牙時清掉
   sortOrder   Int                            // 員工名單順序，決定部門與組別的排序
   participant Participant? @relation("EmployeeParticipant")
   createdAt   DateTime     @default(now())
@@ -295,13 +296,15 @@ model SeatTable {
 | 各類別的必填欄位 | zod schema 依 `kind` 區分 |
 | 桌內順序連續 | 每次異動後把該桌 `seatOrder` 重排為 0..n-1 |
 
+寫入的交易一律用 `READ COMMITTED` 隔離等級（Prisma `isolationLevel: ReadCommitted`）。MySQL 預設的 `REPEATABLE READ` 會讓交易停在第一次讀取的快照：先讀一次、再鎖住桌次，之後的一般讀取仍看不到別人在這之間提交的異動，鎖住後的檢查就失效。
+
 ### 7.3 Migration 與初始資料
 
 - 開發時用 `prisma migrate dev` 產生 migration，提交進 repo。
 - 正式環境啟動時執行 `prisma migrate deploy` 與 `seed`（第 14 節）。
 - 1–30 桌與工作人員桌寫在第一個 migration 的 INSERT，不靠 seed。
-- seed 在 `prisma migrate deploy` 之後、伺服器接受請求之前執行：Next.js 啟動時由 `src/instrumentation.ts` 呼叫 `src/server/seed.ts`，失敗就結束程序。正式映像沒有 TypeScript 執行工具，借用 Next.js 已打包好的程式與 Prisma Client，不另外建置。只在 `SEED_IMPORT=1`（Dockerfile 設定）時執行，本機開發與測試不會匯入真實資料。員工表是空的、而且 `prisma/seed-data/roster.csv` 與 `registrations.csv` 都存在時，匯入員工名單，再匯入報名表成為參與人員（D-007）。
-  - 兩份匯入在同一個交易內完成，前面先取得 MySQL `GET_LOCK('seed-import')`，避免多個執行個體同時啟動時重複匯入；任何一列以外的錯誤就整批不寫入。
+- seed 在 `prisma migrate deploy` 之後、伺服器接受請求之前執行：Next.js 啟動時由 `src/instrumentation.ts` 呼叫 `src/server/seed.ts`，失敗就結束程序。正式映像沒有 TypeScript 執行工具，借用 Next.js 已打包好的程式與 Prisma Client，不另外建置。只在 `SEED_IMPORT=1`（Dockerfile 設定）時執行，本機開發與測試不會匯入真實資料。員工表是空的、而且 `prisma/seed-data/roster.csv` 與 `registrations.csv` 都存在時，匯入員工名單，再匯入報名表成為參與人員（D-007）。接著有 `staff.csv`（姓名、部門）時，把這些人設為工作人員、依檔案順序放進工作人員桌；有 `tables.csv`（桌號、備註名稱）時寫入備註名稱（D-015）。對不到、沒有報名、超過工作人員桌人數或格式不符的列略過並記 Log。seed 不自動排座。
+  - 這幾步在同一個交易內完成，前面先取得 MySQL `GET_LOCK('seed-import')`，避免多個執行個體同時啟動時重複匯入；任何一列以外的錯誤就整批不寫入。
   - 員工表已有資料、或資料檔不存在時跳過，並記一筆 Log；所以重新部署與冷啟動都不會蓋掉上線後的修改。
   - 匯入摘要（員工、參與人員、眷屬的筆數，以及對不到員工名單的報名者）寫進 Log，不印電子郵件。
 - 資料表變更只能新增 migration，不改已部署過的 migration。
@@ -328,6 +331,7 @@ model SeatTable {
 | `POST /api/employees` | 新增員工 |
 | `PATCH /api/employees/{id}` | 編輯員工 |
 | `DELETE /api/employees/{id}` | 刪除員工；已報名者一併取消報名、移除眷屬、空出座位 |
+| `PUT /api/employees/{id}/declined` | 標記為不參加或改回未報名（`{ declined: boolean }`）；這位員工已報名時回 409（D-014） |
 | `POST /api/employees/import` | 上傳通訊錄 CSV（multipart），建立或更新員工；回傳成功筆數與需要處理的列 |
 | `POST /api/participants` | 新增參與人員：員工加入尾牙（可同時加一位眷屬）、眷屬、外部貴賓 |
 | `POST /api/participants/bulk-join` | 勾選多位員工一次加入尾牙 |
@@ -467,7 +471,7 @@ type SeatingOperationResult = {
 
 ### 11.1 員工名單
 
-- **匯入**（`roster-import.ts`）：解析通訊錄 CSV → 略過總機資訊、公共區域、會議室等設備列與「空位」列 → 同一人多個分機合併 → 分機 N/A 視為沒有分機 → 以「姓名 + 部門」對應既有員工，有就更新、沒有就新增 → 有錯誤的列不匯入，其餘照常匯入。
+- **匯入**（`roster-import.ts`）：解析通訊錄 CSV → 依欄名判斷和範本是否一致（D-012）→ 略過總機資訊、公共區域、英文名空白的設備列與「空位」列（D-012）→ 同一人多個分機合併 → 分機 N/A 視為沒有分機 → 以「姓名 + 部門」對應既有員工，有就更新、沒有就新增 → 有錯誤的列不匯入，其餘照常匯入。
 - 匯入順序寫進 `sortOrder`；新增的員工排在最後。
 - 匯入結果回傳需要處理的列（列號、原始內容、原因），「下載錯誤清單」由前端把它轉成 CSV 下載，伺服器不存檔。
 - 上傳大小上限 1 MB（通訊錄約 30 KB）。
@@ -476,7 +480,6 @@ type SeatingOperationResult = {
 
 - 顯示名稱、部門、分機由 `domain/participants.ts` 推導：員工取員工名單；眷屬為「{員工姓名}_眷屬」、部門跟著所屬員工；外部貴賓顯示姓名與單位／頭銜。
 - 加入尾牙、取消報名、刪除的連動依第 7.1 節的外鍵規則。
-- **匯入**（`participant-import.ts`）：員工與眷屬的所屬員工以姓名對應員工名單，同名時用同列的部門判斷；對不到的列、同一位員工的第二位眷屬列為需要處理；已報名的員工只更新備註與桌號。
 - **報名表**（`registration-import.ts`，seed 與參與人員頁的匯入共用，D-007、D-010）：解析 Google 表單匯出的報名表，規則以 `docs/spec/participants.md` 第 3.6 節為準。欄位以表頭文字辨認：名字、部門、是否參加、是否攜帶眷屬、是否需要兒童座椅、本人與眷屬的飲食習慣、本人葷素（可缺）、備註。只收「是」參加的人；同一人填好幾次時以最後一次為準；以姓名對應員工名單，同名再用部門判斷；攜帶眷屬時加一位眷屬，兒童座椅填「是」時眷屬需要兒童椅，回答含「素」而且不含「葷」才標素食；備註照填。對不到員工名單的人不匯入，列進匯入摘要。電子郵件與填寫時間不存。單元測試用虛構的表單 CSV，涵蓋重複填寫、不參加、對不到員工名單、同名與表頭含全形空白或特殊字元（實際表頭的「尾牙」用了異體字 `⽛`）。
 
 ### 11.3 座位安排
@@ -545,7 +548,7 @@ type SeatingOperationResult = {
 4. 部署方式：
    - 手動：打包 ZIP（排除 `node_modules`、`.next`、`.env*`、`.git`）上傳；或
    - 自動：在 GitLab 設定平台產生的 CI job（推送到預設分支就部署），把部署權杖存成 masked、protected 的 CI 變數 `AIBORN_DEPLOY_TOKEN`。CI 以 `git archive` 打包已提交的檔案，未提交的 `.env`、`docs/glossary/` 與 `prisma/seed-data/` 不會被帶走。
-   - 匯入真實名單（D-007）：在第 2 步的第一次部署前，把通訊錄（最後加「組別」欄）存成 `prisma/seed-data/roster.csv`，把 Google 表單匯出的報名表存成 `prisma/seed-data/registrations.csv`，用手動 ZIP 部署。到「網站監控」的 Log 看匯入摘要，確認筆數和對不到員工名單的人。匯入成功後刪掉本機的 `prisma/seed-data/`，之後的 ZIP 不再帶資料檔。
+   - 匯入真實名單（D-007）：在第 2 步的第一次部署前，把通訊錄（最後加「組別」欄）存成 `prisma/seed-data/roster.csv`，把 Google 表單匯出的報名表存成 `prisma/seed-data/registrations.csv`；工作人員名單與前方七桌的備註名稱是 `staff.csv`、`tables.csv`（D-015，已建立在本機）。用手動 ZIP 部署。到「網站監控」的 Log 看匯入摘要，確認筆數和對不到員工名單的人。匯入成功後刪掉本機的 `prisma/seed-data/`，之後的 ZIP 不再帶資料檔。
 5. 到平台的部署中心看建置進度。完成後用公司帳號登入，確認 `/api/health` 與座位安排頁正常，再用非公司帳號確認會被擋。
 
 ### 14.4 環境

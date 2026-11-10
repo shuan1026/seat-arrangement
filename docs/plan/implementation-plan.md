@@ -95,9 +95,9 @@
 | 線 | 範圍 | 擁有的檔案 | 測試重點 |
 |---|---|---|---|
 | A 員工名單 | EMP-01～06 | `src/domain/{employees,roster-import}.ts`、`src/server/services/employees.ts`、`src/app/api/employees/**`、`src/app/(main)/employees/**`、`src/components/features/employees/**`、對應的 `tests/**/employees*` | 匯入規則（略過設備列與「空位」、合併分機、N/A、以姓名加部門對應、錯誤列）；刪除已報名員工的連動；搜尋、篩選、分頁、勾選多筆 |
-| B 參與人員 | PPL-01～07、加入尾牙（EMP-03 的 API） | `src/domain/{participants,participant-import}.ts`、`src/server/services/participants.ts`、`src/app/api/participants/**`、`src/app/(main)/people/**`、`src/components/features/people/**`、對應的 `tests/**/participants*` | 三種類別的規則；一位員工最多一位眷屬；取消報名與刪除的連動；工作人員勾選；匯入 |
+| B 參與人員 | PPL-01～07、加入尾牙（EMP-03 的 API） | `src/domain/{participants,registration-import}.ts`、`src/server/services/participants.ts`、`src/app/api/participants/**`、`src/app/(main)/people/**`、`src/components/features/people/**`、對應的 `tests/**/participants*` | 三種類別的規則；一位員工最多一位眷屬；取消報名與刪除的連動；工作人員勾選；匯入 |
 | C 座位安排 | SEAT-01～09、11 | `src/domain/seating-rules.ts`、`src/server/services/seating.ts`、`src/app/api/{seating,tables}/**`、`src/app/(main)/page.tsx`、`src/components/features/seating/**`、對應的 `tests/**/seating*` | 每個指令的規則、回傳的復原資料與復原；兩人同時搶同一桌最後一個位子；拖移、縮放、找人的 E2E |
-| D 自動排座與匯出 | SEAT-10 的演算法、PLT-03 | `src/domain/{auto-arrange,seating-sheet}.ts`、`src/server/excel.ts`、`src/app/api/export/**`、對應的 `tests/**/{auto-arrange,export}*` | 用示範資料驗證自動排座的結果（第 3–23 桌中沒有備註名稱的 18 桌填滿、第 24 桌 6 位、只有硬體設計組與維修拆成兩桌）；匯出版面模型每一格的位置與內容 |
+| D 自動排座與匯出 | SEAT-10 的演算法、PLT-03 | `src/domain/{auto-arrange,seating-sheet}.ts`、`src/server/excel.ts`、`src/app/api/export/**`、對應的 `tests/**/{auto-arrange,export}*` | 用示範資料驗證自動排座的結果（`docs/spec/auto-arrange.md` 5.2：211 位排進第 3–27 桌、拆開 5 組、只有第 26 桌空 1 位）；匯出版面模型每一格的位置與內容 |
 
 - C 線最大、風險最高：**第一步先做縮放座位圖上的拖移最小驗證**（滑鼠、觸控、鍵盤），通過才繼續。
 - D 線兩個都是純函式為主，彼此獨立，一條線做完兩個。
@@ -135,14 +135,15 @@
    - 核心情境全流程：登入 → 匯入員工 → 加入尾牙 → 自動排座 → 拖移微調 → 設定備註名稱 → 名單異動 → 匯出 → 手機查詢。
    - 多人衝突：兩個瀏覽器同時操作同一桌。
 3. 全部頁面在 320、375、430、768、1024、1280 px 截圖，對照原型；檢查整頁水平捲動與元件裁切。
-4. seed 匯入真實名單（D-007）：寫 `registration-import.ts`（Google 表單報名表），seed 依序用 A 線的 `roster-import.ts` 與它匯入；測試用虛構的通訊錄與表單 CSV，涵蓋員工表已有資料時跳過、兩個執行個體同時啟動只匯入一次。
-5. 全部測試通過。
+4. seed 匯入真實名單（D-007）：seed 依序用 A 線的 `roster-import.ts` 與 B 線的 `registration-import.ts` 匯入，再依 `staff.csv` 設工作人員、依 `tables.csv` 寫備註名稱（D-015）；測試用虛構的通訊錄與表單 CSV，涵蓋員工表已有資料時跳過、兩個執行個體同時啟動只匯入一次，以及工作人員對不到、沒報名、超過 10 位與桌號或備註名稱不符時略過。
+5. 「不參加」報名狀態（D-014）：Prisma migration 加 `Employee.declined`、契約與 API（`PUT /api/employees/{id}/declined`）；員工名單的分頁、列操作、勾選；加入尾牙（含 bulk-join、參與人員頁新增、匯入報名表）時清掉標記；參與人員頁員工選項的「不參加」標示。照流程 test-writer 先補 `employees.md` 第 5.11 節與 PPL-AC84 的測試。
+6. 全部測試通過。
 
 ## 7. 階段 4：上線
 
 1. 使用者：OAuth 用戶端核准後在平台按「帶入環境變數」；設定 `ALLOWED_EMAIL_DOMAIN=program.com.tw`。
 2. 部署正式版，用公司帳號登入，再用非公司帳號確認會被擋。
-3. 用 seed 匯入真實名單（D-007）：第一次部署的手動 ZIP 帶上 `prisma/seed-data/roster.csv`（通訊錄加「組別」欄）與 `registrations.csv`（Google 表單報名表），看 Log 的匯入摘要確認筆數；成功後刪掉本機資料檔。再匯出座位表，和 2025 年的座位表比對版面。
+3. 用 seed 匯入真實名單（D-007）：第一次部署的手動 ZIP 帶上 `prisma/seed-data/roster.csv`（通訊錄加「組別」欄）與 `registrations.csv`（Google 表單報名表），以及 `staff.csv`、`tables.csv`（D-015）；看 Log 的匯入摘要確認筆數、工作人員與七桌的備註名稱；成功後刪掉本機資料檔。再匯出座位表，和 2025 年的座位表比對版面。
 4. 和承辦人實際演練一次完整排座，手機上也試一次。
 
 ## 8. 成本與注意事項
