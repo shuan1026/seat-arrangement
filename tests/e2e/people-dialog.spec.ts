@@ -345,6 +345,68 @@ test.describe('新增人員：員工', () => {
     await expect(checkbox(edit, '工作人員')).toBeEnabled();
   });
 
+  // D-018：拖移與「加入人員」可以讓一桌或工作人員桌有 11、12 位；人員對話框的桌次與「工作人員」仍到 10 位為止
+  test('第 4 桌 11 位、第 5 桌 12 位（拖移或加入人員造成的）：桌次選項都停用並標示「已滿」（SEAT-AC94、SEAT-R88、PPL-R56）', async ({ page }) => {
+    await seedDemo();
+    await withDb(async (db) => {
+      await db.fillTable(4, 11);
+      await db.fillTable(5, 12);
+      await db.fillTable(6, 9);
+    });
+    await gotoPeople(page);
+    const dialog = await openNewPersonDialog(page);
+    const listbox = await openOptions(page, selectField(dialog, '桌次'));
+    for (const n of [4, 5]) {
+      const full = optionIn(listbox, new RegExp(`^第 ${n} 桌`));
+      await expect(full).toBeDisabled();
+      await expect(full).toContainText('已滿');
+      await expect(full).not.toContainText(/剩\s*-/);
+    }
+    await expect(optionIn(listbox, /^第 6 桌（剩 1 位）/)).toBeEnabled();
+  });
+
+  for (const count of [11, 12]) {
+    test(`工作人員桌已有 ${count} 位：新增時「工作人員」停用並顯示「工作人員桌已滿，請先移出一位。」；編輯其中一位工作人員時仍是勾選且可操作的（SEAT-AC95、SEAT-R42、PPL-R54）`, async ({
+      page,
+    }) => {
+      await seedDemo();
+      await withDb((db) => db.fillStaff(count));
+      await gotoPeople(page);
+
+      const dialog = await openNewPersonDialog(page);
+      await expect(checkbox(dialog, '工作人員')).toBeDisabled();
+      await expect(dialog.getByText('工作人員桌已滿，請先移出一位。', { exact: true })).toBeVisible();
+      await dialog.getByRole('button', { name: '取消' }).click();
+      await expect(dialog).toBeHidden();
+
+      const edit = await openEditDialog(page, '工作人員2');
+      await expect(checkbox(edit, '工作人員')).toBeChecked();
+      await expect(checkbox(edit, '工作人員')).toBeEnabled();
+    });
+  }
+
+  test('編輯坐在 12 位桌次的人：自己所在的桌次不算已滿，可以照原桌次儲存；別的 11 位桌次停用（PPL-Q08、SEAT-R88）', async ({ page }) => {
+    await withDb(async (db) => {
+      const { wang } = await demoEmployees(db);
+      await db.fillTable(4, 11);
+      await db.register(wang, { tableId: 4 });
+      await db.fillTable(5, 11);
+    });
+    await gotoPeople(page);
+
+    const dialog = await openEditDialog(page, '王小明');
+    await expect(selectField(dialog, '桌次')).toContainText('第 4 桌');
+    const listbox = await openOptions(page, selectField(dialog, '桌次'));
+    await expect(optionIn(listbox, /^第 4 桌/)).toBeEnabled();
+    await expect(optionIn(listbox, /^第 5 桌/)).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await textField(dialog, '備註').fill('靠走道');
+    await save(dialog, '儲存');
+    await expect(dialog).toBeHidden();
+    await expect.poll(() => tableOf('王小明')).toBe(4);
+    expect(await withDb((db) => db.countAt(4))).toBe(12);
+  });
+
   test('按「取消」：對話框關閉，清單沒有新增任何人；按 Esc 也一樣（PPL-AC56、PPL-R60）', async ({ page }) => {
     await seedDemo();
     await gotoPeople(page);

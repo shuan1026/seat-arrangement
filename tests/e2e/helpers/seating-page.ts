@@ -5,8 +5,8 @@
 // - 每一桌：座位圖區裡的 group，名稱正好是「第 {n} 桌」；裡面有
 //   - 開啟桌次詳情的 button，名稱以「第 {n} 桌」開頭（例如「第 3 桌，主桌，研發一部，4/10」）；
 //   - 拖移把手 button「拖移調換桌次」（桌面才有）；
-//   - 展開時的名單列是 listitem（固定 10 列，空位列文字「空位」）。
-//   收合時畫面上的文字是桌號數字、備註名稱或部門、人數（或「已滿」）。
+//   - 展開時的名單列是 listitem（固定 10 列，這一桌有 11、12 位時 12 列；空位列文字「空位」）。
+//   收合時畫面上的文字是桌號數字、備註名稱或部門、人數（或「已滿」，11、12 位時「超過」，D-018）。
 // - 工作人員桌：座位圖區裡的 group「工作人員桌」，裡面開啟詳情的 button 名稱以「工作人員桌」開頭（2.5.1：「工作人員桌・{部門}」）。
 // - 桌次詳情：桌面是 region（或非 modal 的 dialog）、手機是 dialog，名稱正好是「第 {n} 桌」；工作人員桌詳情名稱「工作人員桌」。
 //   詳情的名單是 list「名單」，每列是 listitem；名單列的列操作是 button「更多操作」（README 第 14 節）。
@@ -59,10 +59,10 @@ export async function openStaffDetail(page: Page): Promise<Locator> {
   return detail;
 }
 
-/** 名單列依序含有這些名字，其餘是「空位」，共 10 列 */
-export async function expectRoster(rows: Locator, names: string[]) {
-  await expect(rows).toHaveCount(10);
-  for (let i = 0; i < 10; i++) {
+/** 名單列依序含有這些名字，其餘是「空位」，共 rowCount 列（預設 10 列；11、12 位的展開卡片是 12 列，D-018） */
+export async function expectRoster(rows: Locator, names: string[], rowCount = 10) {
+  await expect(rows).toHaveCount(rowCount);
+  for (let i = 0; i < rowCount; i++) {
     const name = names[i];
     if (name) await expect(rows.nth(i), `第 ${i + 1} 列`).toContainText(name);
     else await expect(rows.nth(i), `第 ${i + 1} 列`).toContainText('空位');
@@ -142,14 +142,23 @@ export async function expandAll(page: Page) {
   await expect(toolbarButton(page, '全部收合')).toBeVisible();
 }
 
-/** 統計列（SEAT-R75）：「已入座 {n}／{總人數}・未入座 {m}・空位 {k}・已滿 {t} 桌」 */
+/**
+ * 統計列（SEAT-R75）：「已入座 {n}／{總人數}・未入座 {m}・空位 {k}・已滿 {t} 桌」，
+ * 有桌次超過 10 位時最後加「・超過 {u} 桌」（D-018）。over 省略或 0 時統計列不能有「超過」。
+ */
 export const statsLine = (page: Page) => page.getByText(/已入座[\s\S]*已滿[\s\S]*桌/).filter({ visible: true }).first();
-export async function expectStats(page: Page, s: { seated: number; total: number; unseated: number; empty: number; full: number }) {
+export async function expectStats(
+  page: Page,
+  s: { seated: number; total: number; unseated: number; empty: number; full: number; over?: number },
+) {
+  const over = s.over ?? 0;
+  const tail = over > 0 ? `[\\s・]*超過\\s*${over}\\s*桌` : '';
   await expect(statsLine(page)).toHaveText(
     new RegExp(
-      `已入座\\s*${s.seated}\\s*／\\s*${s.total}[\\s・]*未入座\\s*${s.unseated}[\\s・]*空位\\s*${s.empty}[\\s・]*已滿\\s*${s.full}\\s*桌`,
+      `已入座\\s*${s.seated}\\s*／\\s*${s.total}[\\s・]*未入座\\s*${s.unseated}[\\s・]*空位\\s*${s.empty}[\\s・]*已滿\\s*${s.full}\\s*桌${tail}`,
     ),
   );
+  if (over === 0) await expect(statsLine(page)).not.toContainText('超過');
 }
 
 // ---- Sonner
@@ -291,6 +300,54 @@ export async function tokenColor(page: Page, token: string): Promise<string> {
     return v;
   }, token);
 }
+
+/** 語意 token 計算後的底色（例如 --status-pending-bg） */
+export async function tokenBackground(page: Page, token: string): Promise<string> {
+  return page.evaluate((t) => {
+    const d = document.createElement('div');
+    d.style.backgroundColor = `var(${t})`;
+    document.body.appendChild(d);
+    const v = getComputedStyle(d).backgroundColor;
+    d.remove();
+    return v;
+  }, token);
+}
+
+/**
+ * 徽章（文字正好是 text 的元素）的樣子：底色取文字往上四層內第一個有底色的元素，文字顏色取文字本身；
+ * icons 是徽章裡 svg 的 path（d 屬性），用來辨認圖示；height 是有底色那一層的計算後高度。找不到這段文字時是 null。
+ */
+export async function badgeLook(
+  loc: Locator,
+  text: string,
+): Promise<{ background: string; color: string; height: string; icons: string[] } | null> {
+  return loc.first().evaluate((root, t) => {
+    const all = [root, ...Array.from(root.querySelectorAll('*'))];
+    const el = all.find((e) =>
+      Array.from(e.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim() === t),
+    );
+    if (!el) return null;
+    let box: Element = el;
+    let node: Element | null = el;
+    for (let i = 0; i < 4 && node; i++) {
+      const bg = getComputedStyle(node).backgroundColor;
+      if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+        box = node;
+        break;
+      }
+      node = node.parentElement;
+    }
+    return {
+      background: getComputedStyle(box).backgroundColor,
+      color: getComputedStyle(el).color,
+      height: getComputedStyle(box).height,
+      icons: Array.from(box.querySelectorAll('svg path')).map((p) => p.getAttribute('d') ?? ''),
+    };
+  }, text);
+}
+
+/** lucide 的 triangle-alert（docs/spec/README.md 狀態徽章「超過」的圖示）特有的 path */
+export const TRIANGLE_ALERT_PATH = 'M12 9v4';
 
 /** 語意 token 計算後的陰影（例如 --shadow-md） */
 export async function tokenShadow(page: Page, token: string): Promise<string> {

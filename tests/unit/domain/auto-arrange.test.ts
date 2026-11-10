@@ -1,4 +1,4 @@
-// 自動排座的排座規則：docs/spec/auto-arrange.md 第 3 節（ARR-R01～ARR-R16）與第 5.1 節小型資料的驗收條件
+// 自動排座的排座規則：docs/spec/auto-arrange.md 第 3 節（ARR-R01～ARR-R17；ARR-R17 每桌最多排到 10 位，D-018）與第 5.1 節小型資料的驗收條件
 // （ARR-AC01～AC09、AC11～AC16、AC21、AC22）。員工與眷屬一定同桌依 D-009；待確認依 D-008 照目前假設
 // （ARR-Q02 一位都沒排進去時座位都不變、ARR-Q03 只排進一桌、ARR-Q05 部門順序、ARR-Q06 只看桌號與空位）。
 // 5.2 節的示範資料（ARR-AC19、AC20）在 auto-arrange-2026.test.ts。
@@ -834,5 +834,103 @@ describe('ARR-Q02 一位都沒排進去時（目前假設：座位都不變，�
 
     expect(o.changes).toEqual([]);
     expect(o.summary).toEqual({ placed: 0, tableIds: [], left: 0 });
+  });
+});
+
+// D-018：承辦人拖移或「加入人員」可以讓一桌有 11、12 位（seating.md SEAT-R02、SEAT-R88），自動排座仍只排到 10 位。
+describe('ARR-R17 自動排座每桌最多只排到 10 位', () => {
+  it('只排未入座：沒有備註名稱的第 1 桌已有 11 位，算沒有空位，原本的人不動；新排的人從第 2 桌開始', () => {
+    const s = new Scenario()
+      .addGroup('行政部', null, range('行', 1, 11))
+      .addGroup('業務部', null, ['業1', '業2'])
+      .seat(1, range('行', 1, 11));
+
+    const o = s.run('unseatedOnly');
+
+    expect(o.table(1)).toEqual(range('行', 1, 11));
+    expect(o.table(2)).toEqual(['業1', '業2']);
+    expect(o.changedNames()).toEqual(['業1', '業2']);
+    expect(o.summary).toEqual({ placed: 2, tableIds: [2], left: 0 });
+  });
+
+  it('只排未入座：第 1 桌 12 位、第 2 桌 10 位，都算沒有空位；新排的人從第 3 桌開始', () => {
+    const s = new Scenario()
+      .addGroup('行政部', null, range('行', 1, 22))
+      .addGroup('業務部', null, ['業1'])
+      .seat(1, range('行', 1, 12))
+      .seat(2, range('行', 13, 22));
+
+    const o = s.run('unseatedOnly');
+
+    expect(o.table(1)).toEqual(range('行', 1, 12));
+    expect(o.table(2)).toEqual(range('行', 13, 22));
+    expect(o.table(3)).toEqual(['業1']);
+    expect(o.summary).toEqual({ placed: 1, tableIds: [3], left: 0 });
+  });
+
+  it('只排未入座：第 1 桌 9 位、一組 3 人 → 第 1 桌只排到第 10 位，不用第 11、12 位；其餘的人到第 2 桌（ARR-R09）', () => {
+    const s = new Scenario()
+      .addGroup('行政部', null, range('行', 1, 9))
+      .addGroup('業務部', '北區組', ['業1', '業2', '業3'])
+      .seat(1, range('行', 1, 9));
+
+    const o = s.run('unseatedOnly');
+
+    expect(o.table(1)).toEqual([...range('行', 1, 9), '業1']);
+    expect(o.table(1)).toHaveLength(10);
+    expect(o.table(2)).toEqual(['業2', '業3']);
+    expect(o.summary).toEqual({ placed: 3, tableIds: [1, 2], left: 0 });
+  });
+
+  it('清空後重排：沒有備註名稱的第 1 桌原本 11 位，清空後照常排，每桌最多 10 位（ARR-R04）', () => {
+    const s = new Scenario().addGroup('行政部', null, range('行', 1, 11)).seat(1, range('行', 1, 11));
+
+    const o = s.run('rebuild');
+
+    expect(o.table(1)).toEqual(range('行', 1, 10));
+    expect(o.table(2)).toEqual(['行11']);
+    expect(o.summary).toEqual({ placed: 11, tableIds: [1, 2], left: 0 });
+  });
+
+  it('清空後重排：12 位的可用桌清空後，原本的 12 位與未入座的人一起重排，每桌 10 位', () => {
+    const s = new Scenario()
+      .addGroup('行政部', null, range('行', 1, 12))
+      .addGroup('業務部', null, range('業', 1, 3))
+      .seat(4, range('行', 1, 12));
+
+    const o = s.run('rebuild');
+
+    expect(o.table(1)).toEqual(range('行', 1, 10));
+    expect(o.table(2)).toEqual(['行11', '行12', '業1', '業2', '業3']);
+    expect(o.table(4)).toEqual([]);
+    expect(o.summary).toEqual({ placed: 15, tableIds: [1, 2], left: 0 });
+  });
+
+  it.each(ARRANGE_MODES)('%s：有備註名稱的桌上 12 位的名單與順序都不動，第 11、12 位也不動', (mode) => {
+    const twelve = range('行', 1, 12).reverse();
+    const s = new Scenario()
+      .addGroup('行政部', null, range('行', 1, 12))
+      .addGroup('業務部', null, ['業1'])
+      .note(1, '主桌')
+      .seat(1, twelve);
+
+    const o = s.run(mode);
+
+    expect(o.table(1)).toEqual(twelve);
+    expect(o.table(2)).toEqual(['業1']);
+    expect(o.summary).toEqual({ placed: 1, tableIds: [2], left: 0 });
+  });
+
+  it('只排未入座：可用的桌都已有 10 位以上（含 11、12 位），一位都沒排進去，座位都不變（ARR-R11、ARR-Q02）', () => {
+    const s = new Scenario().addGroup('行政部', null, range('行', 1, 23)).addGroup('業務部', null, ['業1']);
+    for (let t = 1; t <= 28; t++) s.note(t, `保留${t}`);
+    s.seat(29, range('行', 1, 11)).seat(30, range('行', 12, 23));
+
+    const o = s.run('unseatedOnly');
+
+    expect(o.changes).toEqual([]);
+    expect(o.table(29)).toHaveLength(11);
+    expect(o.table(30)).toHaveLength(12);
+    expect(o.summary).toEqual({ placed: 0, tableIds: [], left: 1 });
   });
 });

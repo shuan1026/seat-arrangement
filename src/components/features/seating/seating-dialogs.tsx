@@ -4,7 +4,7 @@
 // 加入人員到工作人員桌（2.5.3、SEAT-R50）、清空確認（2.3.5、SEAT-R29），以及自動排座的範圍（auto-arrange.md 2.2）。
 import { useId, useMemo, useState } from 'react';
 import { useAppStore } from '@/client/app-provider';
-import { STAFF_TABLE_CAPACITY, STAFF_TABLE_ID, TABLE_COUNT, type Participant } from '@/contracts/entities';
+import { STAFF_TABLE_ID, TABLE_COUNT, type Participant } from '@/contracts/entities';
 import { departmentOf, displayName, teamOf } from '@/domain/display';
 import { AlertDialog, AlertDialogContent } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
@@ -14,13 +14,13 @@ import { Dialog, DialogBody, DialogContent, DialogFooter } from '@/components/ui
 import { EmptyState } from '@/components/ui/empty-state';
 import { SearchInput } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { CAPACITY, detailMeta, msg, searchMatch, tableDesc, type TableInfo } from './model';
+import { CAPACITY, detailMeta, MAX_SEATS, msg, searchMatch, tableDesc, type TableInfo } from './model';
 import { NameLine } from './person-parts';
 import { useSeatingOps } from './use-seating-ops';
 
 type OpenProps = { open: boolean; onOpenChange: (open: boolean) => void };
 
-/** 調換桌次：列出自己以外的 29 桌「第 {m} 桌（{人數}/10）・{備註名稱或部門}」，已滿的桌也能選（SEAT-R39） */
+/** 調換桌次：列出自己以外的 29 桌「第 {m} 桌（{人數}/10）・{備註名稱或部門}」，已滿與超過的桌也能選（SEAT-R39、SEAT-R88） */
 export function SwapDialog({ open, onOpenChange, tableId, tables }: OpenProps & { tableId: number; tables: Map<number, TableInfo> }) {
   const ops = useSeatingOps();
   const [value, setValue] = useState<string | null>(null);
@@ -90,7 +90,8 @@ export function SwapDialog({ open, onOpenChange, tableId, tables }: OpenProps & 
 
 /**
  * 加入人員：桌次只列未入座的人（SEAT-R30）；工作人員桌列還不是工作人員的已報名員工（SEAT-R50）。
- * 最多只能勾到剩餘的座位數；依勾選順序排入（SEAT-Q06 的目前假設）。
+ * 最多只能勾到這一桌 12 位為止（{k} 是 12 減人數）；說明的空位只算到 10 位，已有 10、11 位時改為
+ * 「已滿，最多還可以加入 {k} 位。」（D-018）。依勾選順序排入（SEAT-Q06 的目前假設）；送出時帶 allowOverflow（上限 12 位）。
  */
 export function AddPeopleDialog({
   open,
@@ -107,7 +108,9 @@ export function AddPeopleDialog({
   const noteId = useId();
   const isStaff = target === STAFF_TABLE_ID;
   const info = tables.get(target)!;
-  const left = (isStaff ? STAFF_TABLE_CAPACITY : CAPACITY) - info.count;
+  // 最多還能勾幾位（到 12 位為止）與說明裡的空位數（只算到 10 位）
+  const left = Math.max(0, MAX_SEATS - info.count);
+  const free = Math.max(0, CAPACITY - info.count);
   const all = isStaff
     ? sorted.filter((p) => p.kind === 'EMPLOYEE' && p.tableId !== STAFF_TABLE_ID)
     : sorted.filter((p) => p.tableId === null);
@@ -142,7 +145,7 @@ export function AddPeopleDialog({
   const confirm = () => {
     if (!picked.length) return;
     ops.run(
-      { type: 'seatMany', tableId: target, participantIds: picked },
+      { type: 'seatMany', tableId: target, participantIds: picked, allowOverflow: true },
       isStaff ? msg.addedStaff(picked.length) : msg.added(picked.length, target),
     );
     close(false);
@@ -150,7 +153,10 @@ export function AddPeopleDialog({
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent title={title} description={all.length ? `還有 ${left} 個空位。` : undefined}>
+      <DialogContent
+        title={title}
+        description={all.length ? (free > 0 ? `還有 ${free} 個空位。` : `已滿，最多還可以加入 ${left} 位。`) : undefined}
+      >
         {all.length ? (
           <>
             <DialogBody className="gap-3">

@@ -827,6 +827,88 @@ describe('PATCH /api/participants/{id}：變更類別（PPL-Q07 的目前假設�
   });
 });
 
+// D-018：拖移與「加入人員」可以讓一桌、工作人員桌有 11、12 位；人員對話框的桌次欄位與「工作人員」勾選仍到 10 位為止
+// （seating.md SEAT-R42、SEAT-R88、SEAT-AC94、SEAT-AC95；participants.md PPL-R54、PPL-R56）。
+describe('D-018 人員對話框的桌次與工作人員仍到 10 位為止', () => {
+  it.each([11, 12])('POST 員工選了有 %i 位的桌次：409 TABLE_FULL，員工與眷屬都沒有新增（SEAT-AC94）', async (n) => {
+    const { chen } = await demoRoster();
+    await fillTable(4, n);
+    const before = await snapshot();
+    expect(
+      await errorOf(await create({ kind: 'EMPLOYEE', employeeId: chen.id, tableId: 4, dependent: {} })),
+    ).toMatchObject({ status: 409, code: 'TABLE_FULL' });
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('POST 眷屬、外部貴賓選了有 11 位的桌次：409 TABLE_FULL，沒有新增', async () => {
+    const { wang } = await demoRoster();
+    await fillTable(6, 11);
+    const before = await snapshot();
+    expect(await errorOf(await create({ kind: 'DEPENDENT', hostId: wang.participant.id, tableId: 6 }))).toMatchObject({
+      status: 409,
+      code: 'TABLE_FULL',
+    });
+    expect(await errorOf(await create({ kind: 'GUEST', guestName: '林董', tableId: 6 }))).toMatchObject({
+      status: 409,
+      code: 'TABLE_FULL',
+    });
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it.each([10, 11, 12])('POST 勾「工作人員」、工作人員桌已有 %i 位：409 STAFF_TABLE_FULL，沒有新增（PPL-R54、SEAT-AC95）', async (n) => {
+    const { chen } = await demoRoster();
+    await fillStaff(n);
+    const before = await snapshot();
+    expect(await errorOf(await create({ kind: 'EMPLOYEE', employeeId: chen.id, isStaff: true }))).toMatchObject({
+      status: 409,
+      code: 'STAFF_TABLE_FULL',
+    });
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('PATCH 改到有 11 位的桌次：409 TABLE_FULL，不變', async () => {
+    const lin = await createGuest({ guestName: '林董' });
+    await fillTable(4, 11);
+    const before = await snapshot();
+    expect(await errorOf(await edit(lin.id, { tableId: 4 }))).toMatchObject({ status: 409, code: 'TABLE_FULL' });
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('PATCH 已入座的員工改成工作人員、工作人員桌已有 11 位：409 STAFF_TABLE_FULL，不變（PPL-R54）', async () => {
+    const { wang } = await demoRoster();
+    await seatAt(3, wang.participant.id);
+    await fillStaff(11);
+    const before = await snapshot();
+    expect(await errorOf(await edit(wang.participant.id, { isStaff: true }))).toMatchObject({
+      status: 409,
+      code: 'STAFF_TABLE_FULL',
+    });
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('自己所在的 12 位桌次不算已滿：桌次仍是那一桌並改備註，可以儲存，位置不變', async () => {
+    await fillTable(4, 5);
+    const lin = await createGuest({ guestName: '林董' });
+    await seatAt(4, lin.id);
+    await fillTable(4, 6);
+    expect(await countAt(4)).toBe(12);
+
+    await okJson(await edit(lin.id, { tableId: 4, note: '靠走道' }), participantsResultSchema);
+
+    expect(await findP(lin.id)).toMatchObject({ tableId: 4, seatOrder: 5, note: '靠走道' });
+    expect(await countAt(4)).toBe(12);
+  });
+
+  it('已經是工作人員：工作人員桌有 12 位時仍可以編輯其他欄位，仍在工作人員桌', async () => {
+    const staff = await fillStaff(12);
+    const [someone] = staff;
+    if (someone === undefined) throw new Error('沒有工作人員');
+    await okJson(await edit(someone, { isStaff: true, note: '負責報到' }), participantsResultSchema);
+    expect(await findP(someone)).toMatchObject({ tableId: STAFF_TABLE_ID, note: '負責報到' });
+    expect(await countAt(STAFF_TABLE_ID)).toBe(12);
+  });
+});
+
 describe('PATCH /api/participants/{id}：找不到或格式不對', () => {
   it('這個人已被別人刪除：404 NOT_FOUND（COM-R07、COM-AC05）', async () => {
     const lin = await createGuest({ guestName: '林董' });

@@ -142,7 +142,8 @@ function Seating({ initialTable }: { initialTable: number | null }) {
     if (target.kind === 'table') {
       const info = tables.get(target.tableId);
       if (!info) return null;
-      return { target, blocked: info.full && p.tableId !== target.tableId };
+      // 拖移可以放到 12 位：已滿或超過、但還不到 12 位的桌照常可以放（SEAT-R20、2.1.9）
+      return { target, blocked: info.max && p.tableId !== target.tableId };
     }
     if (target.kind === 'staff') return p.tableId === STAFF_TABLE_ID ? null : { target, blocked: false };
     // 拖回人員面板：只有從桌次或工作人員桌拖出來的人才是移出（SEAT-R26、SEAT-R46）
@@ -160,9 +161,10 @@ function Seating({ initialTable }: { initialTable: number | null }) {
     if (!p) return;
     const name = displayName(p, dir);
     if (target.kind === 'panel') return unseat(p);
+    // 拖移帶 allowOverflow：一般桌與工作人員桌都可以放到 12 位（SEAT-R20、SEAT-R42、SEAT-R88）
     if (target.kind === 'staff') {
       ops.run(
-        { type: 'seat', participantId: p.id, tableId: STAFF_TABLE_ID },
+        { type: 'seat', participantId: p.id, tableId: STAFF_TABLE_ID, allowOverflow: true },
         p.tableId === null ? msg.toStaff(name) : msg.tableToStaff(name, p.tableId),
       );
       return;
@@ -179,7 +181,13 @@ function Seating({ initialTable }: { initialTable: number | null }) {
       return;
     }
     ops.run(
-      { type: 'seat', participantId: p.id, tableId: t, ...(target.index === undefined ? {} : { index: target.index }) },
+      {
+        type: 'seat',
+        participantId: p.id,
+        tableId: t,
+        ...(target.index === undefined ? {} : { index: target.index }),
+        allowOverflow: true,
+      },
       seatMessage(p, name, t),
     );
   };
@@ -342,7 +350,7 @@ function Seating({ initialTable }: { initialTable: number | null }) {
   );
 }
 
-/** 統計列（SEAT-R75）：「已入座 {n}／{總人數}・未入座 {m}・空位 {k}・已滿 {t} 桌」 */
+/** 統計列（SEAT-R75）：「已入座 {n}／{總人數}・未入座 {m}・空位 {k}・已滿 {t} 桌」，有桌次超過 10 位時最後加「・超過 {u} 桌」 */
 const B = ({ children }: { children: React.ReactNode }) => <b className="type-sm-medium text-foreground tabular-nums">{children}</b>;
 
 function StatsLine({ stats }: { stats: ReturnType<typeof seatingStats> }) {
@@ -363,6 +371,14 @@ function StatsLine({ stats }: { stats: ReturnType<typeof seatingStats> }) {
       <span>
         已滿 <B>{stats.fullTables}</B> 桌
       </span>
+      {stats.overflowTables > 0 ? (
+        <>
+          <span aria-hidden>・</span>
+          <span>
+            超過 <B>{stats.overflowTables}</B> 桌
+          </span>
+        </>
+      ) : null}
     </div>
   );
 }

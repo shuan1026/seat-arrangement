@@ -2,6 +2,8 @@
 // docs/spec/seating.md SEAT-R02、R06、R16～R20、R26、R28～R33、R35～R36、R38、R40～R46、R48、R50、R51、R76～R78、R85、R86；
 // docs/spec/README.md COM-R01（立即儲存）、COM-R05（重新整理看到最後儲存的結果）、COM-R07、COM-R08（別人剛改過資料）。
 // 每個寫入在一個交易內完成，回傳有變動的人（完整資料）、有變動的桌，以及操作前的狀態 undo；送回 restore 就能復原。
+// 這個檔案的 seat、seatMany 都不帶 allowOverflow，是選擇桌次對話框那條路，上限 10 位（D-018、SEAT-R88）；
+// 帶 allowOverflow（拖移、「加入人員」）到 12 位的情況在 seating-overflow.test.ts。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { STAFF_TABLE_ID } from '@/contracts/entities';
 import { prisma, resetData } from '../../helpers/db';
@@ -77,7 +79,7 @@ describe('seat：入座（SEAT-R16～R18、COM-R01）', () => {
     expect(await roster(5)).toHaveLength(10);
   });
 
-  it('目標桌已滿：409 TABLE_FULL，不入座、資料不變（SEAT-R20、SEAT-AC14、SEAT-R86）', async () => {
+  it('不帶 allowOverflow（選擇桌次）：目標桌已滿，409 TABLE_FULL，不入座、資料不變（SEAT-R23、SEAT-R86、SEAT-R88）', async () => {
     await seatNewEmployees(5, 10);
     const wang = await newUnseated();
     const before = await allPositions();
@@ -122,7 +124,7 @@ describe('seat：搬移（SEAT-R06、R19、R20）', () => {
     await expectAllContiguous();
   });
 
-  it('目標桌已滿：409 TABLE_FULL，留在原桌（SEAT-R20、SEAT-AC15）', async () => {
+  it('不帶 allowOverflow（選擇桌次）：目標桌已滿，409 TABLE_FULL，留在原桌（SEAT-R23、SEAT-R88）', async () => {
     const [wang] = await seatNewEmployees(3, 1);
     await seatNewEmployees(5, 10);
     await expectError(await postOperation({ type: 'seat', participantId: wang, tableId: 5 }), 409, 'TABLE_FULL');
@@ -177,7 +179,7 @@ describe('seat：工作人員桌（SEAT-R40～R45、R51）', () => {
     expect(await allPositions()).toEqual(before);
   });
 
-  it('工作人員桌已有 10 位：409 STAFF_TABLE_FULL，員工留在原處（SEAT-R42、SEAT-AC42、SEAT-R86）', async () => {
+  it('不帶 allowOverflow：工作人員桌已有 10 位，409 STAFF_TABLE_FULL，員工留在原處（docs/architecture.md 第 8.1 節）', async () => {
     await seatNewEmployees(STAFF_TABLE_ID, 10);
     const [wang] = await seatNewEmployees(3, 1);
     await expectError(
@@ -209,7 +211,7 @@ describe('seat：工作人員桌（SEAT-R40～R45、R51）', () => {
     expect(await roster(7)).toEqual(table7);
   });
 
-  it('工作人員拖到已滿的桌：409 TABLE_FULL，仍是工作人員（SEAT-R45、SEAT-AC44）', async () => {
+  it('不帶 allowOverflow：工作人員放到已滿的桌，409 TABLE_FULL，仍是工作人員（SEAT-R45、SEAT-R88）', async () => {
     const [wang] = await seatNewEmployees(STAFF_TABLE_ID, 1);
     await seatNewEmployees(5, 10);
     await expectError(await postOperation({ type: 'seat', participantId: wang, tableId: 5 }), 409, 'TABLE_FULL');
@@ -239,7 +241,7 @@ describe('seatMany：加入人員（SEAT-R30、R31、R50）', () => {
     for (const id of [a, b, c]) expect(await positionOf(id)).toEqual(unseated);
   });
 
-  it('超過剩餘的座位數（例如別人剛坐進來）：409 TABLE_FULL，整批不加入（SEAT-R30、COM-R07）', async () => {
+  it('不帶 allowOverflow：超過 10 位，409 TABLE_FULL，整批不加入（docs/architecture.md 第 8.1 節、COM-R07）', async () => {
     await seatNewEmployees(3, 8);
     const ids = [await newUnseated(), await newUnseated(), await newUnseated()];
     const before = await allPositions();
@@ -265,7 +267,7 @@ describe('seatMany：加入人員（SEAT-R30、R31、R50）', () => {
     expect(await staffIds()).toHaveLength(8);
   });
 
-  it('加入工作人員桌超過剩餘位數：409 STAFF_TABLE_FULL（SEAT-R42、SEAT-R50）', async () => {
+  it('不帶 allowOverflow：加入工作人員桌超過 10 位，409 STAFF_TABLE_FULL（docs/architecture.md 第 8.1 節）', async () => {
     await seatNewEmployees(STAFF_TABLE_ID, 9);
     const ids = [await newUnseated(), await newUnseated()];
     await expectError(
@@ -471,14 +473,26 @@ describe('restore：復原（SEAT-R76～R79、COM-R07）', () => {
     expect(restored.participants.find((p) => p.id === wang)).toMatchObject(unseated);
   });
 
-  it('復原會讓某一桌超過 10 位（別人在這之間坐進來）：409 TABLE_FULL，資料不變（SEAT-R02、COM-R07）', async () => {
+  it('復原會讓某一桌變成 11 位（別人在這之間坐進來）：復原上限 12 位，可以復原，回到原本的座號（SEAT-R88、D-018）', async () => {
     const ids = await seatNewEmployees(5, 10);
     const removed = await operate({ type: 'unseat', participantId: ids[0] });
     const other = await newUnseated();
     await operate({ type: 'seat', participantId: other, tableId: 5 });
+
+    await operate({ type: 'restore', snapshot: removed.undo });
+    expect(await roster(5)).toEqual([...ids, other]);
+    expect(await positionOf(ids[0]!)).toEqual({ tableId: 5, seatOrder: 0 });
+    await expectAllContiguous();
+  });
+
+  it('復原會讓某一桌變成 13 位（別人在這之間坐滿 12 位）：409 TABLE_LIMIT，資料不變（SEAT-R02、SEAT-R88、COM-R07）', async () => {
+    const ids = await seatNewEmployees(5, 12);
+    const removed = await operate({ type: 'unseat', participantId: ids[0] });
+    const other = await newUnseated();
+    await operate({ type: 'seat', participantId: other, tableId: 5, allowOverflow: true });
     const before = await allPositions();
 
-    await expectError(await postOperation({ type: 'restore', snapshot: removed.undo }), 409, 'TABLE_FULL');
+    await expectError(await postOperation({ type: 'restore', snapshot: removed.undo }), 409, 'TABLE_LIMIT');
     expect(await allPositions()).toEqual(before);
   });
 

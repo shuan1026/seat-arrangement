@@ -238,7 +238,9 @@ export class Outcome {
  * - 工作人員、有備註名稱的桌上的人都不動；只排進可用的桌（ARR-R01、ARR-R02、ARR-R12）
  * - 外部貴賓一律不排；只排未入座時已入座的人與外部貴賓都不動（ARR-R01、ARR-R03）
  * - 清空後重排有排進人時，原本坐在可用桌的外部貴賓回到未入座（ARR-R04）
- * - 每桌最多 10 人，座位順序從 0 起連續（SEAT-R06）
+ * - 自動排座每桌最多排到 10 人（ARR-R17）：有排進人的桌、清空後重排的可用桌最後最多 10 人；
+ *   其他桌（例如有備註名稱的桌、只排未入座時已有 10 位以上的桌）人數不增加，原本 11、12 位的照舊（D-018）。
+ *   座位順序從 0 起連續（SEAT-R06）
  * - 眷屬和所屬員工都是候選人時，一定同桌、緊接在員工後面，或一起留在未入座（ARR-R05 ④、ARR-R09、D-009）
  * - 摘要：排進的人數、有排進人的桌號（由小到大）、排不下的人數（ARR-R11、ARR-R14、ARR-R15）
  * - 一位都沒排進去時座位都不變，清空後重排也不清空（ARR-Q02 的目前假設）
@@ -268,19 +270,26 @@ export function checkInvariants(s: Scenario, o: Outcome): void {
     if (o.mode === 'unseatedOnly') expect(p.tableId, `只排未入座時已入座的 ${who} 不動`).toBeNull();
   }
 
+  const isCandidate = (p: Participant) =>
+    p.kind !== 'GUEST' && (p.tableId === null || (o.mode === 'rebuild' && usable.has(p.tableId)));
+  const candidates = s.participants.filter(isCandidate);
+  const placed = candidates.filter((p) => o.final.get(p.id)?.tableId != null);
+
   for (let id = 1; id <= TABLE_COUNT; id++) {
     const orders = [...o.final.values()]
       .filter((pos) => pos.tableId === id)
       .map((pos) => pos.seatOrder ?? -1)
       .sort((a, b) => a - b);
-    expect(orders.length, `第 ${id} 桌超過 ${TABLE_CAPACITY} 人`).toBeLessThanOrEqual(TABLE_CAPACITY);
+    const beforeCount = s.participants.filter((p) => p.tableId === id).length;
+    const gained = [...o.final.entries()].some(([pid, pos]) => pos.tableId === id && original.get(pid)?.tableId !== id);
+    const rebuilt = o.mode === 'rebuild' && usable.has(id) && placed.length > 0;
+    if (gained || rebuilt) {
+      expect(orders.length, `第 ${id} 桌排到超過 ${TABLE_CAPACITY} 人（ARR-R17）`).toBeLessThanOrEqual(TABLE_CAPACITY);
+    } else {
+      expect(orders.length, `第 ${id} 桌沒有排進人，人數不該增加`).toBeLessThanOrEqual(beforeCount);
+    }
     expect(orders, `第 ${id} 桌的座位順序要從 0 起連續`).toEqual(orders.map((_, i) => i));
   }
-
-  const isCandidate = (p: Participant) =>
-    p.kind !== 'GUEST' && (p.tableId === null || (o.mode === 'rebuild' && usable.has(p.tableId)));
-  const candidates = s.participants.filter(isCandidate);
-  const placed = candidates.filter((p) => o.final.get(p.id)?.tableId != null);
   const tablesUsed = [...new Set(placed.map((p) => o.final.get(p.id)?.tableId ?? 0))].sort((a, b) => a - b);
   expect(o.summary.placed, '摘要：這一次排進桌次的人數').toBe(placed.length);
   expect(o.summary.left, '摘要：排不下、留在未入座的人數').toBe(candidates.length - placed.length);

@@ -1,5 +1,6 @@
 // 工作人員桌（桌面；手機見 seating-mobile.spec.ts）。
-// docs/spec/seating.md 2.5、4.5；SEAT-R34、R40～R51、R57、R58；SEAT-AC38～AC47、AC49；docs/spec/README.md COM-R10。
+// docs/spec/seating.md 2.5、4.5；SEAT-R34、R40～R51、R57、R58、R89；SEAT-AC38～AC47、AC49；docs/spec/README.md COM-R10。
+// D-018：工作人員桌和一般桌相同，標準 10 位、拖移與「加入人員」最多到 12 位（SEAT-R42、SEAT-R50）；其他情況見 seating-overflow.spec.ts。
 // 座位圖上工作人員桌的外觀（AC48）見 seating-map.spec.ts。
 import { expect, test, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
@@ -25,6 +26,7 @@ import {
   staffTable,
   staffTableButton,
   tableButton,
+  toast,
   waitForOperation,
 } from './helpers/seating-page';
 
@@ -123,27 +125,48 @@ test.describe('放進工作人員桌（SEAT-R40～R44、R47）', () => {
     expect(await rosterNames(STAFF)).toEqual([]);
   });
 
-  test('工作人員桌有 9 位：第一位放進後「已滿」、詳情的「加入人員」停用；第二位不放進，Sonner「工作人員桌已滿，請先移出一位。」（SEAT-R42、SEAT-AC42）', async ({
+  // D-018：原本 9 位放進第 10 位後就「已滿」並擋下第 11 位；改為 11 位放進第 12 位後「超過」、擋下第 13 位（改過的 SEAT-AC42）
+  test('工作人員桌有 11 位：第一位放進後 12 位「超過」、詳情的「加入人員」停用；第二位不放進，Sonner「工作人員桌已達 12 位，請先移出一位。」（SEAT-R42、SEAT-AC42）', async ({
     page,
   }) => {
     await seed(async (s) => {
-      await s.fill(STAFF, 9, { prefix: '工作' });
+      await s.fill(STAFF, 11, { prefix: '工作' });
       await s.employee('王小明');
       await s.employee('李小華', { tableId: 3 });
     });
     await openSeating(page);
 
+    const saved = waitForOperation(page);
     await dragAndDrop(page, personRow(page, '王小明'), staffTableButton(page));
-    await expectToast(page, '已把 王小明 放進工作人員桌。', { undo: true });
-    await expect(staffTable(page)).toContainText('已滿');
+    await saved;
+    await expectToast(page, '已把 王小明 放進工作人員桌，這一桌已超過 10 位。', { undo: true });
+    await expect(staffTable(page)).toContainText('超過');
+    expect(await rosterNames(STAFF)).toHaveLength(12);
 
     await panelTab(page, '全部').click();
     await dragAndDrop(page, personRow(page, '李小華'), staffTableButton(page));
-    await expectToast(page, '工作人員桌已滿，請先移出一位。', { undo: false });
+    await expectToast(page, '工作人員桌已達 12 位，請先移出一位。', { undo: false });
     expect(await rosterNames(3)).toEqual(['李小華']);
 
     const detail = await openStaffDetail(page);
     await expect(detail.getByRole('button', { name: '加入人員', exact: true })).toBeDisabled();
+  });
+
+  test('工作人員桌有 9 位：放進第 10 位後「已滿」，不加「這一桌已超過 10 位。」；詳情的「加入人員」仍可以按（SEAT-R42、SEAT-R89）', async ({
+    page,
+  }) => {
+    await seed(async (s) => {
+      await s.fill(STAFF, 9, { prefix: '工作' });
+      await s.employee('王小明');
+    });
+    await openSeating(page);
+
+    await dragAndDrop(page, personRow(page, '王小明'), staffTableButton(page));
+    await expectToast(page, '已把 王小明 放進工作人員桌。', { undo: true });
+    await expect(toast(page, '這一桌已超過 10 位。')).toHaveCount(0);
+    await expect(staffTable(page)).toContainText('已滿');
+    const detail = await openStaffDetail(page);
+    await expect(detail.getByRole('button', { name: '加入人員', exact: true })).toBeEnabled();
   });
 
   test('已經是工作人員的人從「全部」分頁拖到工作人員桌：沒有任何改變（SEAT-R51、SEAT-AC49）', async ({ page }) => {
@@ -182,16 +205,34 @@ test.describe('離開工作人員桌（SEAT-R45、R46）', () => {
     expect(await rosterNames(7)).toEqual(['甲']);
   });
 
-  test('拖到已滿的桌：Sonner「第 5 桌已滿，請先移出一位。」，仍是工作人員（SEAT-R45、SEAT-AC44）', async ({ page }) => {
+  // D-018：原本拖到 10 位的桌就擋下，改為拖到 12 位的桌才擋下（改過的 SEAT-AC44）
+  test('拖到已有 12 位的桌：Sonner「第 5 桌已達 12 位，請先移出一位。」，仍是工作人員（SEAT-R45、SEAT-AC44）', async ({ page }) => {
+    await seed(async (s) => {
+      await s.staff('王小明');
+      await s.fill(5, 12);
+    });
+    await openSeating(page);
+    const detail = await openStaffDetail(page);
+    await dragAndDrop(page, rowWithName(detailRows(detail), page, '王小明'), tableButton(page, 5));
+    await expectToast(page, '第 5 桌已達 12 位，請先移出一位。', { undo: false });
+    expect(await rosterNames(STAFF)).toEqual(['王小明']);
+  });
+
+  test('拖到已有 10 位的桌：入座第 11 位、不再是工作人員，Sonner「已把 王小明 從工作人員桌移到第 5 桌，這一桌已超過 10 位。」帶「復原」（SEAT-R45、SEAT-R89）', async ({
+    page,
+  }) => {
     await seed(async (s) => {
       await s.staff('王小明');
       await s.fill(5, 10);
     });
     await openSeating(page);
     const detail = await openStaffDetail(page);
+    const saved = waitForOperation(page);
     await dragAndDrop(page, rowWithName(detailRows(detail), page, '王小明'), tableButton(page, 5));
-    await expectToast(page, '第 5 桌已滿，請先移出一位。', { undo: false });
-    expect(await rosterNames(STAFF)).toEqual(['王小明']);
+    await saved;
+    await expectToast(page, '已把 王小明 從工作人員桌移到第 5 桌，這一桌已超過 10 位。', { undo: true });
+    expect(await rosterNames(STAFF)).toEqual([]);
+    expect((await rosterNames(5))[10]).toBe('王小明');
   });
 
   test('拖回人員面板：變成未入座，Sonner「已把 王小明 移出工作人員桌。」帶「復原」（SEAT-R46、SEAT-AC45）', async ({ page }) => {
@@ -307,10 +348,13 @@ test.describe('加入人員到工作人員桌（2.5.3、SEAT-R50）', () => {
 
     await chenBox.check();
     await dialog.getByRole('checkbox', { name: /^乙/ }).check();
+    // D-018：工作人員桌最多勾到 12 位（8 位時可以勾 4 位），第 3 位可以勾；這裡取消後照驗收條件只加入 2 位（SEAT-R50）
     const third = dialog.getByRole('checkbox', { name: /^甲/ });
     await third.click();
+    await expect(third).toBeChecked();
+    await expect(dialog.getByText(/最多只能再加入/)).toHaveCount(0);
+    await third.click();
     await expect(third).not.toBeChecked();
-    await expect(dialog.getByText('最多只能再加入 2 位。')).toBeVisible();
 
     const saved = waitForOperation(page);
     await dialog.getByRole('button', { name: '加入 2 位' }).click();

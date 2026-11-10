@@ -5,6 +5,9 @@
 import { z } from 'zod';
 import { participantSchema, seatTableSchema, STAFF_TABLE_ID, TABLE_COUNT } from './entities';
 
+/** 每桌（含工作人員桌）最多 12 位：標準 10 位，拖移與「加入人員」可以放進第 11、12 位（SEAT-R02、D-018） */
+export const TABLE_MAX_SEATS = 12;
+
 /** 0 = 工作人員桌，1–30 = 一般桌 */
 const anyTable = z.number().int().min(STAFF_TABLE_ID).max(TABLE_COUNT);
 const normalTable = z.number().int().min(1).max(TABLE_COUNT);
@@ -19,14 +22,28 @@ export const seatingSnapshotSchema = z.object({
 export type SeatingSnapshot = z.infer<typeof seatingSnapshotSchema>;
 
 export const seatingOperationSchema = z.discriminatedUnion('type', [
-  /** 入座、搬移、放進工作人員桌、工作人員入座；index 省略時排到名單最後（SEAT-R16～R19、R40～R45） */
-  z.object({ type: z.literal('seat'), participantId: z.number().int(), tableId: anyTable, index: z.number().int().min(0).optional() }),
-  /** 桌次詳情或工作人員桌詳情的「加入人員」，依陣列順序排到名單最後（SEAT-R30、R31、R50） */
-  z.object({ type: z.literal('seatMany'), tableId: anyTable, participantIds: z.array(z.number().int()).min(1).max(10) }),
+  /**
+   * 入座、搬移、放進工作人員桌、工作人員入座；index 省略時排到名單最後（SEAT-R16～R19、R40～R45）。
+   * allowOverflow：拖移帶 true，上限 12 位；選擇桌次對話框不帶，上限 10 位（SEAT-R88、D-018）
+   */
+  z.object({
+    type: z.literal('seat'),
+    participantId: z.number().int(),
+    tableId: anyTable,
+    index: z.number().int().min(0).optional(),
+    allowOverflow: z.boolean().optional(),
+  }),
+  /** 桌次詳情或工作人員桌詳情的「加入人員」，依陣列順序排到名單最後（SEAT-R30、R31、R50）；帶 allowOverflow 時上限 12 位 */
+  z.object({
+    type: z.literal('seatMany'),
+    tableId: anyTable,
+    participantIds: z.array(z.number().int()).min(1).max(TABLE_MAX_SEATS),
+    allowOverflow: z.boolean().optional(),
+  }),
   /** 移出桌次或工作人員桌，變成未入座（SEAT-R26、R46） */
   z.object({ type: z.literal('unseat'), participantId: z.number().int() }),
-  /** 桌內調整順序：這一桌的完整新順序（SEAT-R32） */
-  z.object({ type: z.literal('reorder'), tableId: normalTable, participantIds: z.array(z.number().int()).max(10) }),
+  /** 桌內調整順序：這一桌的完整新順序（SEAT-R32）；一桌最多 12 位 */
+  z.object({ type: z.literal('reorder'), tableId: normalTable, participantIds: z.array(z.number().int()).max(TABLE_MAX_SEATS) }),
   /** 清空桌次，備註名稱保留（SEAT-R29） */
   z.object({ type: z.literal('clear'), tableId: normalTable }),
   /** 整桌對調名單與備註名稱（SEAT-R35、R36） */

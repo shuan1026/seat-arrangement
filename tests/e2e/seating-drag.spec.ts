@@ -1,6 +1,7 @@
 // 座位安排的拖移（桌面；手機不提供拖移，見 seating-mobile.spec.ts）。
 // docs/spec/seating.md 2.1.9、2.2.4、3.3、3.5、3.6、3.7；SEAT-R06、R10、R15～R21、R26～R28、R32、R33、R35～R38；
 // SEAT-AC01～AC07、AC13～AC16、AC22、AC24、AC30～AC34；docs/architecture.md 第 10.4 節（dnd-kit，分多步移動才會觸發）。
+// D-018 起拖移可以放到 12 位（SEAT-R20、SEAT-R88）；超過 10 位的其他情況見 seating-overflow.spec.ts。
 // 無障礙名稱的假設見 tests/e2e/helpers/seating-page.ts 開頭。
 import { expect, test } from '@playwright/test';
 import { signIn } from './helpers/auth';
@@ -121,11 +122,12 @@ test.describe('從人員面板拖到桌次（SEAT-R15、R16、R18、R21）', () 
     await expect.poll(() => rosterNames(3)).toEqual(['甲', '乙', '王小明']);
   });
 
-  test('拖到已滿的桌次：游標 not-allowed、沒有放置樣式；放開後不入座，Sonner「第 {n} 桌已滿，請先移出一位。」不帶「復原」（SEAT-R20、SEAT-AC14）', async ({
+  // D-018 起拖移可以放到 12 位：原本「拖到 10 位的桌擋下」改為「拖到 12 位的桌擋下」（SEAT-R20、改過的 SEAT-AC14）
+  test('拖到已有 12 位的桌次：游標 not-allowed、沒有放置樣式；放開後不入座，Sonner「第 {n} 桌已達 12 位，請先移出一位。」不帶「復原」（SEAT-R20、SEAT-AC14）', async ({
     page,
   }) => {
     await seed(async (s) => {
-      await s.fill(5, 10);
+      await s.fill(5, 12);
       await s.employee('王小明');
     });
     await openSeating(page);
@@ -137,7 +139,7 @@ test.describe('從人員面板拖到桌次（SEAT-R15、R16、R18、R21）', () 
     expect(await hasBorderColor(page, mapTable(page, 5), '--primary')).toBe(false);
     await drop(page);
 
-    await expectToast(page, '第 5 桌已滿，請先移出一位。', { undo: false });
+    await expectToast(page, '第 5 桌已達 12 位，請先移出一位。', { undo: false });
     await expect(personRow(page, '王小明')).toHaveCount(1);
     expect(await rosterNames(5)).toEqual(before);
   });
@@ -178,15 +180,18 @@ test.describe('桌次之間搬移（SEAT-R06、R15、R19、R20）', () => {
     await expectRoster(cardRows(page, 3), ['甲', '乙', '丙']);
   });
 
-  test('從「全部」分頁把已入座的人拖到已滿的桌：留在原桌，Sonner「第 5 桌已滿，請先移出一位。」（SEAT-R20、SEAT-AC15）', async ({ page }) => {
+  // D-018：原本拖到 10 位的桌就擋下，改為拖到 12 位的桌才擋下（SEAT-R20、改過的 SEAT-AC15）
+  test('從「全部」分頁把已入座的人拖到已有 12 位的桌：留在原桌，Sonner「第 5 桌已達 12 位，請先移出一位。」（SEAT-R20、SEAT-AC15）', async ({
+    page,
+  }) => {
     await seed(async (s) => {
       await s.employee('王小明', { tableId: 3 });
-      await s.fill(5, 10);
+      await s.fill(5, 12);
     });
     await openSeating(page);
     await panelTab(page, '全部').click();
     await dragAndDrop(page, personRow(page, '王小明'), tableButton(page, 5));
-    await expectToast(page, '第 5 桌已滿，請先移出一位。', { undo: false });
+    await expectToast(page, '第 5 桌已達 12 位，請先移出一位。', { undo: false });
     expect(await rosterNames(3)).toEqual(['王小明']);
   });
 

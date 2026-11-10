@@ -2,10 +2,11 @@
 
 // 桌次詳情與工作人員桌詳情（docs/spec/seating.md 2.3、2.5.2、3.12；原型 seating.html 的 tablePanel、staffPanel）。
 // 桌面從座位圖區右側浮出（360 px，不是 modal，座位圖與人員面板仍可操作）；手機改為 Dialog（2.3.6、2.5.4）。
+// 名單固定 10 列，11、12 位時 12 列；有 12 位時「加入人員」停用（SEAT-R30、SEAT-R42、D-018）。
 import { ArrowRightLeft, Eraser, GripVertical, UserPlus, X } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import { useAppStore } from '@/client/app-provider';
-import { STAFF_TABLE_CAPACITY, type Participant } from '@/contracts/entities';
+import type { Participant } from '@/contracts/entities';
 import { displayName } from '@/domain/display';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,7 @@ import { DialogBody, DialogFooter, overlayClasses, panelClasses } from '@/compon
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { dropAttr, useDragState, useSeatingDraggable } from './drag';
-import { CAPACITY, detailMeta, NOTE_SUGGESTIONS, type TableInfo } from './model';
+import { CAPACITY, detailMeta, NOTE_SUGGESTIONS, rosterRows, type TableInfo } from './model';
 import { NameLine } from './person-parts';
 import { PersonMenu } from './person-menu';
 import { useSeatingOps } from './use-seating-ops';
@@ -42,12 +43,14 @@ export interface TableDetailProps {
 export function TableDetail(props: TableDetailProps) {
   const { info } = props;
   const title = info.isStaff ? '工作人員桌' : `第 ${info.id} 桌`;
-  const subtitle = `${info.count}/${info.isStaff ? STAFF_TABLE_CAPACITY : CAPACITY} 人`;
+  // 副標照實寫人數，例如「11/10 人」（SEAT-R11）
+  const subtitle = `${info.count}/${CAPACITY} 人`;
   const body = info.isStaff ? <StaffBody {...props} /> : <TableBody {...props} />;
+  const add: Action = { key: 'add', label: '加入人員', variant: 'primary', icon: <UserPlus />, disabled: info.max, onClick: props.onAddPeople };
   const actions: Action[] = info.isStaff
-    ? [{ key: 'add', label: '加入人員', variant: 'primary', icon: <UserPlus />, disabled: info.full, onClick: props.onAddPeople }]
+    ? [add]
     : [
-        { key: 'add', label: '加入人員', variant: 'primary', icon: <UserPlus />, onClick: props.onAddPeople },
+        add,
         { key: 'swap', label: '調換桌次…', variant: 'outline', icon: <ArrowRightLeft />, onClick: props.onSwap },
         // 空桌時停用（SEAT-Q06 的目前假設）
         { key: 'clear', label: '清空桌次', variant: 'destructive-outline', icon: <Eraser />, disabled: info.count === 0, onClick: props.onClear },
@@ -204,7 +207,7 @@ function NoteField({ tableId, noteName }: { tableId: number; noteName: string | 
   );
 }
 
-/** 名單：固定 10 列；一般桌可以拖移調整順序，也接受從人員面板拖進來（2.3.2、2.5.2） */
+/** 名單：固定 10 列（11、12 位時 12 列）；一般桌可以拖移調整順序，也接受從人員面板拖進來（2.3.2、2.5.2） */
 function Roster({ info, draggable, hint }: { info: TableInfo; draggable: boolean; hint: string }) {
   const headingId = useId();
   const listOver = useDragState((s) =>
@@ -230,7 +233,7 @@ function Roster({ info, draggable, hint }: { info: TableInfo; draggable: boolean
           listOver && blocked && 'cursor-not-allowed',
         )}
       >
-        {Array.from({ length: CAPACITY }, (_, i) => (
+        {Array.from({ length: rosterRows(info.count) }, (_, i) => (
           <DetailRow
             key={info.roster[i]?.id ?? `empty-${i}`}
             info={info}

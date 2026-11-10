@@ -5,16 +5,18 @@
 // 2. 通過後立即更新畫面，交給儲存佇列依序送出。
 // 3. 伺服器回應後用回應的資料校正畫面，再顯示 Sonner 與「復原」（undo 由回應帶回）。
 // 4. 只能復原最近一次（SEAT-R77）：做了下一個可以復原的操作後，前一則 Sonner 的「復原」就沒有作用。
+// 5. 入座、搬移、加入人員、放進工作人員桌後這一桌超過 10 位時，成功的 Sonner 後面加上「這一桌已超過 10 位。」（SEAT-R89），
+//    以伺服器回應的結果為準。
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { apiFetch } from '@/client/api';
 import { useAppStore, useMutation } from '@/client/app-provider';
-import { tableFullMessage } from '@/client/conflict-messages';
-import type { AppState, SeatTable } from '@/contracts/entities';
+import { tableFullMessage, tableLimitMessage } from '@/client/conflict-messages';
+import { STAFF_TABLE_ID, TABLE_CAPACITY, type AppState, type SeatTable } from '@/contracts/entities';
 import type { ErrorCode } from '@/contracts/errors';
 import type { SeatingOperation, SeatingResult, SeatingSnapshot, TableResult } from '@/contracts/seating';
 import { applySeatingOperation, type RuleOperation, type SeatingViolation } from '@/domain/seating-rules';
 import { dismissNotify, notify } from '@/components/ui/toaster';
-import { msg } from './model';
+import { msg, withOverflowNote } from './model';
 
 const OPERATIONS_URL = '/api/seating/operations';
 
@@ -50,15 +52,40 @@ let boundStore: unknown = null;
 // store 的 undo 上一次的值：只在它從有值變成 null（衝突後重新載入）時清掉，元件掛載時不清
 let lastSeenUndo: unknown = null;
 
+/** 桌次已滿的提示：從選單入座到 10 位「已滿」，拖移或「加入人員」到 12 位「已達 12 位」（SEAT-R20、SEAT-R23、SEAT-R86） */
+function tableMessage(code: SeatingViolation | ErrorCode, op: SeatingOperation): string | undefined {
+  if (op.type !== 'seat' && op.type !== 'seatMany') return undefined;
+  if (code === 'TABLE_FULL') return tableFullMessage(op.tableId);
+  if (code === 'TABLE_LIMIT') return tableLimitMessage(op.tableId);
+  return undefined;
+}
+
 function violationMessage(violation: SeatingViolation, op: RuleOperation): string | null {
-  if (violation === 'TABLE_FULL' && (op.type === 'seat' || op.type === 'seatMany')) return tableFullMessage(op.tableId);
+  const table = tableMessage(violation, op);
+  if (table) return table;
   if (violation === 'STAFF_TABLE_FULL') return msg.staffFull;
+  if (violation === 'STAFF_TABLE_LIMIT') return msg.staffLimit;
   if (violation === 'STAFF_EMPLOYEE_ONLY') return msg.employeeOnly;
   return null;
 }
 
-const conflictFor = (op: SeatingOperation) => (code: ErrorCode) =>
-  code === 'TABLE_FULL' && (op.type === 'seat' || op.type === 'seatMany') ? tableFullMessage(op.tableId) : undefined;
+const conflictFor = (op: SeatingOperation) => (code: ErrorCode) => tableMessage(code, op);
+
+/**
+ * 這次入座、搬移、加入人員或放進工作人員桌後，目標桌是否超過 10 位（SEAT-R89），以伺服器回應為準：
+ * 一般桌的座號是 0..n-1 連續，名單最後一位一定在回應裡，有人的座號是 10 以上就是超過；
+ * 工作人員桌的座號不規定（SEAT-R34），改看套用回應後的人數。同一桌內調整順序不算放進來。
+ */
+function overflowed(op: RuleOperation, before: AppState, res: SeatingResult, merged: AppState): boolean {
+  if (op.type !== 'seat' && op.type !== 'seatMany') return false;
+  const moving = op.type === 'seat' ? [op.participantId] : op.participantIds;
+  const entering = moving.some((id) => before.participants.find((p) => p.id === id)?.tableId !== op.tableId);
+  if (!entering) return false;
+  if (op.tableId === STAFF_TABLE_ID) {
+    return merged.participants.filter((p) => p.tableId === STAFF_TABLE_ID).length > TABLE_CAPACITY;
+  }
+  return res.participants.some((p) => p.tableId === op.tableId && (p.seatOrder ?? 0) >= TABLE_CAPACITY);
+}
 
 export function useSeatingOps() {
   const mutate = useMutation();
@@ -135,13 +162,15 @@ export function useSeatingOps() {
       }
       if (!check.undo.participants.length && !check.undo.tables.length) return false;
       const token = Symbol(op.type);
+      const before = latest.current;
       latestUndo = token;
       mutate<SeatingResult>({
         optimistic: (d) => applyLocally(d, op),
         send: () => postOperation(op),
         onSuccess: (res, s) => {
+          const merged = mergeResult(s.data, res);
           s.update((d) => mergeResult(d, res));
-          offerUndo(token, message, res.undo);
+          offerUndo(token, overflowed(op, before, res, merged) ? withOverflowNote(message) : message, res.undo);
         },
         conflictMessage: conflictFor(op),
       });

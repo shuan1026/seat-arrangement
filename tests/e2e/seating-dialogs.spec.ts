@@ -1,6 +1,7 @@
 // 座位安排的對話框（桌面；手機見 seating-mobile.spec.ts）：選擇桌次、加入人員、調換桌次、清空確認，以及只用鍵盤操作。
 // docs/spec/seating.md 2.3.3～2.3.5、2.4、4.3、4.4；SEAT-R22～R25、R28～R31、R39、R72、R84；
 // SEAT-AC08～AC11、AC17～AC19、AC35～AC37、AC86；SEAT-Q05、SEAT-Q06（原型的做法，目前假設）。
+// D-018：「加入人員」最多勾到這一桌 12 位（SEAT-R30）；超過 10 位的其他情況見 seating-overflow.spec.ts。
 // 參與人員頁的「入座…」（SEAT-AC12）用同一個 TableSelectDialog，元件本身見 tests/unit/components/table-select-dialog.test.tsx；
 // 參與人員頁入口的 E2E 在 people-seating.spec.ts。
 import { expect, test, type Page } from '@playwright/test';
@@ -196,7 +197,9 @@ test.describe('選擇桌次對話框（2.4、SEAT-R22～R25）', () => {
 });
 
 test.describe('加入人員到桌次（2.3.4、SEAT-R30、SEAT-R31）', () => {
-  test('還有 3 個空位：勾到第 4 位時不會勾選、顯示「最多只能再加入 3 位。」；確認後排在第 8–10 列、已滿、Sonner 帶「復原」（SEAT-AC18）', async ({
+  // D-018：「加入人員」最多勾到這一桌 12 位（SEAT-R30，{k} 是 12 減這一桌的人數），7 位的桌可以勾 5 位；
+  // 說明的空位仍只算到 10 位。原本「勾第 4 位時不會勾選、顯示『最多只能再加入 3 位。』」和 SEAT-R30 衝突，改為第 4 位可以勾。
+  test('還有 3 個空位：說明「還有 3 個空位。」；第 4 位也可以勾（上限 12 位）；取消第 4 位後按「加入 3 位」，排在第 8–10 列、已滿、Sonner 帶「復原」（SEAT-AC18、SEAT-R30）', async ({
     page,
   }) => {
     await seed(async (s) => {
@@ -215,8 +218,11 @@ test.describe('加入人員到桌次（2.3.4、SEAT-R30、SEAT-R31）', () => {
     for (const name of ['丙', '甲', '戊']) await dialog.getByRole('checkbox', { name: new RegExp(`^${name}`) }).check();
     const fourth = dialog.getByRole('checkbox', { name: /^乙/ });
     await fourth.click();
+    await expect(fourth).toBeChecked();
+    await expect(dialog.getByText(/最多只能再加入/)).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: '加入 4 位' })).toBeEnabled();
+    await fourth.click();
     await expect(fourth).not.toBeChecked();
-    await expect(dialog.getByText('最多只能再加入 3 位。')).toBeVisible();
 
     await dialog.getByRole('button', { name: '加入 3 位' }).click();
     await expect(dialog).toBeHidden();
