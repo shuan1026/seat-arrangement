@@ -4,7 +4,8 @@
 // 收合：88 px 圓形；精簡（縮放低於 80%）：只有大號桌號與人數；展開：256 px 名單卡片（D-022），固定 10 列、兩欄各 5 列，
 // 這一桌有 11、12 位時 12 列、兩欄各 6 列，卡片跟著變高（D-018）。
 // 人數：0–9 位「{n}/10」，10 位正向徽章「已滿」，11、12 位待處理徽章「超過」（triangle-alert 圖示，SEAT-R11、2.1.9）。
-// 發布頁 /seats 也用這個元件（只有收合與精簡顯示、沒有拖移把手；docs/spec/permissions.md 第 2.3 節），所以收合時只讀 TableFace。
+// 發布頁 /seats 也用這個元件（docs/spec/permissions.md 第 2.3 節、D-025）：沒有拖移把手，hideCounts 時不顯示人數與「已滿」「超過」，
+// 無障礙名稱也不含人數；展開時用 PublicCard（名單只有座號與顯示名稱）。收合時只讀 TableFace。
 import { GripVertical, TriangleAlert } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useAppStore } from '@/client/app-provider';
@@ -16,7 +17,16 @@ import { cn } from '@/components/ui/cn';
 import { IconButton } from '@/components/ui/icon-button';
 import { Tooltip } from '@/components/ui/tooltip';
 import { dropAttr, useDragState, useIsDragging, useSeatingDraggable } from './drag';
-import { CAPACITY, isTableInfo, rosterRows, tableTooltip, type TableFace, type TableInfo } from './model';
+import {
+  CAPACITY,
+  isPublicTableFace,
+  isTableInfo,
+  rosterRows,
+  tableTooltip,
+  type PublicTableFace,
+  type TableFace,
+  type TableInfo,
+} from './model';
 import { SeatMarks } from './person-parts';
 
 export type TableMode = 'collapsed' | 'compact' | 'expanded';
@@ -34,6 +44,8 @@ export interface MapTableProps {
   /** 桌面才能拖移（SEAT-R82） */
   draggable: boolean;
   onOpen: () => void;
+  /** 發布頁：不顯示人數與「已滿」「超過」，無障礙名稱也不含人數（PRM-R24、D-025） */
+  hideCounts?: boolean;
 }
 
 /** 收合時的 Tooltip；拖移中不顯示，避免擋到放置目標 */
@@ -153,7 +165,9 @@ export function MapTable(props: MapTableProps) {
   const tooltip = info.isStaff ? `工作人員桌・${info.label}` : tableTooltip(info);
   const ariaLabel = info.isStaff
     ? tooltip
-    : `${name}，${info.noteName ? `${info.noteName}，` : ''}${info.label}，${info.count}/${CAPACITY}`;
+    : props.hideCounts
+      ? [name, info.noteName, info.label].filter(Boolean).join('，')
+      : `${name}，${info.noteName ? `${info.noteName}，` : ''}${info.label}，${info.count}/${CAPACITY}`;
 
   return (
     <div
@@ -165,6 +179,8 @@ export function MapTable(props: MapTableProps) {
     >
       {mode === 'expanded' && isTableInfo(info) ? (
         <ExpandedCard {...props} info={info} name={name} ariaLabel={ariaLabel} drop={drop} />
+      ) : mode === 'expanded' && isPublicTableFace(info) ? (
+        <PublicCard info={info} selected={props.selected} hit={props.hit} onOpen={props.onOpen} name={name} ariaLabel={ariaLabel} />
       ) : (
         <>
           <MapTooltip content={tooltip}>
@@ -188,7 +204,7 @@ export function MapTable(props: MapTableProps) {
               {!info.isStaff && mode !== 'compact' ? (
                 <span className="max-w-full truncate type-xs-regular text-muted-foreground">{info.noteName || info.label}</span>
               ) : null}
-              <CountOrFull info={info} mode={mode} />
+              {props.hideCounts ? null : <CountOrFull info={info} mode={mode} />}
             </button>
           </MapTooltip>
           {draggable && !info.isStaff ? <Handle info={info} mode={mode} scale={scale} /> : null}
@@ -263,6 +279,73 @@ function ExpandedCard({
             draggable={draggable}
           />
         ))}
+      </ol>
+    </div>
+  );
+}
+
+/**
+ * 發布頁的展開卡片（docs/spec/permissions.md 第 2.3 節、D-025）：外形、尺寸同 ExpandedCard（D-022），
+ * 標頭只有「{桌號} 桌」（不顯示人數與「已滿」「超過」），名單列只有座號與顯示名稱（不放「賓」、兒童椅、素食徽章），
+ * 空位列照樣是「空位」；不能拖移，整張卡片都能點開那一桌的名單（PRM-R26）
+ */
+function PublicCard({
+  info,
+  selected,
+  hit,
+  onOpen,
+  name,
+  ariaLabel,
+}: Pick<MapTableProps, 'selected' | 'hit' | 'onOpen'> & { info: PublicTableFace; name: string; ariaLabel: string }) {
+  const rows = rosterRows(info.count);
+  return (
+    <div
+      onClick={onOpen}
+      className={cn(
+        'flex w-[256px] cursor-pointer flex-col rounded-xl',
+        cardPadding(hit),
+        rows > CAPACITY ? 'h-[246px]' : 'h-[220px]',
+        frameClasses(info, { over: false, selected, hit }),
+      )}
+    >
+      <div className="flex min-h-6 min-w-0 items-start gap-2">
+        <button
+          type="button"
+          aria-label={ariaLabel}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          className={cn(
+            'min-w-0 flex-1 cursor-pointer truncate rounded-sm text-left type-xl-semi-bold leading-6 outline-none focus-visible:focus-ring',
+            info.count === 0 && 'text-muted-foreground',
+          )}
+        >
+          {name}
+        </button>
+      </div>
+      {info.noteName ? <div className="truncate type-sm-medium">{info.noteName}</div> : null}
+      <div className="mb-2 truncate type-xs-regular text-muted-foreground">{info.label}</div>
+      <ol
+        className={cn(
+          'm-0 grid list-none grid-flow-col grid-cols-2 gap-x-2 gap-y-0.5 p-0',
+          rows > CAPACITY ? 'grid-rows-6' : 'grid-rows-5',
+        )}
+      >
+        {Array.from({ length: rows }, (_, i) => {
+          const person = info.names[i];
+          const idx = <span className="w-3.5 shrink-0 text-muted-foreground tabular-nums">{i + 1}</span>;
+          return person === undefined ? (
+            <li key={i} className="flex h-6 min-w-0 items-center gap-1 rounded-sm bg-muted px-1 type-xs-regular text-muted-foreground">
+              {idx}空位
+            </li>
+          ) : (
+            <li key={i} className="flex h-6 min-w-0 items-center gap-1 rounded-sm px-1 type-xs-regular">
+              {idx}
+              <span className="shrink-0 whitespace-nowrap">{person}</span>
+            </li>
+          );
+        })}
       </ol>
     </div>
   );
