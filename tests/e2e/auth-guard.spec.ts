@@ -23,7 +23,8 @@ test.describe('沒登入開頁面（AUTH-R01）', () => {
     expect(target?.searchParams.get('q')).toBe('王');
   });
 
-  for (const path of ['/', '/people', '/employees', '/no-such-page']) {
+  // 權限頁與發布頁也要登入（D-021、AUTH-R15）
+  for (const path of ['/', '/people', '/employees', '/permissions', '/seats', '/no-such-page']) {
     test(`開 ${path} 也先到登入頁`, async ({ page }) => {
       await page.goto(path);
       await expect(page).toHaveURL(/\/login(\?|$)/);
@@ -60,6 +61,10 @@ test.describe('沒登入呼叫 API（AUTH-R08、AUTH-AC08）', () => {
     ['POST', '/api/seating/operations'],
     ['PATCH', '/api/tables/3'],
     ['GET', '/api/export/seating'],
+    ['GET', '/api/editors'],
+    ['POST', '/api/editors'],
+    ['PUT', '/api/publish'],
+    ['GET', '/api/seats'],
   ] as const) {
     test(`${method} ${path} 也被拒絕，回應不含資料`, async ({ page }) => {
       await page.goto('/login');

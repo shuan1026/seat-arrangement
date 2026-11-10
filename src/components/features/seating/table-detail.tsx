@@ -3,6 +3,8 @@
 // 桌次詳情與工作人員桌詳情（docs/spec/seating.md 2.3、2.5.2、3.12；原型 seating.html 的 tablePanel、staffPanel）。
 // 桌面從座位圖區右側浮出（360 px，不是 modal，座位圖與人員面板仍可操作）；手機改為 Dialog（2.3.6、2.5.4）。
 // 名單固定 10 列，11、12 位時 12 列；有 12 位時「加入人員」停用（SEAT-R30、SEAT-R42、D-018）。
+// 只能檢視（readOnly，SEAT-R90）：沒有備註名稱欄位與常用選項、名單說明、列操作、拖移與底部按鈕；
+// 備註名稱改以文字顯示在副標下方。外框（DetailShell）發布頁的桌次名單也用（docs/spec/permissions.md 第 2.3 節）。
 import { ArrowRightLeft, Eraser, GripVertical, UserPlus, X } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import { useAppStore } from '@/client/app-provider';
@@ -35,6 +37,8 @@ export interface TableDetailProps {
   info: TableInfo;
   mobile: boolean;
   draggable: boolean;
+  /** 只能檢視：隱藏所有會修改資料的入口（SEAT-R90） */
+  readOnly?: boolean;
   onClose: () => void;
   onAddPeople: () => void;
   onSwap: () => void;
@@ -42,31 +46,74 @@ export interface TableDetailProps {
 }
 
 export function TableDetail(props: TableDetailProps) {
-  const { info } = props;
+  const { info, readOnly = false } = props;
   const title = info.isStaff ? '工作人員桌' : tableTitle(info.id);
   // 副標照實寫人數，例如「11/10 人」（SEAT-R11）
   const subtitle = `${info.count}/${CAPACITY} 人`;
   const body = info.isStaff ? <StaffBody {...props} /> : <TableBody {...props} />;
   const add: Action = { key: 'add', label: '加入人員', variant: 'primary', icon: <UserPlus />, disabled: info.max, onClick: props.onAddPeople };
-  const actions: Action[] = info.isStaff
-    ? [add]
-    : [
-        add,
-        { key: 'swap', label: '調換桌次…', variant: 'outline', icon: <ArrowRightLeft />, onClick: props.onSwap },
-        // 空桌時停用（SEAT-Q06 的目前假設）
-        { key: 'clear', label: '清空桌次', variant: 'destructive-outline', icon: <Eraser />, disabled: info.count === 0, onClick: props.onClear },
-      ];
+  const actions: Action[] = readOnly
+    ? []
+    : info.isStaff
+      ? [add]
+      : [
+          add,
+          { key: 'swap', label: '調換桌次…', variant: 'outline', icon: <ArrowRightLeft />, onClick: props.onSwap },
+          // 空桌時停用（SEAT-Q06 的目前假設）
+          { key: 'clear', label: '清空桌次', variant: 'destructive-outline', icon: <Eraser />, disabled: info.count === 0, onClick: props.onClear },
+        ];
   const button = (a: Action, className?: string) => (
     <Button key={a.key} variant={a.variant} size={props.mobile ? 'md' : 'sm'} leadingIcon={a.icon} disabled={a.disabled} onClick={a.onClick} className={className}>
       {a.label}
     </Button>
   );
+  return (
+    <DetailShell
+      title={title}
+      subtitle={subtitle}
+      // 只能檢視：備註名稱以文字顯示在副標下方，沒有時不顯示這一行（SEAT-R90）
+      noteName={readOnly ? info.noteName : null}
+      mobile={props.mobile}
+      onClose={props.onClose}
+      footer={
+        actions.length === 0
+          ? null
+          : props.mobile
+            ? // 手機按鈕滿版堆疊、主要按鈕在上（DOM 順序次要在前）
+              [...actions].reverse().map((a) => button(a))
+            : actions.map((a) => button(a, 'flex-auto'))
+      }
+    >
+      {body}
+    </DetailShell>
+  );
+}
 
-  if (props.mobile) {
+export interface DetailShellProps {
+  /** 「{桌號} 桌」或「工作人員桌」；也是面板與對話框的無障礙名稱 */
+  title: string;
+  /** 「{人數}/10 人」 */
+  subtitle: string;
+  /** 副標下方的備註名稱文字（Text-sm/Medium）；沒有時不顯示 */
+  noteName?: string | null;
+  mobile: boolean;
+  onClose: () => void;
+  /** 底部按鈕；沒有時不顯示按鈕列 */
+  footer?: ReactNode;
+  children: ReactNode;
+}
+
+/**
+ * 桌次詳情的外框（2.3.1、2.3.6）：桌面從座位圖區右側浮出（360 px，不是 modal），手機改為 Dialog。
+ * 標題、關閉鈕與副標在上方，內容可捲動，底部按鈕列可省略。
+ */
+export function DetailShell({ title, subtitle, noteName, mobile, onClose, footer, children }: DetailShellProps) {
+  const note = noteName ? <p className="mt-1 type-sm-medium text-foreground [overflow-wrap:anywhere]">{noteName}</p> : null;
+  if (mobile) {
     // 手機改為 Dialog（2.3.6）。和桌面的浮出面板一樣不是 modal：頁面其他部分不會被設為 aria-hidden，
     // 按背景、Esc 或關閉鈕關閉；按 Sonner（例如「復原」）或焦點移到其他對話框時不關閉。外觀沿用 Dialog 的遮罩與面板。
     return (
-      <DialogPrimitive.Root open modal={false} onOpenChange={(open) => !open && props.onClose()}>
+      <DialogPrimitive.Root open modal={false} onOpenChange={(open) => !open && onClose()}>
         <DialogPrimitive.Portal>
           <div className={overlayClasses}>
             <DialogPrimitive.Content
@@ -86,10 +133,10 @@ export function TableDetail(props: TableDetailProps) {
               <div className="shrink-0 px-6 pt-6 pr-12">
                 <DialogPrimitive.Title className="type-xl-semi-bold text-foreground">{title}</DialogPrimitive.Title>
                 <DialogPrimitive.Description className="mt-1 type-xs-regular text-muted-foreground">{subtitle}</DialogPrimitive.Description>
+                {note}
               </div>
-              <DialogBody>{body}</DialogBody>
-              {/* 手機按鈕滿版堆疊、主要按鈕在上（DOM 順序次要在前） */}
-              <DialogFooter>{[...actions].reverse().map((a) => button(a))}</DialogFooter>
+              <DialogBody className={cn(!footer && 'pb-6')}>{children}</DialogBody>
+              {footer ? <DialogFooter>{footer}</DialogFooter> : null}
               <DialogPrimitive.Close
                 aria-label="關閉"
                 className="absolute top-3 right-3 inline-flex size-7 cursor-pointer items-center justify-center rounded-sm text-foreground outline-none transition-[background-color,box-shadow] duration-150 hover:bg-hover focus-visible:focus-ring [&_svg]:size-4"
@@ -112,57 +159,71 @@ export function TableDetail(props: TableDetailProps) {
         <div className="min-w-0">
           <h2 className="type-xl-semi-bold">{title}</h2>
           <p className="type-xs-regular text-muted-foreground">{subtitle}</p>
+          {note}
         </div>
-        <IconButton label="關閉" size="sm" tooltip onClick={props.onClose}>
+        <IconButton label="關閉" size="sm" tooltip onClick={onClose}>
           <X />
         </IconButton>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 scrollbar-inset">{body}</div>
-      <div className="flex flex-wrap gap-2 border-t border-border px-4 pt-3 pb-4">{actions.map((a) => button(a, 'flex-auto'))}</div>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 scrollbar-inset">{children}</div>
+      {footer ? <div className="flex flex-wrap gap-2 border-t border-border px-4 pt-3 pb-4">{footer}</div> : null}
     </section>
   );
 }
 
-function Meta({ items }: { items: ReactNode[] }) {
+export function Meta({ items }: { items: ReactNode[] }) {
   return <div className="flex flex-wrap gap-x-4 gap-y-1 type-sm-regular text-muted-foreground">{items}</div>;
 }
 
-const Strong = ({ children }: { children: ReactNode }) => <b className="type-sm-medium text-foreground">{children}</b>;
+/**
+ * 「部門：{部門}」「兒童椅 {n} 張」這類一項資訊：數值用 Text-sm/Medium 強調（原型 .tp-meta b）。
+ * 輔助技術讀同一句完整的文字，不會把標籤和數值拆成兩段。
+ */
+export function MetaItem({ before, value, after = '' }: { before: string; value: string | number; after?: string }) {
+  return (
+    <span>
+      <span aria-hidden="true">
+        {before}
+        <b className="type-sm-medium text-foreground">{value}</b>
+        {after}
+      </span>
+      <span className="sr-only">{`${before}${value}${after}`}</span>
+    </span>
+  );
+}
 
-function TableBody({ info, draggable }: TableDetailProps) {
+function TableBody({ info, draggable, readOnly = false }: TableDetailProps) {
   return (
     <div className="flex flex-col gap-4">
-      <NoteField key={`${info.id}:${info.noteName ?? ''}`} tableId={info.id} noteName={info.noteName} />
+      {readOnly ? null : <NoteField key={`${info.id}:${info.noteName ?? ''}`} tableId={info.id} noteName={info.noteName} />}
       <Meta
         items={[
-          <span key="d">
-            部門：<Strong>{info.labels.join('＋') || '—'}</Strong>
-          </span>,
-          <span key="c">
-            兒童椅 <Strong>{info.childSeats}</Strong> 張
-          </span>,
-          <span key="v">
-            素食 <Strong>{info.vegetarians}</Strong> 位
-          </span>,
+          <MetaItem key="d" before="部門：" value={info.labels.join('＋') || '—'} />,
+          <MetaItem key="c" before="兒童椅 " value={info.childSeats} after=" 張" />,
+          <MetaItem key="v" before="素食 " value={info.vegetarians} after=" 位" />,
         ]}
       />
-      <Roster info={info} draggable={draggable} hint="拖移可以調整順序，也可以從人員面板直接拖進來。" />
+      <Roster
+        info={info}
+        draggable={draggable && !readOnly}
+        readOnly={readOnly}
+        hint={readOnly ? null : '拖移可以調整順序，也可以從人員面板直接拖進來。'}
+      />
     </div>
   );
 }
 
-function StaffBody({ info, draggable }: TableDetailProps) {
+function StaffBody({ info, draggable, readOnly = false }: TableDetailProps) {
   return (
     <div className="flex flex-col gap-4">
       <p className="type-xs-regular text-muted-foreground">活動當天值勤的員工，不算入座統計；匯出時列在座位表右上角。</p>
-      <Meta
-        items={[
-          <span key="d">
-            部門：<Strong>{info.labels.join('＋') || '—'}</Strong>
-          </span>,
-        ]}
+      <Meta items={[<MetaItem key="d" before="部門：" value={info.labels.join('＋') || '—'} />]} />
+      <Roster
+        info={info}
+        draggable={draggable && !readOnly}
+        readOnly={readOnly}
+        hint={readOnly ? null : '從人員面板或其他桌次拖進來，或按「加入人員」。只有員工可以放進來。'}
       />
-      <Roster info={info} draggable={draggable} hint="從人員面板或其他桌次拖進來，或按「加入人員」。只有員工可以放進來。" />
     </div>
   );
 }
@@ -209,7 +270,7 @@ function NoteField({ tableId, noteName }: { tableId: number; noteName: string | 
 }
 
 /** 名單：固定 10 列（11、12 位時 12 列）；一般桌可以拖移調整順序，也接受從人員面板拖進來（2.3.2、2.5.2） */
-function Roster({ info, draggable, hint }: { info: TableInfo; draggable: boolean; hint: string }) {
+function Roster({ info, draggable, readOnly, hint }: { info: TableInfo; draggable: boolean; readOnly: boolean; hint: string | null }) {
   const headingId = useId();
   const listOver = useDragState((s) =>
     info.isStaff ? s.target?.kind === 'staff' && s.target.area === 'detail' : s.target?.kind === 'table' && s.target.tableId === info.id && s.target.area === 'detail',
@@ -223,7 +284,7 @@ function Roster({ info, draggable, hint }: { info: TableInfo; draggable: boolean
       <h3 id={headingId} className="mb-1 type-sm-medium">
         名單
       </h3>
-      <p className="mb-2 type-xs-regular text-muted-foreground">{hint}</p>
+      {hint ? <p className="mb-2 type-xs-regular text-muted-foreground">{hint}</p> : null}
       <ol
         aria-labelledby={headingId}
         data-drop={info.isStaff ? dropAttr.staff : dropAttr.detail(info.id)}
@@ -242,6 +303,7 @@ function Roster({ info, draggable, hint }: { info: TableInfo; draggable: boolean
             person={info.roster[i]}
             over={overRow === i && !blocked}
             draggable={draggable}
+            readOnly={readOnly}
           />
         ))}
       </ol>
@@ -255,12 +317,14 @@ function DetailRow({
   person,
   over,
   draggable,
+  readOnly,
 }: {
   info: TableInfo;
   index: number;
   person: Participant | undefined;
   over: boolean;
   draggable: boolean;
+  readOnly: boolean;
 }) {
   const dir = useAppStore((s) => s.dir);
   const { setNodeRef, listeners, attributes, isDragging } = useSeatingDraggable(
@@ -304,7 +368,7 @@ function DetailRow({
         <NameLine person={person} name={displayName(person, dir)} />
         <div className="type-xs-regular text-muted-foreground [overflow-wrap:anywhere]">{detailMeta(person, dir)}</div>
       </div>
-      <PersonMenu person={person} place={info.isStaff ? 'staffDetail' : 'detail'} />
+      {readOnly ? null : <PersonMenu person={person} place={info.isStaff ? 'staffDetail' : 'detail'} />}
     </li>
   );
 }

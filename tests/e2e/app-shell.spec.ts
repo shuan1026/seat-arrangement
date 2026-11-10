@@ -1,13 +1,20 @@
-// App Shell：docs/spec/README.md 第 4 節（導覽固定三項與路徑）、第 5 節（Sidebar、使用者區塊、Mobile Header 與 Drawer）、
-// AUTH-R09、AUTH-R10、第 14 節（導覽、使用者選單、已登出）；COM-AC08～AC10、AUTH-AC11～AC13。
-// 已登入狀態用 tests/e2e/helpers/auth.ts 直接產生 session cookie（不經 Google）。
+// App Shell：docs/spec/README.md 第 4 節（導覽的順序、名稱與路徑；編輯者四項，第 4 項「權限」只有編輯者看得到，D-021）、
+// 第 5 節（Sidebar、使用者區塊、Mobile Header 與 Drawer）、AUTH-R09、AUTH-R10、第 14 節（導覽、使用者選單、已登出）；
+// COM-AC08～AC10、AUTH-AC11～AC13。只能檢視時只有三項，見 tests/e2e/viewer-shell.spec.ts（COM-AC21）。
+// 已登入狀態用 tests/e2e/helpers/auth.ts 直接產生 session cookie（不經 Google）；預設的測試帳號是編輯者。
 // 手機選單鈕的無障礙名稱「開啟選單」沿用原型 ui-design-system/source-reference/html/prototype/shell.js。
 import { expect, test, type Page } from '@playwright/test';
 import { signIn, TEST_USER } from './helpers/auth';
 import { fetchFromPage, isMobileWidth, requireBaseURL } from './helpers/page-checks';
 
-const NAV = ['座位安排', '參與人員', '員工名單'] as const;
-const PATH_OF: Record<(typeof NAV)[number], string> = { 座位安排: '/', 參與人員: '/people', 員工名單: '/employees' };
+/** 編輯者的導覽（D-021 前是三項，現在第 4 項是「權限」） */
+const NAV = ['座位安排', '參與人員', '員工名單', '權限'] as const;
+const PATH_OF: Record<(typeof NAV)[number], string> = {
+  座位安排: '/',
+  參與人員: '/people',
+  員工名單: '/employees',
+  權限: '/permissions',
+};
 
 /** 看得到的主要導覽（桌面 Sidebar，或手機 Drawer 裡的） */
 const visibleNav = (page: Page) =>
@@ -33,17 +40,17 @@ test.describe('桌面 Sidebar', () => {
     test.skip(isMobileWidth(page), '桌面寬度才有 Sidebar');
   });
 
-  test('導覽固定三項，順序是座位安排、參與人員、員工名單（第 4 節、第 14 節）', async ({ page }) => {
+  test('編輯者的導覽有四項，順序是座位安排、參與人員、員工名單、權限（第 4 節、第 14 節、COM-AC21）', async ({ page }) => {
     await page.goto('/');
     await expect(visibleNav(page)).toHaveCount(1);
     await expect(visibleNav(page).getByRole('link')).toHaveText([...NAV]);
   });
 
-  test('按導覽項目切換頁面，目前頁面有標示（COM-AC08）', async ({ page }) => {
+  test('按導覽項目依序切換四個頁面，目前頁面有標示（COM-AC08）', async ({ page }) => {
     await page.goto('/');
     await expect(navLink(page, '座位安排')).toHaveAttribute('aria-current', 'page');
 
-    for (const name of ['參與人員', '員工名單', '座位安排'] as const) {
+    for (const name of ['參與人員', '員工名單', '權限', '座位安排'] as const) {
       await navLink(page, name).click();
       await expect(page).toHaveURL((url) => url.pathname === PATH_OF[name]);
       await expect(navLink(page, name)).toHaveAttribute('aria-current', 'page');
@@ -144,7 +151,7 @@ test.describe('手機（767 px 以下）', () => {
     await expect(userTrigger(page)).toHaveCount(0);
   });
 
-  test('按選單鈕開 Drawer：看得到三個導覽與使用者區塊（COM-AC10）', async ({ page }) => {
+  test('按選單鈕開 Drawer：看得到編輯者的四個導覽與使用者區塊（COM-AC10）', async ({ page }) => {
     await page.goto('/');
     await menuButton(page).click();
 

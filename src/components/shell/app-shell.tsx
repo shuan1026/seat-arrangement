@@ -1,7 +1,8 @@
 'use client';
 
 // App Shell：桌面 Sidebar（展開 240 px／收合 48 px）、Header、手機 Mobile Header 與 Drawer（docs/spec/README.md 第 5 節）。
-// 兩個 Header 右側都有介面配色鈕（COM-R17，theme-switch.tsx），在儲存狀態左邊。
+// 兩個 Header 右側都有介面配色鈕（COM-R17，theme-switch.tsx），在儲存狀態左邊；
+// 只能檢視時儲存狀態的位置改為中性徽章「只能檢視」（COM-R20、D-021，save-status.tsx 的 HeaderStatus）。
 // 設計系統：03-components.md「Sidebar」「Header / App Shell Block」、04-patterns-and-ux.md「App Shell」。
 import { Menu, PanelLeft } from 'lucide-react';
 import { usePathname } from 'next/navigation';
@@ -12,7 +13,7 @@ import type { AppState, SessionUser } from '@/contracts/entities';
 import { cn } from '@/components/ui/cn';
 import { IconButton } from '@/components/ui/icon-button';
 import { notify } from '@/components/ui/toaster';
-import { SaveStatus } from './save-status';
+import { HeaderStatus } from './save-status';
 import { SidebarContent } from './sidebar-content';
 import { ThemeSwitch } from './theme-switch';
 
@@ -41,7 +42,17 @@ function useNarrowDesktop(): boolean {
   );
 }
 
-export function AppShell({ user, initialData, children }: { user: SessionUser; initialData: AppState; children: React.ReactNode }) {
+export interface AppShellProps {
+  user: SessionUser;
+  initialData: AppState;
+  /** 目前登入者是否為編輯者；省略時是編輯者（只有測試會省略，(main)/layout.tsx 一律傳伺服器判斷的值） */
+  isEditor?: boolean;
+  /** 座位表是否已發布（發布對話框讀它，PRM-R17） */
+  seatsPublished?: boolean;
+  children: React.ReactNode;
+}
+
+export function AppShell({ user, initialData, isEditor, seatsPublished, children }: AppShellProps) {
   const narrow = useNarrowDesktop();
   const [pref, setPref] = useState<SidebarState | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -74,7 +85,13 @@ export function AppShell({ user, initialData, children }: { user: SessionUser; i
   };
 
   return (
-    <AppProvider initialData={initialData} user={user} notify={(text) => notify(text)}>
+    <AppProvider
+      initialData={initialData}
+      user={user}
+      isEditor={isEditor}
+      seatsPublished={seatsPublished}
+      notify={(text) => notify(text)}
+    >
       <div className="min-h-dvh bg-background" style={{ ['--sidebar-width' as string]: collapsed ? '48px' : '240px' }}>
         {/* 桌面 Sidebar：固定在視窗內距 24 px */}
         <aside
@@ -107,10 +124,10 @@ export function AppShell({ user, initialData, children }: { user: SessionUser; i
               </DialogPrimitive.Content>
             </DialogPrimitive.Portal>
           </DialogPrimitive.Root>
-          {/* 右側依序是介面配色鈕與儲存狀態（第 5 節、COM-R17） */}
+          {/* 右側依序是介面配色鈕與儲存狀態（只能檢視時是「只能檢視」徽章）（第 5 節、COM-R17、COM-R20） */}
           <div className="ml-auto flex min-w-0 items-center gap-1">
             <ThemeSwitch />
-            <SaveStatus />
+            <HeaderStatus />
           </div>
         </header>
 
@@ -120,10 +137,10 @@ export function AppShell({ user, initialData, children }: { user: SessionUser; i
             <IconButton label="收合或展開側選單" variant="ghost" size="sm" onClick={toggle} className="[&_svg]:size-5">
               <PanelLeft />
             </IconButton>
-            {/* 右側依序是介面配色鈕與儲存狀態（第 5 節、COM-R17） */}
+            {/* 右側依序是介面配色鈕與儲存狀態（只能檢視時是「只能檢視」徽章）（第 5 節、COM-R17、COM-R20） */}
             <div className="ml-auto flex min-w-0 items-center gap-2">
               <ThemeSwitch />
-              <SaveStatus />
+              <HeaderStatus />
             </div>
           </header>
           <main className="min-w-0 px-4 pt-4 md:px-0">{children}</main>

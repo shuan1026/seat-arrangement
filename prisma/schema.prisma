@@ -75,3 +75,19 @@ model SeatTable {
   participants Participant[]
   updatedAt    DateTime      @updatedAt
 }
+
+// 編輯者名單（D-021）：名單上的 email 是編輯者，其他公司帳號登入後只能檢視。
+// 是否為編輯者每個請求查一次，不放進 JWT（docs/architecture.md 第 9.3 節）。
+model Editor {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique @db.VarChar(254) // 一律去空白、轉小寫後存（PRM-R03）
+  createdAt DateTime @default(now()) // 權限頁依這個欄位排序（PRM-R07）
+  createdBy String?  @db.VarChar(254) // 新增者的 email；啟動時由 INITIAL_EDITOR_EMAILS 寫入的是 null
+}
+
+// 全站設定：單列表，只有 id = 1 這一列，由新增它的 migration 用 INSERT 建好
+model Setting {
+  id             Int      @id @default(1)
+  seatsPublished Boolean  @default(false) // 發布頁是否開放（D-021）
+  updatedAt      DateTime @updatedAt
+}

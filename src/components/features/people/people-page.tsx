@@ -8,10 +8,12 @@
 // 空值顯示「—」且「工作人員」不能按（PPL-Q18）、從員工名單進來時以員工姓名搜尋（PPL-Q19、EMP-Q07）。
 // 跨功能的部分：「入座…」「移至其他桌次…」開座位安排的選擇桌次對話框（seating.md 2.4），
 // 頁首的「匯出座位表」是共用的 ExportSeatingButton（export.md）。
+// 只能檢視時（PPL-R86、D-021）：頁首只有「匯出座位表」，表格沒有列操作欄，空狀態沒有「新增人員」，會修改資料的對話框不顯示；
+// 權限在畫面開著時被移除，開著的對話框跟著關閉（AUTH-R13）。
 import { IdCard, Plus, Search, Upload, Users, X } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { useAppStore } from '@/client/app-provider';
+import { useAppStore, useIsEditor } from '@/client/app-provider';
 import { PageHead } from '@/components/shell/page-head';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -49,6 +51,7 @@ type PersonDialogState = { mode: 'create' } | { mode: 'edit'; participantId: num
 export function PeoplePage({ initialEmployeeId }: { initialEmployeeId: number | null }) {
   const data = useAppStore((s) => s.data);
   const dir = useAppStore((s) => s.dir);
+  const isEditor = useIsEditor();
   const { unseat } = usePersonActions();
 
   // 從員工名單的「查看參與資料」進來（/people?employee={id}）：以這位員工的姓名搜尋（PPL-Q19、EMP-Q07）
@@ -112,12 +115,16 @@ export function PeoplePage({ initialEmployeeId }: { initialEmployeeId: number | 
         description="管理報名尾牙的員工、他們的眷屬與外部貴賓。"
         actions={
           <>
-            <Button variant="primary" leadingIcon={<Plus />} onClick={() => setPersonDialog({ mode: 'create' })}>
-              新增人員
-            </Button>
-            <Button variant="outline" leadingIcon={<Upload />} onClick={() => setImportOpen(true)}>
-              匯入參與人員
-            </Button>
+            {isEditor ? (
+              <>
+                <Button variant="primary" leadingIcon={<Plus />} onClick={() => setPersonDialog({ mode: 'create' })}>
+                  新增人員
+                </Button>
+                <Button variant="outline" leadingIcon={<Upload />} onClick={() => setImportOpen(true)}>
+                  匯入參與人員
+                </Button>
+              </>
+            ) : null}
             <ExportSeatingButton />
           </>
         }
@@ -189,9 +196,11 @@ export function PeoplePage({ initialEmployeeId }: { initialEmployeeId: number | 
               <Button variant="primary" leadingIcon={<IdCard />} asChild>
                 <Link href="/employees">前往員工名單</Link>
               </Button>
-              <Button variant="outline" leadingIcon={<Plus />} onClick={() => setPersonDialog({ mode: 'create' })}>
-                新增人員
-              </Button>
+              {isEditor ? (
+                <Button variant="outline" leadingIcon={<Plus />} onClick={() => setPersonDialog({ mode: 'create' })}>
+                  新增人員
+                </Button>
+              ) : null}
             </>
           }
         />
@@ -219,22 +228,27 @@ export function PeoplePage({ initialEmployeeId }: { initialEmployeeId: number | 
         )
       ) : (
         <>
-          <PeopleTable rows={rows} onCommand={onCommand} />
+          <PeopleTable rows={rows} onCommand={onCommand} readOnly={!isEditor} />
           <Pagination className="mt-3" page={current} pageSize={PAGE_SIZE} total={visible.length} onPageChange={setPage} />
         </>
       )}
 
-      <PersonDialog
-        open={personDialog !== null}
-        onOpenChange={(open) => {
-          if (!open) setPersonDialog(null);
-        }}
-        mode={personDialog?.mode ?? 'create'}
-        participantId={personDialog?.mode === 'edit' ? personDialog.participantId : undefined}
-      />
-      <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
-      <RemovePersonDialog target={confirm} onClose={() => setConfirm(null)} />
-      {seatTarget !== null ? <TableSelectDialog open={seatOpen} onOpenChange={setSeatOpen} participantId={seatTarget} /> : null}
+      {/* 會修改資料的對話框只給編輯者；權限被移除時跟著關閉（AUTH-R13） */}
+      {isEditor ? (
+        <>
+          <PersonDialog
+            open={personDialog !== null}
+            onOpenChange={(open) => {
+              if (!open) setPersonDialog(null);
+            }}
+            mode={personDialog?.mode ?? 'create'}
+            participantId={personDialog?.mode === 'edit' ? personDialog.participantId : undefined}
+          />
+          <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
+          <RemovePersonDialog target={confirm} onClose={() => setConfirm(null)} />
+          {seatTarget !== null ? <TableSelectDialog open={seatOpen} onOpenChange={setSeatOpen} participantId={seatTarget} /> : null}
+        </>
+      ) : null}
     </section>
   );
 }

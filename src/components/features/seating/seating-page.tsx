@@ -4,10 +4,12 @@
 // 頁首（H1、統計列、新增人員、匯出座位表）、工作區（人員面板 280 px ＋ 座位圖，桌次詳情浮在座位圖區右側）。
 // 手機（767 px 以下）用分頁切換座位圖與人員，不提供拖移，桌次詳情改為 Dialog。
 // 人員的新增、編輯、取消報名與刪除用參與人員的對話框（participants.md 第 2.2、2.3 節），經 PersonActionsContext 接到列操作；
-// 頁首的「匯出座位表」是共用的 ExportSeatingButton（export.md）。
-import { GripVertical, Plus } from 'lucide-react';
+// 頁首的「匯出座位表」是共用的 ExportSeatingButton（export.md）；「發布」開啟發布對話框（permissions.md 第 2.2 節）。
+// 只能檢視時（SEAT-R90、D-021）：沒有「新增人員」「發布」「自動排座」、拖移、列操作，桌次詳情沒有修改的入口；
+// 權限在畫面開著時被移除，開著的對話框跟著關閉，畫面切換成只能檢視（AUTH-R13）。
+import { GripVertical, Plus, Share2 } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { useAppStore } from '@/client/app-provider';
+import { useAppStore, useIsEditor } from '@/client/app-provider';
 import { STAFF_TABLE_ID, type Participant } from '@/contracts/entities';
 import { displayName } from '@/domain/display';
 import { seatingStats } from '@/domain/seating-rules';
@@ -15,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ExportSeatingButton } from '../export/export-seating-button';
 import { PersonDialog } from '../people/person-dialog';
+import { PublishDialog } from '../publish/publish-dialog';
 import { RemovePersonDialog, type RemoveTarget } from '../people/remove-person-dialog';
 import { SeatingDnd, type DragSource, type DropTarget, type ResolveDrop } from './drag';
 import { buildTables, msg, seatMessage, sortPeople } from './model';
@@ -48,11 +51,12 @@ export function SeatingPage({ initialTable }: { initialTable: number | null }) {
 
 type Selected = number | 'staff' | null;
 type PersonDialogState = { mode: 'create' } | { mode: 'edit'; participantId: number };
-type Hit = { tableId: number; nonce: number } | null;
+type Hit = { tableIds: number[]; nonce: number } | null;
 
 function Seating({ initialTable }: { initialTable: number | null }) {
   const data = useAppStore((s) => s.data);
   const dir = useAppStore((s) => s.dir);
+  const isEditor = useIsEditor();
   const ops = useSeatingOps();
   const mobile = useIsMobile();
   const wide = useWideDesktop();
@@ -65,7 +69,7 @@ function Seating({ initialTable }: { initialTable: number | null }) {
 
   // 網址 /?table={桌號}：顯示那一桌的詳情並標示那一桌（PPL-R33、SEAT-R62）；initialTable 是內部編號
   const [selected, setSelected] = useState<Selected>(initialTable);
-  const [hit, setHit] = useState<Hit>(initialTable ? { tableId: initialTable, nonce: 1 } : null);
+  const [hit, setHit] = useState<Hit>(initialTable ? { tableIds: [initialTable], nonce: 1 } : null);
   const [mobileTab, setMobileTab] = useState<'map' | 'people'>('map');
   const [seatFor, setSeatFor] = useState<number | null>(null);
   const [seatOpen, setSeatOpen] = useState(false);
@@ -73,6 +77,7 @@ function Seating({ initialTable }: { initialTable: number | null }) {
   // 新增、編輯人員對話框與取消報名、刪除的確認（參與人員的元件）
   const [personDialog, setPersonDialog] = useState<PersonDialogState | null>(null);
   const [removeTarget, setRemoveTarget] = useState<RemoveTarget | null>(null);
+  const [publishOpen, setPublishOpen] = useState(false);
 
   // 搜尋標示 4 秒後恢復（SEAT-R62）
   useEffect(() => {
@@ -81,7 +86,8 @@ function Seating({ initialTable }: { initialTable: number | null }) {
     return () => clearTimeout(t);
   }, [hit]);
 
-  const draggable = !mobile;
+  // 拖移只在桌面、而且是編輯者（SEAT-R82、SEAT-R90）
+  const draggable = !mobile && isEditor;
   const panelOpen = mobile ? true : (prefs.panel ?? wide);
   const manualPct = mobile ? prefs.zoomMobile : prefs.zoomDesktop;
   const setManualPct = useCallback(
@@ -91,7 +97,7 @@ function Seating({ initialTable }: { initialTable: number | null }) {
 
   const locate = useCallback(
     (tableId: number) => {
-      setHit({ tableId, nonce: Date.now() });
+      setHit({ tableIds: [tableId], nonce: Date.now() });
       // 手機在「人員」分頁按「{桌號}」時切到「座位圖」（SEAT-Q10 的目前假設）
       if (mobile) setMobileTab('map');
     },
@@ -237,6 +243,7 @@ function Seating({ initialTable }: { initialTable: number | null }) {
         info={detailInfo}
         mobile={mobile}
         draggable={draggable}
+        readOnly={!isEditor}
         onClose={() => setSelected(null)}
         onAddPeople={() => setDialog('add')}
         onSwap={() => setDialog('swap')}
@@ -257,11 +264,19 @@ function Seating({ initialTable }: { initialTable: number | null }) {
             <StatsLine stats={stats} />
           </div>
           {/* 手機：頁首按鈕滿版（原型 prototype.css 的 .page-actions） */}
+          {/* 依序是「新增人員」「匯出座位表」「發布」；只能檢視時只有「匯出座位表」（2.1.1、SEAT-R90） */}
           <div className="flex flex-wrap items-center gap-2 max-md:w-full max-md:*:flex-[1_1_100%]">
-            <Button variant="primary" leadingIcon={<Plus />} onClick={() => setPersonDialog({ mode: 'create' })}>
-              新增人員
-            </Button>
+            {isEditor ? (
+              <Button variant="primary" leadingIcon={<Plus />} onClick={() => setPersonDialog({ mode: 'create' })}>
+                新增人員
+              </Button>
+            ) : null}
             <ExportSeatingButton />
+            {isEditor ? (
+              <Button variant="outline" leadingIcon={<Share2 />} onClick={() => setPublishOpen(true)}>
+                發布
+              </Button>
+            ) : null}
           </div>
         </header>
 
@@ -298,7 +313,7 @@ function Seating({ initialTable }: { initialTable: number | null }) {
                   const expanded = !prefs.expanded;
                   setPrefs({ expanded, ...(mobile ? { zoomMobile: expanded ? 100 : null } : { zoomDesktop: expanded ? 100 : null }) });
                 }}
-                onAutoArrange={() => setDialog('auto')}
+                onAutoArrange={isEditor ? () => setDialog('auto') : undefined}
                 onShowPanel={!mobile && !panelOpen ? () => setPrefs({ panel: true }) : undefined}
                 covered={!mobile && selected !== null}
                 selected={selected}
@@ -313,37 +328,43 @@ function Seating({ initialTable }: { initialTable: number | null }) {
           {mobile ? detail : null}
         </SeatingDnd>
 
-        {seatFor !== null ? <TableSelectDialog open={seatOpen} onOpenChange={setSeatOpen} participantId={seatFor} /> : null}
-        {detailInfo && typeof selected === 'number' ? (
+        {/* 會修改資料的對話框只給編輯者；權限被移除時跟著關閉（AUTH-R13） */}
+        {isEditor ? (
           <>
-            <SwapDialog open={dialog === 'swap'} onOpenChange={(o) => setDialog(o ? 'swap' : null)} tableId={selected} tables={tables} />
-            <ClearDialog open={dialog === 'clear'} onOpenChange={(o) => setDialog(o ? 'clear' : null)} info={detailInfo} />
+            {seatFor !== null ? <TableSelectDialog open={seatOpen} onOpenChange={setSeatOpen} participantId={seatFor} /> : null}
+            {detailInfo && typeof selected === 'number' ? (
+              <>
+                <SwapDialog open={dialog === 'swap'} onOpenChange={(o) => setDialog(o ? 'swap' : null)} tableId={selected} tables={tables} />
+                <ClearDialog open={dialog === 'clear'} onOpenChange={(o) => setDialog(o ? 'clear' : null)} info={detailInfo} />
+              </>
+            ) : null}
+            {detailInfo ? (
+              <AddPeopleDialog
+                key={`add-${String(selected)}`}
+                open={dialog === 'add'}
+                onOpenChange={(o) => setDialog(o ? 'add' : null)}
+                target={detailInfo.id}
+                tables={tables}
+                sorted={sorted}
+              />
+            ) : null}
+            <AutoArrangeDialog
+              open={dialog === 'auto'}
+              onOpenChange={(o) => setDialog(o ? 'auto' : null)}
+              data={{ participants: data.participants, noted }}
+            />
+            <PersonDialog
+              open={personDialog !== null}
+              onOpenChange={(open) => {
+                if (!open) setPersonDialog(null);
+              }}
+              mode={personDialog?.mode ?? 'create'}
+              participantId={personDialog?.mode === 'edit' ? personDialog.participantId : undefined}
+            />
+            <RemovePersonDialog target={removeTarget} onClose={() => setRemoveTarget(null)} />
+            <PublishDialog open={publishOpen} onOpenChange={setPublishOpen} />
           </>
         ) : null}
-        {detailInfo ? (
-          <AddPeopleDialog
-            key={`add-${String(selected)}`}
-            open={dialog === 'add'}
-            onOpenChange={(o) => setDialog(o ? 'add' : null)}
-            target={detailInfo.id}
-            tables={tables}
-            sorted={sorted}
-          />
-        ) : null}
-        <AutoArrangeDialog
-          open={dialog === 'auto'}
-          onOpenChange={(o) => setDialog(o ? 'auto' : null)}
-          data={{ participants: data.participants, noted }}
-        />
-        <PersonDialog
-          open={personDialog !== null}
-          onOpenChange={(open) => {
-            if (!open) setPersonDialog(null);
-          }}
-          mode={personDialog?.mode ?? 'create'}
-          participantId={personDialog?.mode === 'edit' ? personDialog.participantId : undefined}
-        />
-        <RemovePersonDialog target={removeTarget} onClose={() => setRemoveTarget(null)} />
       </section>
     </SeatingUiContext.Provider>
     </PersonActionsContext.Provider>

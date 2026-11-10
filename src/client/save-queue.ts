@@ -3,6 +3,8 @@
 // - 網路或系統錯誤：暫停，畫面保留結果，按「重試」從失敗的那一次接著送（COM-R04）。
 // - 409／404（別人剛改過資料）：不重試，還沒送出的操作一併取消，交給 onConflict 重新載入（COM-R07）。
 // - 401（登入過期）：暫停並交給 onUnauthenticated 導向登入頁（AUTH-R07）。
+// - 403 NOT_EDITOR（編輯權限被移除）：不重試，還沒送出的操作一併取消，交給 onNotEditor 重新載入並切換成只能檢視（AUTH-R13）。
+//   佇列不暫停：之後又取得編輯權限時，新的操作照常送出。
 // 與畫面無關，方便單元測試。
 import { isConflictCode, type ErrorCode } from '@/contracts/errors';
 import { ApiFailure } from './api';
@@ -28,6 +30,8 @@ export type QueueHooks = {
   onStatus: (status: SaveStatus) => void;
   onConflict: (code: ErrorCode) => void;
   onUnauthenticated: () => void;
+  /** 403 NOT_EDITOR；沒有給時當成衝突交給 onConflict */
+  onNotEditor?: () => void;
   now?: () => Date;
 };
 
@@ -84,6 +88,14 @@ export class SaveQueue {
             this.paused = true;
             this.setStatus({ state: 'failed' });
             this.hooks.onUnauthenticated();
+            return;
+          }
+          if (failure.code === 'NOT_EDITOR') {
+            // 後面的操作也會被拒絕，一併取消；不是儲存失敗，不顯示「重試」
+            this.jobs = [];
+            this.setStatus({ state: 'idle' });
+            if (this.hooks.onNotEditor) this.hooks.onNotEditor();
+            else this.hooks.onConflict('NOT_EDITOR');
             return;
           }
           const code = failure.code;

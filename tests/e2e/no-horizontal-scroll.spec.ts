@@ -20,7 +20,8 @@ test.describe('已登入的頁面', () => {
     await signIn(context, requireBaseURL(baseURL));
   });
 
-  for (const path of ['/', '/people', '/employees', '/no-such-page']) {
+  // 權限頁與發布頁（D-021，docs/spec/permissions.md 第 2.1、2.3 節）；發布頁的已發布狀態與六種寬度在 published-seats.spec.ts
+  for (const path of ['/', '/people', '/employees', '/permissions', '/seats', '/no-such-page']) {
     test(`${path} 沒有整頁水平捲動`, async ({ page }) => {
       await page.goto(path);
       await page.waitForLoadState('load');

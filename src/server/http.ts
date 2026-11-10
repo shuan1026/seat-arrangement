@@ -4,9 +4,13 @@ import { z } from 'zod';
 import { errorStatus, type ErrorCode } from '@/contracts/errors';
 import { currentUser } from './auth';
 import { logError, logInfo } from './log';
+import { isEditor } from './services/editors';
 
-// Route Handler 的共用外殼（docs/architecture.md 第 8 節）：確認登入、記錄請求、把錯誤轉成統一格式。
+// Route Handler 的共用外殼（docs/architecture.md 第 8 節）：確認登入、檢查編輯權限、記錄請求、把錯誤轉成統一格式。
 // 業務規則放 domain，資料存取放 services；handler 只做「解析輸入 → 呼叫服務 → 回 JSON」。
+// 權限（D-021、docs/architecture.md 第 9.3 節）：會修改資料的方法（POST、PUT、PATCH、DELETE）一律要是編輯者，
+// 依 HTTP 方法自動檢查，之後新增的寫入 API 不會漏掉；在讀本體之前就擋下，所以匯入的 multipart 請求不會先讀檔。
+// 編輯者每個請求查一次資料庫，不放進 JWT，權限變更從對方的下一次請求起生效（AUTH-R11）。
 
 /** 服務層丟出的業務錯誤，會轉成 { error: { code, message } } */
 export class AppError extends Error {
@@ -31,8 +35,15 @@ export type ApiContext<P> = {
 
 type RouteArgs<P> = { params: Promise<P> };
 
-/** 包一個需要登入的 Route Handler */
-export function route<P = Record<string, string>>(handler: (ctx: ApiContext<P>) => Promise<Response>) {
+const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+export type RouteOptions = {
+  /** 讀取也只給編輯者（GET /api/editors，PRM-R06）；寫入方法不必設，一律檢查 */
+  editorOnly?: boolean;
+};
+
+/** 包一個需要登入的 Route Handler；寫入方法另外要是編輯者 */
+export function route<P = Record<string, string>>(handler: (ctx: ApiContext<P>) => Promise<Response>, options: RouteOptions = {}) {
   return async (req: Request, args: RouteArgs<P>): Promise<Response> => {
     const started = performance.now();
     const requestId = req.headers.get('x-request-id') || `req_${randomUUID()}`;
@@ -48,6 +59,11 @@ export function route<P = Record<string, string>>(handler: (ctx: ApiContext<P>) 
         return errorResponse('UNAUTHENTICATED', 'sign-in required');
       }
       userId = user.id;
+      if ((options.editorOnly || WRITE_METHODS.has(req.method.toUpperCase())) && !(await isEditor(user.email))) {
+        status = 403;
+        errorCode = 'NOT_EDITOR';
+        return errorResponse('NOT_EDITOR', 'editor permission required');
+      }
       const res = await handler({ req, params: await args.params, user, requestId });
       status = res.status;
       return res;

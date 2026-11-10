@@ -1,8 +1,10 @@
 'use client';
 
-// Header 右側的儲存狀態（docs/spec/README.md 第 6 節 COM-R02、COM-R04）
-import { useAppStore, useSaveQueue } from '@/client/app-provider';
+// Header 右側的儲存狀態（docs/spec/README.md 第 6 節 COM-R02、COM-R04）。
+// 只能檢視的人不會儲存任何資料，同一個位置改為中性徽章「只能檢視」（COM-R20、第 11.1 節狀態徽章，D-021）。
+import { useAppStore, useIsEditor, useSaveQueue } from '@/client/app-provider';
 import { saveStatusText } from '@/client/save-time';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
 export function SaveStatus() {
@@ -25,5 +27,16 @@ export function SaveStatus() {
         </Button>
       ) : null}
     </div>
+  );
+}
+
+/** 編輯者看到儲存狀態，只能檢視時是「只能檢視」徽章 */
+export function HeaderStatus() {
+  const isEditor = useIsEditor();
+  if (isEditor) return <SaveStatus />;
+  return (
+    <Badge variant="neutral" className="mr-2">
+      只能檢視
+    </Badge>
   );
 }
