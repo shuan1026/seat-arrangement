@@ -6,6 +6,8 @@
 // 已有眷屬的員工停用並標示「・已有眷屬」（PPL-Q10）、「找不到？請先到員工名單新增。」一直顯示（PPL-Q11）、
 // 加入尾牙並同時加眷屬時的成功訊息用「已把 {姓名} 加入尾牙。」（PPL-Q12）。
 // 送出時等伺服器的結果：別人剛把員工加入尾牙、剛替所屬員工加了眷屬時，對話框留著並在欄位顯示原因（PPL-R45、PPL-R49）。
+// 員工名單上標記為不參加的員工照常可選、選項後面標示「・不參加」，加入後標記清掉（PPL-R42、EMP-R64、D-014）；
+// 從員工名單開啟時員工欄位唯讀，不另外標示。
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import { useAppStore } from '@/client/app-provider';
 import { apiFetch } from '@/client/api';
@@ -22,6 +24,7 @@ import { STAFF_TABLE_ID, type Participant, type ParticipantKind } from '@/contra
 import type { ErrorCode } from '@/contracts/errors';
 import type { ParticipantCreateInput, ParticipantUpdateInput, ParticipantsResult } from '@/contracts/participants';
 import { displayName, employeeOf, employeeSecondLine, type Directory } from '@/domain/display';
+import { clearDeclinedOfRegistered } from '@/domain/employees';
 import {
   canMarkStaff,
   KIND_NAMES,
@@ -162,9 +165,10 @@ function PersonForm({ onOpenChange, mode, participantId, employeeId, onSaved }: 
   };
   const employeeOptions: SelectOption[] = rosterOrder(data.employees).map((e) => {
     const taken = isRegisteredElsewhere(e.id);
+    const mark = taken ? '・已報名' : e.declined && !employeeLocked ? '・不參加' : '';
     return {
       value: String(e.id),
-      label: `${employeeOptionLabel(e)}${taken ? '・已報名' : ''}`,
+      label: `${employeeOptionLabel(e)}${mark}`,
       disabled: taken,
       keywords: [e.englishName ?? '', e.team ?? ''],
     };
@@ -322,7 +326,11 @@ function PersonForm({ onOpenChange, mode, participantId, employeeId, onSaved }: 
     const outcome = await save<ParticipantsResult>({
       send,
       onSuccess: (result, s) => {
-        s.update((d) => ({ ...d, participants: mergeParticipants(d.participants, result.participants) }));
+        s.update((d) => {
+          const participants = mergeParticipants(d.participants, result.participants);
+          // 員工加入尾牙後不參加的標記清掉，和伺服器一致（EMP-R64）
+          return { ...d, participants, employees: clearDeclinedOfRegistered(d.employees, participants) };
+        });
         // 同時加眷屬並選了桌次，那一桌只剩 1 位時眷屬先留在未入座（PPL-R57）
         const dependent = result.participants.find((p) => p.kind === 'DEPENDENT');
         if (!edit && text.dependentLeft && dependent && dependent.tableId == null) notify(text.dependentLeft, { type: 'info' });

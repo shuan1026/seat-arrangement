@@ -4,15 +4,17 @@
 // 成功後用伺服器回應校正 store，再以 Sonner 顯示成功訊息（不帶「復原」，EMP-R31）；
 // 別人剛改過資料（409／404）時由 AppProvider 重新載入並顯示「資料已被其他人更新，已重新載入。」（COM-R07、COM-R08）。
 // 跨線：一次加入多位與取消報名呼叫參與人員 API（src/contracts/participants.ts，B 線實作）。
+// 標記為不參加、改回未報名（D-014、EMP-R63）：不需確認，立即儲存；這位員工剛被別人加入尾牙或刪除時同樣由 AppProvider 重新載入（EMP-R65）。
 import { useCallback, useMemo } from 'react';
 import { apiFetch } from '@/client/api';
 import { useAppStore, useMutation } from '@/client/app-provider';
-import type { EmployeeDeleteResult, EmployeeInput, EmployeeResult } from '@/contracts/employees';
+import type { EmployeeDeclinedInput, EmployeeDeleteResult, EmployeeInput, EmployeeResult } from '@/contracts/employees';
 import type { Employee } from '@/contracts/entities';
 import type { ParticipantDeleteResult, ParticipantsResult } from '@/contracts/participants';
 import { notify } from '@/components/ui/toaster';
 import {
   addEmployee,
+  clearJoinedDeclined,
   newTempId,
   pendingParticipant,
   rememberId,
@@ -20,6 +22,7 @@ import {
   removeParticipants,
   replaceEmployee,
   resolveId,
+  setEmployeeDeclined,
   upsertParticipants,
 } from './store-updates';
 
@@ -45,7 +48,8 @@ export function useEmployeeActions() {
       // 手動新增的員工沒有辦公室（EMP-Q06 第 4 點）
       const input: EmployeeInput = { ...values, office: null };
       mutate<EmployeeResult>({
-        optimistic: (d) => addEmployee(d, { id: tempId, ...values, office: null, sortOrder }),
+        // 新增的員工是未報名（EMP-R38）
+        optimistic: (d) => addEmployee(d, { id: tempId, ...values, office: null, declined: false, sortOrder }),
         send: () => apiFetch('/api/employees', { method: 'POST', json: input }),
         onSuccess: ({ employee }, s) => {
           rememberId(tempId, employee.id);
@@ -102,13 +106,30 @@ export function useEmployeeActions() {
     [mutate],
   );
 
+  /** 標記為不參加（declined = true）或改回未報名（false）：只有單筆、不能復原（EMP-R31、EMP-R63） */
+  const setDeclined = useCallback(
+    (employee: Employee, declined: boolean) => {
+      const input: EmployeeDeclinedInput = { declined };
+      mutate<EmployeeResult>({
+        optimistic: (d) => setEmployeeDeclined(d, employee.id, declined),
+        send: () => apiFetch(`/api/employees/${resolveId(employee.id)}/declined`, { method: 'PUT', json: input }),
+        onSuccess: (r, s) => {
+          s.update((d) => replaceEmployee(d, resolveId(employee.id), r.employee));
+          notify(declined ? `已把 ${employee.name} 標記為不參加。` : `已把 ${employee.name} 改回未報名。`);
+        },
+      });
+    },
+    [mutate],
+  );
+
   /** 一次加入多位：只加員工本人、未入座（EMP-R22）；有人已被別人加入時整批不儲存（EMP-R24） */
   const bulkJoin = useCallback(
     (employeeIds: readonly number[]) => {
       const pending = employeeIds.map(pendingParticipant);
       const tempIds = new Set(pending.map((p) => p.id));
       mutate<ParticipantsResult>({
-        optimistic: (d) => ({ ...d, participants: [...d.participants, ...pending] }),
+        // 加入尾牙後清掉不參加的標記（EMP-R64）
+        optimistic: (d) => clearJoinedDeclined({ ...d, participants: [...d.participants, ...pending] }),
         send: () =>
           apiFetch('/api/participants/bulk-join', {
             method: 'POST',
@@ -120,9 +141,11 @@ export function useEmployeeActions() {
             if (real) rememberId(p.id, real.id);
           }
           s.update((d) =>
-            upsertParticipants(
-              { ...d, participants: d.participants.filter((p) => !tempIds.has(p.id)) },
-              r.participants,
+            clearJoinedDeclined(
+              upsertParticipants(
+                { ...d, participants: d.participants.filter((p) => !tempIds.has(p.id)) },
+                r.participants,
+              ),
             ),
           );
           notify(`已把 ${employeeIds.length} 位員工加入尾牙。`);
@@ -133,7 +156,7 @@ export function useEmployeeActions() {
   );
 
   return useMemo(
-    () => ({ createEmployee, updateEmployee, deleteEmployee, cancelRegistration, bulkJoin }),
-    [createEmployee, updateEmployee, deleteEmployee, cancelRegistration, bulkJoin],
+    () => ({ createEmployee, updateEmployee, deleteEmployee, cancelRegistration, setDeclined, bulkJoin }),
+    [createEmployee, updateEmployee, deleteEmployee, cancelRegistration, setDeclined, bulkJoin],
   );
 }

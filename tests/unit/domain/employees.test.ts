@@ -1,17 +1,24 @@
-// 員工名單的純函式：docs/spec/employees.md 第 3.1～3.4、3.6 節（EMP-R03～R05、R07、R08、R11～R25、R37），
-// 驗收條件 EMP-AC01～AC04、AC12～AC14、AC16～AC29、AC33、AC46、AC47、AC55，
+// 員工名單的純函式：docs/spec/employees.md 第 3.1～3.5 節（EMP-R03～R05、R07、R08、R11～R25、R27、R37），
+// 驗收條件 EMP-AC01～AC04、AC12～AC14、AC16～AC29、AC33、AC34、AC46、AC47、AC55、AC80～AC85，
+// 「不參加」報名狀態依 D-014（EMP-R03、R08、R17～R19、R25、R27、R63、R64）；
 // 待確認 EMP-Q08、Q09、Q11 依 D-008 照「原型或現況」欄的做法。
 //
 // 假設的介面（src/domain/employees.ts，實作照這裡）：
-//   type RegistrationTab = 'all' | 'unregistered' | 'registered'
+//   type RegistrationTab = 'all' | 'unregistered' | 'registered' | 'declined'
+//   type RegistrationStatus = 'unregistered' | 'registered' | 'declined'                               // D-014
 //   type EmployeeFilters = { department: string | null; team: string | null; region: string | null }   // null = 不限
-//   type EmployeeEmptyState = 'no-employees' | 'no-search-results' | 'no-filter-results' | 'all-registered' | 'none-registered'
+//   type EmployeeEmptyState =
+//     'no-employees' | 'no-search-results' | 'no-filter-results' | 'no-unregistered' | 'none-registered' | 'no-declined'
+//   type EmployeeRowAction = 'join' | 'decline' | 'undecline' | 'view' | 'cancel' | 'edit' | 'delete'
 //   registeredEmployeeIds(participants: readonly Participant[]): Set<number>
+//   registrationStatusOf(employee: Employee, registered: ReadonlySet<number>): RegistrationStatus
+//       // 有參與人員就是已報名（不看 declined）；沒有時 Employee.declined 為 true 是不參加，否則未報名（EMP-R03）
+//   employeeRowActions(status: RegistrationStatus): EmployeeRowAction[]          // 列操作，順序照 EMP-R27
 //   sortEmployees(employees: readonly Employee[]): Employee[]                      // 不改動輸入
 //   departmentOptions(employees: readonly Employee[]): string[]
 //   teamOptions(employees: readonly Employee[], department: string | null): string[]
 //   regionOptions(employees: readonly Employee[]): string[]
-//   tabCounts(employees, registered: ReadonlySet<number>): { all: number; unregistered: number; registered: number }
+//   tabCounts(employees, registered: ReadonlySet<number>): { all: number; unregistered: number; registered: number; declined: number }
 //   matchesEmployeeSearch(employee: Employee, query: string): boolean
 //   filterEmployees(employees, registered, view: { tab: RegistrationTab; query: string; filters: EmployeeFilters }): Employee[]  // 已依 EMP-R07 排序
 //   changeDepartmentFilter(employees, filters: EmployeeFilters, department: string | null): EmployeeFilters
@@ -21,11 +28,13 @@
 //   selectedToJoin(employees, registered, selected: ReadonlySet<number>): number[]   // 「加入尾牙（{n} 位）」要送出的員工
 //   findSameNameEmployee(employees, name: string, excludeId?: number): Employee | undefined
 // 「員工名單順序」是 Employee.sortOrder（docs/architecture.md 第 7.1 節；EMP-Q09），不是陣列順序。
+// 「不參加」讀 Employee.declined（docs/architecture.md 第 7.1 節，D-014），勾選、Tabs、篩選的函式介面不變。
 import { describe, expect, it } from 'vitest';
 import type { Employee, Participant } from '@/contracts/entities';
 import {
   changeDepartmentFilter,
   departmentOptions,
+  employeeRowActions,
   emptyStateOf,
   filterEmployees,
   findSameNameEmployee,
@@ -33,12 +42,14 @@ import {
   matchesEmployeeSearch,
   regionOptions,
   registeredEmployeeIds,
+  registrationStatusOf,
   selectedToJoin,
   sortEmployees,
   tabCounts,
   teamOptions,
   toggleAllOnPage,
   type EmployeeFilters,
+  type RegistrationStatus,
   type RegistrationTab,
 } from '@/domain/employees';
 
@@ -52,9 +63,12 @@ const employee = (id: number, data: Partial<Employee> = {}): Employee => ({
   region: null,
   office: null,
   note: null,
+  declined: false,
   sortOrder: id,
   ...data,
 });
+/** 承辦人標記為不參加的員工（EMP-R63） */
+const declinedEmployee = (id: number, data: Partial<Employee> = {}): Employee => employee(id, { ...data, declined: true });
 
 const blank: Omit<Participant, 'id' | 'kind'> = {
   employeeId: null,
@@ -144,6 +158,37 @@ describe('registeredEmployeeIds：報名狀態由參與人員自動判斷（EMP-
 
   it('沒有參與人員時沒有人報名', () => {
     expect(registeredEmployeeIds([]).size).toBe(0);
+  });
+});
+
+describe('registrationStatusOf：三種報名狀態（EMP-R03、D-014）', () => {
+  it('在參與人員中有對應的人員：已報名', () => {
+    expect(registrationStatusOf(employee(1), new Set([1]))).toBe('registered');
+  });
+
+  it('沒有對應的人員、沒有標記不參加：未報名', () => {
+    expect(registrationStatusOf(employee(1), new Set())).toBe('unregistered');
+    expect(registrationStatusOf(employee(1), new Set([2]))).toBe('unregistered');
+  });
+
+  it('沒有對應的人員、承辦人標記為不參加：不參加', () => {
+    expect(registrationStatusOf(declinedEmployee(1), new Set())).toBe('declined');
+  });
+
+  it('有對應的人員一律是已報名，即使資料上還帶著不參加的標記（自動判斷優先，docs/architecture.md 第 7.1 節）', () => {
+    expect(registrationStatusOf(declinedEmployee(1), new Set([1]))).toBe('registered');
+  });
+
+  it('工作人員也是已報名，不受不參加的標記影響（EMP-AC03）', () => {
+    const registered = registeredEmployeeIds([joined(101, 1, { tableId: 0, seatOrder: 0 })]);
+    expect(registrationStatusOf(declinedEmployee(1), registered)).toBe('registered');
+  });
+
+  it('取消報名後（沒有對應的人員）回到未報名，不是不參加（EMP-R30、EMP-R64）', () => {
+    // 加入尾牙時標記已清掉（EMP-R64），取消報名後的員工 declined 是 false
+    const before = registeredEmployeeIds([joined(101, 1)]);
+    expect(registrationStatusOf(employee(1), before)).toBe('registered');
+    expect(registrationStatusOf(employee(1), registeredEmployeeIds([]))).toBe('unregistered');
   });
 });
 
@@ -260,25 +305,42 @@ describe('部門、組別、地區清單由員工名單產生（EMP-R04、EMP-R1
 });
 
 describe('tabCounts：Tabs 的人數（EMP-R08）', () => {
-  it('EMP-AC01：3 位員工中 1 位已報名 → 全部 3、未報名 2、已報名 1', () => {
+  it('EMP-AC01：3 位員工中 1 位已報名 → 全部 3、未報名 2、已報名 1、不參加 0', () => {
     const list = [employee(1), employee(2), employee(3)];
-    expect(tabCounts(list, new Set([2]))).toEqual({ all: 3, unregistered: 2, registered: 1 });
+    expect(tabCounts(list, new Set([2]))).toEqual({ all: 3, unregistered: 2, registered: 1, declined: 0 });
   });
 
   it('全部已報名時未報名是 0（EMP-AC24）；沒有人報名時已報名是 0', () => {
     const list = [employee(1), employee(2)];
-    expect(tabCounts(list, new Set([1, 2]))).toEqual({ all: 2, unregistered: 0, registered: 2 });
-    expect(tabCounts(list, new Set())).toEqual({ all: 2, unregistered: 2, registered: 0 });
+    expect(tabCounts(list, new Set([1, 2]))).toEqual({ all: 2, unregistered: 0, registered: 2, declined: 0 });
+    expect(tabCounts(list, new Set())).toEqual({ all: 2, unregistered: 2, registered: 0, declined: 0 });
   });
 
-  it('「全部」等於「未報名」加「已報名」；不在員工名單裡的 id 不算', () => {
+  it('「全部」等於「未報名」「已報名」「不參加」相加；不在員工名單裡的 id 不算', () => {
     const counts = tabCounts([employee(1), employee(2), employee(3)], new Set([1, 99]));
-    expect(counts).toEqual({ all: 3, unregistered: 2, registered: 1 });
-    expect(counts.all).toBe(counts.unregistered + counts.registered);
+    expect(counts).toEqual({ all: 3, unregistered: 2, registered: 1, declined: 0 });
+    expect(counts.all).toBe(counts.unregistered + counts.registered + counts.declined);
   });
 
   it('沒有員工時都是 0', () => {
-    expect(tabCounts([], new Set())).toEqual({ all: 0, unregistered: 0, registered: 0 });
+    expect(tabCounts([], new Set())).toEqual({ all: 0, unregistered: 0, registered: 0, declined: 0 });
+  });
+
+  it('EMP-AC80：甲不參加、乙未報名、丙已報名 → 全部 3、未報名 1、已報名 1、不參加 1；「未報名」不含不參加（EMP-R08）', () => {
+    const list = [declinedEmployee(1, { name: '甲' }), employee(2, { name: '乙' }), employee(3, { name: '丙' })];
+    const counts = tabCounts(list, new Set([3]));
+    expect(counts).toEqual({ all: 3, unregistered: 1, registered: 1, declined: 1 });
+    expect(counts.all).toBe(counts.unregistered + counts.registered + counts.declined);
+  });
+
+  it('已報名的員工帶著不參加的標記，只算在「已報名」，不重複算在「不參加」（EMP-R03）', () => {
+    const counts = tabCounts([declinedEmployee(1), employee(2)], new Set([1]));
+    expect(counts).toEqual({ all: 2, unregistered: 1, registered: 1, declined: 0 });
+  });
+
+  it('所有員工都是已報名或不參加：未報名是 0（EMP-AC85）', () => {
+    const counts = tabCounts([declinedEmployee(1), employee(2), declinedEmployee(3)], new Set([2]));
+    expect(counts).toEqual({ all: 3, unregistered: 0, registered: 1, declined: 2 });
   });
 });
 
@@ -433,6 +495,50 @@ describe('filterEmployees：分頁（Tabs）、搜尋與篩選同時生效（EMP
   });
 });
 
+describe('filterEmployees：「不參加」分頁（EMP-R08、EMP-R15、D-014）', () => {
+  /** EMP-AC80 標記之後：甲不參加、乙未報名、丙已報名 */
+  const AC80 = [
+    declinedEmployee(1, { name: '甲', department: '研發部' }),
+    employee(2, { name: '乙', department: '研發部' }),
+    employee(3, { name: '丙', department: '業務部' }),
+  ];
+  const registered = new Set([3]);
+
+  it('EMP-AC80：「未報名」只列乙，「不參加」只列甲，「已報名」只列丙；「全部」列出三位', () => {
+    expect(names(filterEmployees(AC80, registered, view('unregistered')))).toEqual(['乙']);
+    expect(names(filterEmployees(AC80, registered, view('declined')))).toEqual(['甲']);
+    expect(names(filterEmployees(AC80, registered, view('registered')))).toEqual(['丙']);
+    expect(names(filterEmployees(AC80, registered, view('all')))).toEqual(['甲', '乙', '丙']);
+  });
+
+  it('已報名的員工帶著不參加的標記：只出現在「已報名」，不在「不參加」（EMP-R03、EMP-AC84）', () => {
+    const both = new Set([1, 3]);
+    expect(names(filterEmployees(AC80, both, view('declined')))).toEqual([]);
+    expect(names(filterEmployees(AC80, both, view('registered')))).toEqual(['甲', '丙']);
+  });
+
+  it('「不參加」分頁依 EMP-R07 排序', () => {
+    const list = [
+      declinedEmployee(1, { name: '業務甲', department: '業務部' }),
+      declinedEmployee(2, { name: '研發無組', department: '研發部' }),
+      declinedEmployee(3, { name: '業務乙', department: '業務部' }),
+      declinedEmployee(4, { name: '研發韌體', department: '研發部', team: '韌體組' }),
+    ];
+    expect(names(filterEmployees(list, new Set(), view('declined')))).toEqual(['業務甲', '業務乙', '研發韌體', '研發無組']);
+  });
+
+  it('「不參加」分頁也和搜尋、篩選同時生效（EMP-R15）', () => {
+    expect(names(filterEmployees(AC80, registered, view('declined', '甲')))).toEqual(['甲']);
+    expect(filterEmployees(AC80, registered, view('declined', '乙'))).toEqual([]);
+    expect(filterEmployees(AC80, registered, view('declined', '', { department: '業務部' }))).toEqual([]);
+    expect(names(filterEmployees(AC80, registered, view('declined', '', { department: '研發部' })))).toEqual(['甲']);
+  });
+
+  it('沒有人不參加時「不參加」分頁是空的（EMP-AC85）', () => {
+    expect(filterEmployees(ROSTER, new Set([1]), view('declined'))).toEqual([]);
+  });
+});
+
 describe('changeDepartmentFilter：換部門時清掉不屬於新部門的組別（EMP-R14）', () => {
   it('EMP-AC18：研發部、韌體組 → 換成業務部，組別清掉，地區保留', () => {
     const next = changeDepartmentFilter(ROSTER, { department: '研發部', team: '韌體組', region: '台中' }, '業務部');
@@ -464,7 +570,7 @@ describe('changeDepartmentFilter：換部門時清掉不屬於新部門的組別
   });
 });
 
-describe('emptyStateOf：五種空狀態（EMP-R17、EMP-Q08）', () => {
+describe('emptyStateOf：六種空狀態（EMP-R17、EMP-Q08）', () => {
   const filtered: EmployeeFilters = { department: '研發部', team: null, region: '台北' };
 
   it('員工名單沒有任何員工：沒有員工（EMP-AC23）', () => {
@@ -491,9 +597,9 @@ describe('emptyStateOf：五種空狀態（EMP-R17、EMP-Q08）', () => {
     );
   });
 
-  it('沒有關鍵字與篩選，「未報名」沒有員工：全部已報名（EMP-AC24）', () => {
+  it('沒有關鍵字與篩選，「未報名」沒有員工：沒有未報名（EMP-AC24、EMP-AC85，D-014 起不一定是所有人都報名了）', () => {
     expect(emptyStateOf({ total: 5, visible: 0, tab: 'unregistered', query: '', filters: NO_FILTERS })).toBe(
-      'all-registered',
+      'no-unregistered',
     );
   });
 
@@ -503,9 +609,31 @@ describe('emptyStateOf：五種空狀態（EMP-R17、EMP-Q08）', () => {
     );
   });
 
+  it('沒有關鍵字與篩選，「不參加」沒有員工：沒有不參加（EMP-AC85）', () => {
+    expect(emptyStateOf({ total: 5, visible: 0, tab: 'declined', query: '', filters: NO_FILTERS })).toBe('no-declined');
+    expect(emptyStateOf({ total: 5, visible: 0, tab: 'declined', query: '  ', filters: NO_FILTERS })).toBe('no-declined');
+  });
+
+  it('「不參加」分頁有關鍵字或篩選而沒有結果：搜尋無結果、篩選無結果（EMP-R17 第 2、3 種先於第 6 種）', () => {
+    expect(emptyStateOf({ total: 5, visible: 0, tab: 'declined', query: '無此人', filters: NO_FILTERS })).toBe(
+      'no-search-results',
+    );
+    expect(emptyStateOf({ total: 5, visible: 0, tab: 'declined', query: '', filters: filtered })).toBe(
+      'no-filter-results',
+    );
+  });
+
+  it('員工名單沒有任何員工時，「不參加」分頁也是沒有員工', () => {
+    expect(emptyStateOf({ total: 0, visible: 0, tab: 'declined', query: '', filters: NO_FILTERS })).toBe('no-employees');
+  });
+
+  it('「不參加」分頁有列出員工時沒有空狀態', () => {
+    expect(emptyStateOf({ total: 5, visible: 1, tab: 'declined', query: '', filters: NO_FILTERS })).toBeNull();
+  });
+
   it('只有空白的關鍵字等於沒有關鍵字（EMP-Q08 第 5 點）', () => {
     expect(emptyStateOf({ total: 5, visible: 0, tab: 'unregistered', query: '   ', filters: NO_FILTERS })).toBe(
-      'all-registered',
+      'no-unregistered',
     );
   });
 
@@ -582,6 +710,89 @@ describe('勾選與一次加入多位（EMP-R18～R21、EMP-R23、EMP-Q08）', (
 
   it('已被刪除的員工不算在要加入的員工裡', () => {
     expect(selectedToJoin([employee(1)], new Set(), new Set([1, 99]))).toEqual([1]);
+  });
+});
+
+describe('勾選：不參加的列不能勾（EMP-R18～R20、EMP-R23、D-014）', () => {
+  /** 一頁 20 列：1～3 已報名、4～6 不參加、其餘 14 位未報名 */
+  const pageRows = Array.from({ length: 20 }, (_, i) => (i >= 3 && i < 6 ? declinedEmployee(i + 1) : employee(i + 1)));
+  const registered = new Set([1, 2, 3]);
+  const declinedIds = [4, 5, 6];
+  const pickable = pageRows.map((e) => e.id).filter((id) => !registered.has(id) && !declinedIds.includes(id));
+
+  it('EMP-AC83：同一頁有不參加的甲與未報名的乙 → 按表頭全選只勾乙（EMP-R19）', () => {
+    const rows = [declinedEmployee(1, { name: '甲' }), employee(2, { name: '乙' })];
+    const next = toggleAllOnPage(rows, new Set(), new Set(), true);
+    expect(ids(next)).toEqual([2]);
+    expect(selectedToJoin(rows, new Set(), next)).toEqual([2]);
+  });
+
+  it('表頭全選不勾已報名與不參加的列（EMP-R19）', () => {
+    const next = toggleAllOnPage(pageRows, registered, new Set(), true);
+    expect(ids(next)).toEqual(pickable);
+    expect(next.size).toBe(14);
+    for (const id of declinedIds) expect(next.has(id)).toBe(false);
+  });
+
+  it('能勾的列全部勾選時表頭為勾選；不參加的列不算在「能勾的列」裡（EMP-R20）', () => {
+    expect(headerCheckState(pageRows, registered, new Set(pickable))).toEqual({ checked: true, disabled: false });
+    expect(headerCheckState(pageRows, registered, new Set(pickable.slice(0, 2)))).toEqual({
+      checked: 'indeterminate',
+      disabled: false,
+    });
+  });
+
+  it('這一頁只有已報名與不參加的列：表頭停用（EMP-Q08 第 2 點）', () => {
+    const rows = [employee(1), declinedEmployee(2), declinedEmployee(3)];
+    expect(headerCheckState(rows, new Set([1]), new Set())).toEqual({ checked: false, disabled: true });
+  });
+
+  it('取消表頭只取消這一頁能勾的列，不影響其他頁的勾選', () => {
+    expect(ids(toggleAllOnPage(pageRows, registered, new Set([...pickable, 101]), false))).toEqual([101]);
+  });
+
+  it('勾選後這位員工被標記為不參加：不再算在「加入尾牙（{n} 位）」的 {n} 裡（EMP-R18 勾選框停用、D-014 不能一次加入多位）', () => {
+    const before = [employee(1, { name: '王小明' }), employee(2, { name: '李小華' })];
+    expect(ids(selectedToJoin(before, new Set(), new Set([1, 2])))).toEqual([1, 2]);
+    const after = [declinedEmployee(1, { name: '王小明' }), employee(2, { name: '李小華' })];
+    expect(selectedToJoin(after, new Set(), new Set([1, 2]))).toEqual([2]);
+    expect(selectedToJoin([declinedEmployee(1)], new Set(), new Set([1]))).toEqual([]);
+  });
+
+  it('改回未報名後又可以勾、全選也會勾（EMP-R63、EMP-R18）', () => {
+    const rows = [employee(1, { name: '甲' }), employee(2, { name: '乙' })];
+    expect(ids(toggleAllOnPage(rows, new Set(), new Set(), true))).toEqual([1, 2]);
+  });
+});
+
+describe('employeeRowActions：列操作依報名狀態（EMP-R27、EMP-R63）', () => {
+  it('未報名：加入尾牙、標記為不參加、編輯、刪除（EMP-AC34）', () => {
+    expect(employeeRowActions('unregistered')).toEqual(['join', 'decline', 'edit', 'delete']);
+  });
+
+  it('不參加：加入尾牙、改回未報名、編輯、刪除（EMP-AC81）', () => {
+    expect(employeeRowActions('declined')).toEqual(['join', 'undecline', 'edit', 'delete']);
+  });
+
+  it('已報名：查看參與資料、取消報名、編輯、刪除；沒有「標記為不參加」（EMP-AC34、EMP-AC82）', () => {
+    expect(employeeRowActions('registered')).toEqual(['view', 'cancel', 'edit', 'delete']);
+  });
+
+  it('「標記為不參加」只出現在未報名、「改回未報名」只出現在不參加、「加入尾牙」不出現在已報名（EMP-R63、EMP-R27）', () => {
+    const all: RegistrationStatus[] = ['unregistered', 'declined', 'registered'];
+    expect(all.filter((s) => employeeRowActions(s).includes('decline'))).toEqual(['unregistered']);
+    expect(all.filter((s) => employeeRowActions(s).includes('undecline'))).toEqual(['declined']);
+    expect(all.filter((s) => employeeRowActions(s).includes('join'))).toEqual(['unregistered', 'declined']);
+    expect(all.filter((s) => employeeRowActions(s).includes('cancel'))).toEqual(['registered']);
+  });
+
+  it('依 registrationStatusOf 推導的狀態取列操作：已報名但資料帶不參加標記的員工沒有「改回未報名」', () => {
+    expect(employeeRowActions(registrationStatusOf(declinedEmployee(1), new Set([1])))).toEqual([
+      'view',
+      'cancel',
+      'edit',
+      'delete',
+    ]);
   });
 });
 

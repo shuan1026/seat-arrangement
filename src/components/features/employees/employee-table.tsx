@@ -3,10 +3,19 @@
 // 員工名單表格與分頁導覽（docs/spec/employees.md 2.3、2.4、3.2、3.4、3.5 節；原型 employees.html UI.table）。
 // 欄位依序為勾選、姓名、部門、組別、分機、地區、報名狀態、備註、列操作；每頁 20 列。
 // 手機（767 px 以下）改成堆疊卡片：勾選框在左上角、不顯示備註、沒有全選（EMP-R26）。
-import { Pencil, Trash2, UserPlus, UserX, Users } from 'lucide-react';
+// 報名狀態有三種（EMP-R03、D-014）：已報名 positive、未報名 pending、不參加 neutral（沒有圖示，README 第 11.1 節）；
+// 只有未報名的列能勾（EMP-R18）。
+import { Fragment, type ReactNode } from 'react';
+import { Ban, Pencil, Trash2, Undo2, UserPlus, UserX, Users } from 'lucide-react';
 import type { Employee } from '@/contracts/entities';
-import { headerCheckState } from '@/domain/employees';
-import { Badge } from '@/components/ui/badge';
+import {
+  employeeRowActions,
+  headerCheckState,
+  registrationStatusOf,
+  type EmployeeRowAction,
+  type RegistrationStatus,
+} from '@/domain/employees';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ActionMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Pagination } from '@/components/ui/pagination';
@@ -14,7 +23,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 export const PAGE_SIZE = 20;
 
-export type RowAction = 'join' | 'view' | 'cancel' | 'edit' | 'delete';
+export type RowAction = EmployeeRowAction;
+
+/** 報名狀態的徽章（README 第 11.1 節狀態徽章） */
+const STATUS_BADGE: Record<RegistrationStatus, { variant: BadgeVariant; label: string }> = {
+  registered: { variant: 'positive', label: '已報名' },
+  unregistered: { variant: 'pending', label: '未報名' },
+  declined: { variant: 'neutral', label: '不參加' },
+};
+
+/** 不能勾的列：停用的勾選框，無障礙名稱「{姓名} 已報名」「{姓名} 不參加」（EMP-R25） */
+const DISABLED_CHECK_LABEL: Record<Exclude<RegistrationStatus, 'unregistered'>, string> = {
+  registered: '已報名',
+  declined: '不參加',
+};
 
 export interface EmployeeTableProps {
   /** 這一頁的列 */
@@ -71,12 +93,13 @@ export function EmployeeTable({
         </TableHeader>
         <TableBody>
           {rows.map((e) => {
-            const isRegistered = registered.has(e.id);
+            const status = registrationStatusOf(e, registered);
+            const badge = STATUS_BADGE[status];
             return (
               <TableRow key={e.id}>
                 <TableCell kind="check">
-                  {isRegistered ? (
-                    <Checkbox aria-label={`${e.name} 已報名`} checked={false} disabled />
+                  {status !== 'unregistered' ? (
+                    <Checkbox aria-label={`${e.name} ${DISABLED_CHECK_LABEL[status]}`} checked={false} disabled />
                   ) : (
                     <Checkbox
                       aria-label={`勾選 ${e.name}`}
@@ -100,13 +123,13 @@ export function EmployeeTable({
                 </TableCell>
                 <TableCell label="地區">{e.region ?? <Dash />}</TableCell>
                 <TableCell label="報名狀態">
-                  <Badge variant={isRegistered ? 'positive' : 'pending'}>{isRegistered ? '已報名' : '未報名'}</Badge>
+                  <Badge variant={badge.variant}>{badge.label}</Badge>
                 </TableCell>
                 <TableCell label="備註" hideOnMobile>
                   {e.note ? <span className="[overflow-wrap:anywhere]">{e.note}</span> : <Dash />}
                 </TableCell>
                 <TableCell kind="actions">
-                  <RowMenu registered={isRegistered} onAction={(a) => onAction(a, e)} />
+                  <RowMenu status={status} onAction={(a) => onAction(a, e)} />
                 </TableCell>
               </TableRow>
             );
@@ -118,31 +141,35 @@ export function EmployeeTable({
   );
 }
 
-/** 列操作（EMP-R27）：未報名「加入尾牙」「編輯」「刪除」；已報名「查看參與資料」「取消報名」「編輯」「刪除」 */
-function RowMenu({ registered, onAction }: { registered: boolean; onAction: (action: RowAction) => void }) {
+/** 選單項目的文案與圖示；「取消報名」「刪除」是危險樣式（EMP-R27） */
+const MENU_ITEMS: Record<RowAction, { label: string; icon: ReactNode; destructive?: boolean }> = {
+  join: { label: '加入尾牙', icon: <UserPlus /> },
+  decline: { label: '標記為不參加', icon: <Ban /> },
+  undecline: { label: '改回未報名', icon: <Undo2 /> },
+  view: { label: '查看參與資料', icon: <Users /> },
+  cancel: { label: '取消報名', icon: <UserX />, destructive: true },
+  edit: { label: '編輯', icon: <Pencil /> },
+  delete: { label: '刪除', icon: <Trash2 />, destructive: true },
+};
+
+/**
+ * 列操作（EMP-R27）：未報名「加入尾牙」「標記為不參加」「編輯」「刪除」；不參加「加入尾牙」「改回未報名」「編輯」「刪除」；
+ * 已報名「查看參與資料」「取消報名」「編輯」「刪除」。「刪除」前有分隔線。
+ */
+function RowMenu({ status, onAction }: { status: RegistrationStatus; onAction: (action: RowAction) => void }) {
   return (
     <ActionMenu>
-      {registered ? (
-        <>
-          <DropdownMenuItem icon={<Users />} onSelect={() => onAction('view')}>
-            查看參與資料
-          </DropdownMenuItem>
-          <DropdownMenuItem icon={<UserX />} destructive onSelect={() => onAction('cancel')}>
-            取消報名
-          </DropdownMenuItem>
-        </>
-      ) : (
-        <DropdownMenuItem icon={<UserPlus />} onSelect={() => onAction('join')}>
-          加入尾牙
-        </DropdownMenuItem>
-      )}
-      <DropdownMenuItem icon={<Pencil />} onSelect={() => onAction('edit')}>
-        編輯
-      </DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem icon={<Trash2 />} destructive onSelect={() => onAction('delete')}>
-        刪除
-      </DropdownMenuItem>
+      {employeeRowActions(status).map((action) => {
+        const item = MENU_ITEMS[action];
+        return (
+          <Fragment key={action}>
+            {action === 'delete' ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuItem icon={item.icon} destructive={item.destructive} onSelect={() => onAction(action)}>
+              {item.label}
+            </DropdownMenuItem>
+          </Fragment>
+        );
+      })}
     </ActionMenu>
   );
 }

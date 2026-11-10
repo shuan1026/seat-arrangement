@@ -5,6 +5,8 @@
 // - 一次加入多位與取消報名送出後的結果：tests/unit/components/employees-page.test.tsx 用假的 API 驗證，
 //   階段 3 接上後走真的伺服器的 E2E 在 employees-join.spec.ts；
 // - 單筆「加入尾牙」開啟 B 線的新增人員對話框（EMP-R28、EMP-AC35）、「查看參與資料」開啟後的內容（EMP-AC38）也在 employees-join.spec.ts。
+// 「不參加」（D-014）讓 Tabs 變成四個、未報名的列操作多「標記為不參加」、「未報名」的空狀態改為「沒有未報名的員工。」，
+// 這裡的 EMP-AC01、AC24、AC34 依新規則更新；不參加的完整情境（EMP-AC80～AC86）在 employees-declined.spec.ts。
 // 資料用 tests/e2e/helpers/employees-db.ts 直接寫進測試資料庫。
 import { expect, test } from '@playwright/test';
 import { signIn } from './helpers/auth';
@@ -21,6 +23,7 @@ import {
 } from './helpers/employees-db';
 import {
   HEADER_CHECKBOX,
+  TAB_LABELS,
   backgroundOf,
   boxOf,
   bulkButton,
@@ -79,7 +82,7 @@ async function seedDepartments() {
 }
 
 test.describe('清單與報名狀態（EMP-01）', () => {
-  test('EMP-AC01：3 位員工中 1 位已報名 → 顯示「全部」分頁，Tabs「全部 3」「未報名 2」「已報名 1」，3 列各自的報名狀態（EMP-R03、R06、R08）', async ({
+  test('EMP-AC01：3 位員工中 1 位已報名 → 顯示「全部」分頁，Tabs「全部 3」「未報名 2」「已報名 1」「不參加 0」，3 列各自的報名狀態（EMP-R03、R06、R08）', async ({
     page,
   }) => {
     await seedThree();
@@ -89,6 +92,7 @@ test.describe('清單與報名狀態（EMP-01）', () => {
     await expect(tabOf(page, '全部')).toHaveText(tabCount('全部', 3));
     await expect(tabOf(page, '未報名')).toHaveText(tabCount('未報名', 2));
     await expect(tabOf(page, '已報名')).toHaveText(tabCount('已報名', 1));
+    await expect(tabOf(page, '不參加')).toHaveText(tabCount('不參加', 0));
 
     await expect(dataRows(page)).toHaveCount(3);
     await expect(cellOf(rowOf(page, '王小明'), 'status')).toHaveText('未報名');
@@ -96,13 +100,18 @@ test.describe('清單與報名狀態（EMP-01）', () => {
     await expect(cellOf(rowOf(page, '張三'), 'status')).toHaveText('未報名');
   });
 
-  test('頁面標題、說明與頁首按鈕；人數只放在 Tabs 上（2.1、第 4.1 節）', async ({ page }) => {
+  test('頁面標題、說明與頁首按鈕；人數只放在 Tabs 上；Tabs 依序是「全部」「未報名」「已報名」「不參加」（2.1、2.2、第 4.1 節、D-014）', async ({
+    page,
+  }) => {
     await seedThree();
     await gotoEmployees(page);
     await expect(page.getByText('公司全部員工。把報名尾牙的人加入，參與人員就會出現在座位安排。')).toBeVisible();
     await expect(page.getByRole('button', { name: '新增員工', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '匯入員工名單', exact: true })).toBeVisible();
-    await expect(page.getByRole('tab')).toHaveCount(3);
+    await expect(page.getByRole('tab')).toHaveCount(4);
+    for (const [i, label] of TAB_LABELS.entries()) {
+      await expect(page.getByRole('tab').nth(i)).toHaveText(new RegExp(`^${label}\\s*\\d+$`));
+    }
   });
 
   test('EMP-AC02：按「未報名」只列 2 位未報名，按「已報名」只列 1 位已報名（EMP-R08）', async ({ page }) => {
@@ -355,6 +364,7 @@ test.describe('搜尋（EMP-R11、EMP-R15）', () => {
     await expect(tabOf(page, '全部')).toHaveText(tabCount('全部', 3));
     await expect(tabOf(page, '未報名')).toHaveText(tabCount('未報名', 2));
     await expect(tabOf(page, '已報名')).toHaveText(tabCount('已報名', 1));
+    await expect(tabOf(page, '不參加')).toHaveText(tabCount('不參加', 0));
   });
 });
 
@@ -533,13 +543,14 @@ test.describe('空狀態（EMP-R17）', () => {
     }
   });
 
-  test('EMP-AC24：所有員工都已報名 → 按「未報名」→「所有員工都已報名。」，Tabs「未報名 0」（EMP-R08）', async ({ page }) => {
+  test('EMP-AC24：所有員工都已報名 → 按「未報名」→「沒有未報名的員工。」，Tabs「未報名 0」（EMP-R08、EMP-R17、D-014）', async ({ page }) => {
     const ids = await insertEmployees(numbered(2));
     for (const id of ids) await registerEmployee(id);
     await gotoEmployees(page);
 
     await tabOf(page, '未報名').click();
-    await expect(page.getByText('所有員工都已報名。')).toBeVisible();
+    await expect(page.getByText('沒有未報名的員工。')).toBeVisible();
+    await expect(page.getByText('所有員工都已報名。')).toHaveCount(0);
     await expect(tabOf(page, '未報名')).toHaveText(tabCount('未報名', 0));
     await expect(dataRows(page)).toHaveCount(0);
   });
@@ -719,7 +730,7 @@ test.describe('勾選與一次加入多位（EMP-R18～R26）', () => {
 });
 
 test.describe('列操作（EMP-R27～R30）', () => {
-  test('EMP-AC34：未報名「加入尾牙」「編輯」「刪除」；已報名「查看參與資料」「取消報名」「編輯」「刪除」；「刪除」「取消報名」是危險樣式（EMP-R27）', async ({
+  test('EMP-AC34：未報名「加入尾牙」「標記為不參加」「編輯」「刪除」；已報名「查看參與資料」「取消報名」「編輯」「刪除」；「刪除」「取消報名」是危險樣式（EMP-R27、D-014）', async ({
     page,
   }) => {
     await seedThree();
@@ -727,10 +738,11 @@ test.describe('列操作（EMP-R27～R30）', () => {
     const danger = await cssVarColor(page, '--destructive-text');
 
     let menu = await openRowMenu(page, rowOf(page, '王小明'));
-    await expect(menu.getByRole('menuitem')).toHaveText(['加入尾牙', '編輯', '刪除']);
+    await expect(menu.getByRole('menuitem')).toHaveText(['加入尾牙', '標記為不參加', '編輯', '刪除']);
     expect(await colorOf(menu.getByRole('menuitem', { name: '刪除' }))).toBe(danger);
     expect(await colorOf(menu.getByRole('menuitem', { name: '編輯' }))).not.toBe(danger);
     expect(await colorOf(menu.getByRole('menuitem', { name: '加入尾牙' }))).not.toBe(danger);
+    expect(await colorOf(menu.getByRole('menuitem', { name: '標記為不參加' }))).not.toBe(danger);
     await page.keyboard.press('Escape');
     await expect(menu).toBeHidden();
 

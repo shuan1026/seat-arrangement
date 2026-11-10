@@ -5,7 +5,8 @@
 // 資料從 store 讀（src/client/app-provider.tsx），搜尋、篩選、分頁都在瀏覽器算（docs/architecture.md 第 10.2 節）。
 // 待確認 EMP-Q07、Q08 依 D-008 照原型：換頁、換分頁、改搜尋或篩選後勾選保留且計入；換分頁、改搜尋或篩選後回到第 1 頁；
 // 沒有任何員工時不顯示 Tabs 與工具列，只有空狀態。
-import { Check, IdCard, Plus, Search, Upload, Users } from 'lucide-react';
+// Tabs 有四個分頁「全部」「未報名」「已報名」「不參加」（EMP-R08、D-014；原型沒有「不參加」）；放不下時在分頁列內水平捲動。
+import { Ban, Check, IdCard, Plus, Search, Upload, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { useAppStore } from '@/client/app-provider';
@@ -112,6 +113,14 @@ export function EmployeesView() {
       case 'join':
         setJoinEmployeeId(employee.id);
         break;
+      case 'decline':
+        // 不參加的列不能勾（EMP-R18）：一併取消勾選，之後改回未報名也不會帶著舊的勾選
+        unselect([employee.id]);
+        actions.setDeclined(employee, true);
+        break;
+      case 'undecline':
+        actions.setDeclined(employee, false);
+        break;
       case 'view':
         // 開啟參與人員頁，顯示這位員工的參與資料（EMP-R29；EMP-Q07）
         router.push(`/people?employee=${employee.id}`);
@@ -177,6 +186,9 @@ export function EmployeesView() {
             </TabsTrigger>
             <TabsTrigger value="registered" count={counts.registered}>
               已報名
+            </TabsTrigger>
+            <TabsTrigger value="declined" count={counts.declined}>
+              不參加
             </TabsTrigger>
           </TabsList>
           <TabsContent value={tab}>
@@ -310,7 +322,7 @@ function ConfirmDialog({
   );
 }
 
-/** 表格位置的空狀態（EMP-R17 的 2～5；沒有任何員工的空狀態在頁面上方處理） */
+/** 表格位置的空狀態（EMP-R17 的 2～6；沒有任何員工的空狀態在頁面上方處理） */
 function ListEmptyState({
   state,
   query,
@@ -347,12 +359,14 @@ function ListEmptyState({
           }
         />
       );
-    case 'all-registered':
-      return <EmptyState icon={<Check />} title="所有員工都已報名。" />;
+    case 'no-unregistered':
+      return <EmptyState icon={<Check />} title="沒有未報名的員工。" />;
     case 'none-registered':
       return (
         <EmptyState icon={<Users />} title="還沒有員工報名。" description="在「全部」分頁把報名的員工加入尾牙。" />
       );
+    case 'no-declined':
+      return <EmptyState icon={<Ban />} title="沒有標記為不參加的員工。" />;
     default:
       return null;
   }

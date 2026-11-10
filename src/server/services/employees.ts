@@ -32,12 +32,34 @@ export async function createEmployee(input: EmployeeData): Promise<Employee> {
   }, WRITE_TX);
 }
 
-/** PATCH /api/employees/{id}：整筆取代（辦公室等畫面沒有的欄位由前端帶回原值）；已被別人刪除時 NOT_FOUND（EMP-R40） */
+/**
+ * PATCH /api/employees/{id}：整筆取代（辦公室等畫面沒有的欄位由前端帶回原值）；已被別人刪除時 NOT_FOUND（EMP-R40）。
+ * 不參加的標記不在對話框裡，編輯不改變（EMP-R63 只由列操作切換）。
+ */
 export async function updateEmployee(id: number, input: EmployeeData): Promise<Employee> {
   return prisma.$transaction(async (tx) => {
     const { count } = await tx.employee.updateMany({ where: { id }, data: input });
     if (count === 0) throw new AppError('NOT_FOUND', 'employee not found');
     return toEmployee(await tx.employee.findUniqueOrThrow({ where: { id } }));
+  }, WRITE_TX);
+}
+
+/**
+ * PUT /api/employees/{id}/declined：標記為不參加或改回未報名（EMP-R63、D-014）。
+ * 鎖住這位員工那一列再檢查是否已報名：加入尾牙（services/participants.ts）也鎖同一列，兩邊互斥；
+ * 加入先完成時這裡讀得到他的參與人員（READ COMMITTED），回 CONFLICT；這裡先完成時，加入尾牙會清掉標記（EMP-R64）。
+ * 已報名（含工作人員）時 CONFLICT，已被別人刪除時 NOT_FOUND，前端依 COM-R07 重新載入（EMP-R65）。送出和目前相同的值照常成功。
+ */
+export async function setEmployeeDeclined(id: number, declined: boolean): Promise<Employee> {
+  return prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ id: number }[]>`SELECT id FROM Employee WHERE id = ${id} FOR UPDATE`;
+    if (locked.length === 0) throw new AppError('NOT_FOUND', 'employee not found');
+    if (await tx.participant.findUnique({ where: { employeeId: id }, select: { id: true } })) {
+      throw new AppError('CONFLICT', 'employee already registered');
+    }
+    const row = await tx.employee.findUniqueOrThrow({ where: { id } });
+    if (row.declined === declined) return toEmployee(row);
+    return toEmployee(await tx.employee.update({ where: { id }, data: { declined } }));
   }, WRITE_TX);
 }
 
@@ -113,6 +135,7 @@ function importedFields(e: RosterEmployee, hasTeamColumn: boolean) {
 
 /**
  * 匯入通訊錄（EMP-R44～R62）：欄位和範本不一致時整份不匯入（IMPORT_FORMAT_INVALID）；
+ * 更新既有員工時不參加的標記維持不變，新增的員工是未報名（EMP-R66）；
  * 以姓名加部門對應既有員工，對得到就更新、對不到就新增（排在最後，依檔案的列順序）；
  * 系統已有兩位以上同名同部門的員工時，這組的每一列都列為需要處理（D-012）。
  * 檔案裡沒有的員工保留不變（EMP-R61、D-011）。db 給 seed 在它自己的交易裡呼叫。

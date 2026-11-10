@@ -17,6 +17,7 @@ export const toEmployee = (e: Prisma.EmployeeGetPayload<object>): Employee => ({
   region: e.region,
   office: e.office,
   note: e.note,
+  declined: e.declined,
   sortOrder: e.sortOrder,
 });
 

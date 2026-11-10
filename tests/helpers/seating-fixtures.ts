@@ -27,6 +27,7 @@ export const employee = (id: number, data: Partial<Employee> = {}): Employee => 
   region: null,
   office: null,
   note: null,
+  declined: false,
   sortOrder: id,
   ...data,
 });

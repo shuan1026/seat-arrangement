@@ -2,6 +2,7 @@
 // 依據：D-010；docs/spec/participants.md 第 3.6 節（PPL-R64～R74、PPL-R79～R85）、第 4.4 節（錯誤清單的原因）、
 // 第 5.7 節（PPL-AC62～AC70、PPL-AC78～AC83）；待確認 PPL-Q01、Q06、Q20、Q22～Q26 依目前假設（D-008）；
 // src/contracts/imports.ts（ImportResult）、src/server/csv.ts（上傳與編碼）。報名表都是虛構資料。
+// 員工名單上標記為不參加的員工（D-014）：填「是」照一般新增、標記清掉；填「否」的人不會因匯入被標記（PPL-R72、EMP-R64）。
 //
 // ImportResult 的對應（假設）：
 //   imported = 這次新增或更新的報名員工人數（「已匯入 {n} 位」，眷屬不另外計算）= created + updated
@@ -313,6 +314,76 @@ describe('重複匯入：已報名的員工（PPL-R79～R84、PPL-Q20）', () =>
     const before = await prisma.employee.findMany({ orderBy: { id: 'asc' } });
     await importOk(sheet(answer('陳大文／行銷部／是／否／否／素食／／備註文字')));
     expect(await prisma.employee.findMany({ orderBy: { id: 'asc' } })).toEqual(before);
+  });
+});
+
+describe('員工名單上標記為不參加的員工（PPL-R72、EMP-R64、D-014）', () => {
+  const declinedOf = async (id: number) => (await prisma.employee.findUniqueOrThrow({ where: { id } })).declined;
+
+  it('不參加的陳大文填「是」：照一般報名者新增，不參加的標記清掉，不列為需要處理', async () => {
+    const chen = await createEmployee({ name: '陳大文', department: '研發一部', declined: true });
+
+    const result = await importOk(sheet(answer('陳大文／研發一部／是／否／否／素食／／需要靠走道')));
+
+    expect(result).toMatchObject({ imported: 1, created: 1, updated: 0, errors: [] });
+    expect(await registrationOf(chen.id)).toMatchObject({
+      kind: 'EMPLOYEE',
+      vegetarian: true,
+      note: '需要靠走道',
+      tableId: null,
+    });
+    expect(await declinedOf(chen.id)).toBe(false);
+  });
+
+  it('不參加的員工填「是」並攜帶眷屬：員工與眷屬都新增，標記清掉（PPL-R72、PPL-R73）', async () => {
+    const chen = await createEmployee({ name: '陳大文', department: '研發一部', declined: true });
+    await importOk(sheet(answer('陳大文／研發一部／是／是／是')));
+    const host = await registrationOf(chen.id);
+    expect(host).not.toBeNull();
+    expect(await prisma.participant.findUnique({ where: { hostId: host?.id ?? -1 } })).toMatchObject({ kind: 'DEPENDENT', childSeat: true });
+    expect(await declinedOf(chen.id)).toBe(false);
+  });
+
+  it('還沒報名的員工最後一次填「否」：不新增，也不會因匯入被標記為不參加', async () => {
+    const { chen } = await demoRoster();
+    const lee = await createEmployee({ name: '李小華', department: '業務部' });
+
+    const result = await importOk(sheet(answer('陳大文／研發一部／否'), answer('李小華／業務部／是'), answer('李小華／業務部／否')));
+
+    expect(result).toMatchObject({ imported: 0, errors: [] });
+    expect(await registrationOf(chen.id)).toBeNull();
+    expect(await registrationOf(lee.id)).toBeNull();
+    expect(await declinedOf(chen.id)).toBe(false);
+    expect(await declinedOf(lee.id)).toBe(false);
+  });
+
+  it('不參加的員工最後一次填「否」：不新增、不算需要處理，仍是不參加', async () => {
+    const chen = await createEmployee({ name: '陳大文', department: '研發一部', declined: true });
+    const before = await snapshot();
+
+    const result = await importOk(sheet(answer('陳大文／研發一部／否')));
+
+    expect(result).toMatchObject({ imported: 0, errors: [] });
+    expect(await snapshot()).toEqual(before);
+    expect(await declinedOf(chen.id)).toBe(true);
+  });
+
+  it('匯入只清掉加入的人：表單裡沒有的不參加員工仍是不參加（PPL-R84）', async () => {
+    const chen = await createEmployee({ name: '陳大文', department: '研發一部', declined: true });
+    const other = await createEmployee({ name: '林四', department: '研發一部', declined: true });
+    await importOk(sheet(answer('陳大文／研發一部／是')));
+    expect(await declinedOf(chen.id)).toBe(false);
+    expect(await declinedOf(other.id)).toBe(true);
+  });
+
+  it('報名表格式錯誤時整份不匯入：不參加的標記不變（PPL-R68）', async () => {
+    const chen = await createEmployee({ name: '陳大文', department: '研發一部', declined: true });
+    const content = registrationCsv([answer('陳大文／研發一部／是')], {
+      columns: FORM_COLUMNS.filter((c) => c !== 'dependent'),
+    });
+    expect(await errorOf(await upload(content))).toMatchObject({ status: 400, code: 'IMPORT_FORMAT_INVALID' });
+    expect(await declinedOf(chen.id)).toBe(true);
+    expect(await registrationOf(chen.id)).toBeNull();
   });
 });
 

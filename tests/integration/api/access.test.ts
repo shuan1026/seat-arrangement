@@ -1,4 +1,5 @@
 // API 的登入保護：docs/spec/README.md AUTH-R08、AUTH-AC08（沒登入時呼叫任何 API 都被拒絕、不回傳資料；健康檢查除外）；
+// 不參加的 PUT /api/employees/{id}/declined（D-014）也由這裡掃描檢查；
 // docs/architecture.md 第 8 節（GET /api/health 不需登入）、第 9.2 節（每個 Route Handler 透過 route() 再確認一次登入）。
 // 掃描 src/app/api 底下所有的 route.ts，之後新增的 API 也會自動被檢查。
 import { readdirSync } from 'node:fs';
@@ -40,6 +41,10 @@ beforeEach(async () => {
 describe('沒登入時需要登入的 API 都回 401（AUTH-R08）', () => {
   it('掃描得到需要登入的 API（至少有 /api/state）', () => {
     expect(protectedRoutes).toContain(path.join('state', 'route.ts'));
+  });
+
+  it('掃描得到 PUT /api/employees/{id}/declined（docs/architecture.md 第 8 節、D-014），一樣要登入', () => {
+    expect(protectedRoutes).toContain(path.join('employees', '[id]', 'declined', 'route.ts'));
   });
 
   it.each(protectedRoutes)('%s：每個方法都回 401 UNAUTHENTICATED，回應只有錯誤', async (file) => {

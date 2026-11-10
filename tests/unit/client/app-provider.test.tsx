@@ -22,6 +22,7 @@ const employee = (id: number, name: string): Employee => ({
   region: null,
   office: null,
   note: null,
+  declined: false,
   sortOrder: id,
 });
 

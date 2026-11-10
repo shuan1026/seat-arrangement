@@ -55,14 +55,16 @@ export type EmployeeSeed = {
   region?: string | null;
   office?: string | null;
   note?: string | null;
+  /** 承辦人標記為不參加（D-014）；省略時是 false */
+  declined?: boolean;
 };
 
 /** 新增一位員工，依呼叫順序排在員工名單最後；回傳 id */
 export async function insertEmployee(e: EmployeeSeed): Promise<number> {
   seq += 1;
   const res = await db().query<UpsertResult>(
-    'INSERT INTO `Employee` (`name`, `englishName`, `department`, `team`, `extension`, `region`, `office`, `note`, `sortOrder`, `updatedAt`) ' +
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3))',
+    'INSERT INTO `Employee` (`name`, `englishName`, `department`, `team`, `extension`, `region`, `office`, `note`, `declined`, `sortOrder`, `updatedAt`) ' +
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3))',
     [
       e.name,
       e.englishName ?? null,
@@ -72,10 +74,23 @@ export async function insertEmployee(e: EmployeeSeed): Promise<number> {
       e.region ?? null,
       e.office ?? null,
       e.note ?? null,
+      e.declined ?? false,
       seq,
     ],
   );
   return Number(res.insertId);
+}
+
+/** 直接改資料庫裡的不參加標記（模擬另一個人標記或改回） */
+export async function setDeclined(employeeId: number, declined: boolean): Promise<void> {
+  await db().query('UPDATE `Employee` SET `declined` = ?, `updatedAt` = CURRENT_TIMESTAMP(3) WHERE `id` = ?', [declined, employeeId]);
+}
+
+/** 資料庫裡這位員工的不參加標記；員工不存在時是 null */
+export async function declinedOf(employeeId: number): Promise<boolean | null> {
+  const rows = await db().query<{ declined: number | boolean }[]>('SELECT `declined` FROM `Employee` WHERE `id` = ?', [employeeId]);
+  const row = rows[0];
+  return row === undefined ? null : Boolean(Number(row.declined));
 }
 
 /** 依序新增多位員工；回傳 id（順序同輸入） */
@@ -124,14 +139,15 @@ export type EmployeeRow = {
   region: string | null;
   office: string | null;
   note: string | null;
+  declined: boolean;
   sortOrder: number;
 };
 
 export async function employeeRows(): Promise<EmployeeRow[]> {
-  const rows = await db().query<EmployeeRow[]>(
-    'SELECT `id`, `name`, `englishName`, `department`, `team`, `extension`, `region`, `office`, `note`, `sortOrder` FROM `Employee` ORDER BY `sortOrder`, `id`',
+  const rows = await db().query<(Omit<EmployeeRow, 'declined'> & { declined: number | boolean })[]>(
+    'SELECT `id`, `name`, `englishName`, `department`, `team`, `extension`, `region`, `office`, `note`, `declined`, `sortOrder` FROM `Employee` ORDER BY `sortOrder`, `id`',
   );
-  return [...rows];
+  return rows.map((r) => ({ ...r, declined: Boolean(Number(r.declined)) }));
 }
 
 export type ParticipantRow = {
