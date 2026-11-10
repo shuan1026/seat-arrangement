@@ -10,17 +10,17 @@ import type { SessionUser } from '@/contracts/entities';
 import { cn } from '@/components/ui/cn';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuTrigger, UserMenuContent } from '@/components/ui/dropdown-menu';
 import { Tooltip } from '@/components/ui/tooltip';
+import { Logo } from './logo';
 import { isCurrent, NAV_ITEMS } from './nav';
 
 type Mode = 'expanded' | 'collapsed' | 'drawer';
 
-function Logo({ collapsed }: { collapsed: boolean }) {
+/** 展開與 Drawer 放完整 Logo，收合只放符號；深色主題時用白色版（第 5 節，logo.tsx） */
+function SidebarLogo({ collapsed }: { collapsed: boolean }) {
   return collapsed ? (
-    // eslint-disable-next-line @next/next/no-img-element -- 單色 SVG 原檔，不需要最佳化
-    <img src="/symbol-dark.svg" alt="Seat Arrangement" width={24} height={24} className="mb-3 size-6 shrink-0" />
+    <Logo variant="symbol" className="mb-3 size-6 shrink-0" />
   ) : (
-    // eslint-disable-next-line @next/next/no-img-element -- 單色 SVG 原檔，不需要最佳化
-    <img src="/logo-dark.svg" alt="Seat Arrangement" width={208} height={72} className="mb-4 h-[72px] w-[208px] max-w-full shrink-0" />
+    <Logo variant="full" className="mb-4 h-[72px] w-[208px] max-w-full shrink-0" />
   );
 }
 
@@ -129,7 +129,7 @@ function UserFooter({ user, mode }: { user: SessionUser; mode: Mode }) {
 export function SidebarContent({ user, mode, onNavigate }: { user: SessionUser; mode: Mode; onNavigate?: () => void }) {
   return (
     <>
-      <Logo collapsed={mode === 'collapsed'} />
+      <SidebarLogo collapsed={mode === 'collapsed'} />
       <NavItems mode={mode} onNavigate={onNavigate} />
       <UserFooter user={user} mode={mode} />
     </>

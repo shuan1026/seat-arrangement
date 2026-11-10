@@ -5,6 +5,7 @@ import { LogIn, TriangleAlert } from 'lucide-react';
 import { signIn } from 'next-auth/react';
 import { useEffect, useState } from 'react';
 import type { LoginError } from '@/domain/auth-policy';
+import { Logo } from '@/components/shell/logo';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { notify } from '@/components/ui/toaster';
@@ -39,8 +40,8 @@ export function LoginCard({ error, callbackUrl, loggedOut }: { error: LoginError
         aria-labelledby="login-title"
         className="relative flex w-full max-w-[400px] flex-col gap-6 rounded-xl border border-border bg-card px-6 py-8 text-card-foreground edge-card"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element -- 單色 SVG 原檔，不需要最佳化 */}
-        <img src="/logo-dark.svg" alt="Seat Arrangement" width={208} height={72} className="mx-auto h-[72px] w-[208px] max-w-full" />
+        {/* 深色主題時用白色版（第 5 節、D-020）；登入頁沿用這個瀏覽器的配色，但沒有介面配色鈕（COM-R18） */}
+        <Logo variant="full" className="mx-auto h-[72px] w-[208px] max-w-full" />
         <div className="flex flex-col gap-2 text-center [text-wrap:balance]">
           <h1 id="login-title" className="type-2xl-bold text-foreground">
             用公司帳號登入

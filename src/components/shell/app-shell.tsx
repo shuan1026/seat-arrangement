@@ -1,6 +1,7 @@
 'use client';
 
 // App Shell：桌面 Sidebar（展開 240 px／收合 48 px）、Header、手機 Mobile Header 與 Drawer（docs/spec/README.md 第 5 節）。
+// 兩個 Header 右側都有介面配色鈕（COM-R17，theme-switch.tsx），在儲存狀態左邊。
 // 設計系統：03-components.md「Sidebar」「Header / App Shell Block」、04-patterns-and-ux.md「App Shell」。
 import { Menu, PanelLeft } from 'lucide-react';
 import { usePathname } from 'next/navigation';
@@ -13,6 +14,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { notify } from '@/components/ui/toaster';
 import { SaveStatus } from './save-status';
 import { SidebarContent } from './sidebar-content';
+import { ThemeSwitch } from './theme-switch';
 
 const PREF_KEY = 'seat-arrangement:sidebar';
 type SidebarState = 'expanded' | 'collapsed';
@@ -105,7 +107,9 @@ export function AppShell({ user, initialData, children }: { user: SessionUser; i
               </DialogPrimitive.Content>
             </DialogPrimitive.Portal>
           </DialogPrimitive.Root>
-          <div className="ml-auto min-w-0">
+          {/* 右側依序是介面配色鈕與儲存狀態（第 5 節、COM-R17） */}
+          <div className="ml-auto flex min-w-0 items-center gap-1">
+            <ThemeSwitch />
             <SaveStatus />
           </div>
         </header>
@@ -116,7 +120,9 @@ export function AppShell({ user, initialData, children }: { user: SessionUser; i
             <IconButton label="收合或展開側選單" variant="ghost" size="sm" onClick={toggle} className="[&_svg]:size-5">
               <PanelLeft />
             </IconButton>
-            <div className="ml-auto min-w-0">
+            {/* 右側依序是介面配色鈕與儲存狀態（第 5 節、COM-R17） */}
+            <div className="ml-auto flex min-w-0 items-center gap-2">
+              <ThemeSwitch />
               <SaveStatus />
             </div>
           </header>
