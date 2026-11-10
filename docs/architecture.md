@@ -271,7 +271,7 @@ enum TableKind {
 }
 
 model SeatTable {
-  id           Int           @id                // 1–30 是內部編號；畫面上的桌名（A1～A15、B1～B15）由 src/domain/layout.ts 的位置代碼對應（D-019）；工作人員桌固定為 0
+  id           Int           @id                // 1–30 是內部編號；畫面上的桌號（A1～A15、B1～B15）由 src/domain/layout.ts 的位置代碼對應（D-019）；工作人員桌固定為 0
   kind         TableKind
   noteName     String?       @db.VarChar(50)   // 備註名稱
   participants Participant[]
@@ -303,7 +303,7 @@ model SeatTable {
 - 開發時用 `prisma migrate dev` 產生 migration，提交進 repo。
 - 正式環境啟動時執行 `prisma migrate deploy` 與 `seed`（第 14 節）。
 - 1–30 桌與工作人員桌寫在第一個 migration 的 INSERT，不靠 seed。
-- seed 在 `prisma migrate deploy` 之後、伺服器接受請求之前執行：Next.js 啟動時由 `src/instrumentation.ts` 呼叫 `src/server/seed.ts`，失敗就結束程序。正式映像沒有 TypeScript 執行工具，借用 Next.js 已打包好的程式與 Prisma Client，不另外建置。只在 `SEED_IMPORT=1`（Dockerfile 設定）時執行，本機開發與測試不會匯入真實資料。員工表是空的、而且 `prisma/seed-data/roster.csv` 與 `registrations.csv` 都存在時，匯入員工名單，再匯入報名表成為參與人員（D-007）。接著有 `staff.csv`（姓名、部門）時，把這些人設為工作人員、依檔案順序放進工作人員桌；有 `tables.csv`（桌號、備註名稱）時寫入備註名稱（D-015）；桌號欄寫桌名（A1～A15、B1～B15，D-019）。對不到、沒有報名、超過工作人員桌人數或格式不符的列略過並記 Log。seed 不自動排座。
+- seed 在 `prisma migrate deploy` 之後、伺服器接受請求之前執行：Next.js 啟動時由 `src/instrumentation.ts` 呼叫 `src/server/seed.ts`，失敗就結束程序。正式映像沒有 TypeScript 執行工具，借用 Next.js 已打包好的程式與 Prisma Client，不另外建置。只在 `SEED_IMPORT=1`（Dockerfile 設定）時執行，本機開發與測試不會匯入真實資料。員工表是空的、而且 `prisma/seed-data/roster.csv` 與 `registrations.csv` 都存在時，匯入員工名單，再匯入報名表成為參與人員（D-007）。接著有 `staff.csv`（姓名、部門）時，把這些人設為工作人員、依檔案順序放進工作人員桌；有 `tables.csv`（桌號、備註名稱）時寫入備註名稱（D-015）；桌號欄寫桌號（A1～A15、B1～B15，D-019）。對不到、沒有報名、超過工作人員桌人數或格式不符的列略過並記 Log。seed 不自動排座。
   - 這幾步在同一個 `READ COMMITTED` 交易內完成，交易一開始 `SELECT … FOR UPDATE` 鎖住工作人員桌那一列（第一個 migration 就有，一定存在），鎖到 commit 或 rollback 才放開；多個執行個體同時啟動時，後面的會等前面的 commit 後才檢查員工表，看到已有資料就跳過。任何一列以外的錯誤就整批不寫入。
   - Log 只記筆數（匯入、對不到、略過），不記姓名（第 15.2 節）；對不到與略過的人名在部署前用本機試跑確認（D-007）。
   - 員工表已有資料、或資料檔不存在時跳過，並記一筆 Log；所以重新部署與冷啟動都不會蓋掉上線後的修改。
@@ -486,7 +486,7 @@ type SeatingOperationResult = {
 
 ### 11.3 座位安排
 
-- 桌名（D-019）：資料庫與 API 的桌次仍用內部編號 1–30（工作人員桌 0），畫面、匯出與網址參數（`/?table=A1`）都用位置代碼 A1～A15、B1～B15，對應寫在 `src/domain/layout.ts`。清單依 A1～A15、B1～B15 排列；自動排座的填桌順序沿用內部編號的順序（`docs/spec/auto-arrange.md` 的「填桌順序」）。
+- 桌號（D-019）：資料庫與 API 的桌次仍用內部編號 1–30（工作人員桌 0），畫面、匯出與網址參數（`/?table=A1`）都用位置代碼 A1～A15、B1～B15，對應寫在 `src/domain/layout.ts`。清單依 A1～A15、B1～B15 排列；自動排座的填桌順序沿用內部編號的順序（`docs/spec/auto-arrange.md` 的「填桌順序」）。
 - `seating-rules.ts` 對每個指令回傳「變更後的座位」或「違反哪條規則」，前端與後端共用。
 - 員工拖進工作人員桌時離開原本的桌次；眷屬不跟著移動。
 - 桌次的部門標示（依人數排序、以「＋」連接、有貴賓時加「貴賓」、沒人時為「空桌」）由前端即時計算，不存資料庫。
