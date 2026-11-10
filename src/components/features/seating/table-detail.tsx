@@ -93,7 +93,8 @@ export interface DetailShellProps {
   /** 「{桌號} 桌」或「工作人員桌」；也是面板與對話框的無障礙名稱 */
   title: string;
   /** 「{人數}/10 人」 */
-  subtitle: string;
+  /** 「{已入座}/10 人」；發布頁不顯示人數，沒有副標（D-025） */
+  subtitle?: string;
   /** 副標下方的備註名稱文字（Text-sm/Medium）；沒有時不顯示 */
   noteName?: string | null;
   mobile: boolean;
@@ -118,6 +119,8 @@ export function DetailShell({ title, subtitle, noteName, mobile, onClose, footer
           <div className={overlayClasses}>
             <DialogPrimitive.Content
               className={cn(panelClasses, 'max-w-[560px]')}
+              // 沒有副標時沒有 Description，不指向它
+              {...(subtitle ? {} : { 'aria-describedby': undefined })}
               // 打開時不把焦點放進備註名稱欄位，避免手機一打開就跳出鍵盤（原型的做法）；焦點放在對話框本身
               onOpenAutoFocus={(e) => {
                 e.preventDefault();
@@ -132,7 +135,9 @@ export function DetailShell({ title, subtitle, noteName, mobile, onClose, footer
             >
               <div className="shrink-0 px-6 pt-6 pr-12">
                 <DialogPrimitive.Title className="type-xl-semi-bold text-foreground">{title}</DialogPrimitive.Title>
-                <DialogPrimitive.Description className="mt-1 type-xs-regular text-muted-foreground">{subtitle}</DialogPrimitive.Description>
+                {subtitle ? (
+                  <DialogPrimitive.Description className="mt-1 type-xs-regular text-muted-foreground">{subtitle}</DialogPrimitive.Description>
+                ) : null}
                 {note}
               </div>
               <DialogBody className={cn(!footer && 'pb-6')}>{children}</DialogBody>
@@ -158,7 +163,7 @@ export function DetailShell({ title, subtitle, noteName, mobile, onClose, footer
       <div className="flex items-start justify-between gap-2 border-b border-border pt-4 pr-3 pb-3 pl-4">
         <div className="min-w-0">
           <h2 className="type-xl-semi-bold">{title}</h2>
-          <p className="type-xs-regular text-muted-foreground">{subtitle}</p>
+          {subtitle ? <p className="type-xs-regular text-muted-foreground">{subtitle}</p> : null}
           {note}
         </div>
         <IconButton label="關閉" size="sm" tooltip onClick={onClose}>

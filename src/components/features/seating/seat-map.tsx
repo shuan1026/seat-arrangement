@@ -3,7 +3,8 @@
 // 座位圖（docs/spec/seating.md 2.1.3、2.1.4、3.11；原型 seating.html 的 geometry、fit、applyZoom、bindPan）。
 // 場地圖以 CSS transform: scale() 縮放，只在座位圖區內捲動與平移；「適合視窗」讓 30 桌全部可見，
 // 打開桌次詳情時只用沒被詳情蓋住的寬度（低於 35% 時改用整個座位圖區），場地圖在沒被蓋住的區域水平置中。
-// 發布頁 /seats 也用這個元件（docs/spec/permissions.md 第 2.3 節）：只有收合的桌次、工具列只有縮放，
+// 發布頁 /seats 也用這個元件（docs/spec/permissions.md 第 2.3 節、D-025）：工具列多了搜尋框（toolbarSearch，桌面在「適合視窗」右邊、
+// 767 px 以下自成一列滿版）與下方的搜尋結果（belowToolbar）；hideCounts 時桌次不顯示人數；centerNonce 改變時場地圖水平置中、捲到最上方。
 // 「全部展開」「自動排座」沒有傳入處理函式時不顯示（只能檢視時也沒有「自動排座」，SEAT-R90）。
 import { FoldVertical, Maximize, PanelLeftOpen, UnfoldVertical, WandSparkles, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -63,7 +64,7 @@ function fitZoom(size: Size, g: Geometry, cover: number): number {
 }
 
 export interface SeatMapProps {
-  /** 展開模式要傳 TableInfo（有名單）；發布頁只有 TableFace，不會展開 */
+  /** 展開模式要傳 TableInfo（有名單）；發布頁傳 PublicTableFace（只有顯示名稱） */
   tables: ReadonlyMap<number, TableFace>;
   expanded: boolean;
   /** 手動縮放的比例（百分比）；null 是適合視窗 */
@@ -85,6 +86,14 @@ export interface SeatMapProps {
   mobile: boolean;
   /** 浮在座位圖區右側的桌次詳情 */
   detail?: ReactNode;
+  /** 發布頁：桌次不顯示人數與「已滿」「超過」（PRM-R24、D-025） */
+  hideCounts?: boolean;
+  /** 發布頁的搜尋框：桌面放在「適合視窗」右邊，767 px 以下排到工具列最後、自成一列滿版（D-025） */
+  toolbarSearch?: ReactNode;
+  /** 工具列下方、座位圖區上方的內容（發布頁的搜尋結果，D-025） */
+  belowToolbar?: ReactNode;
+  /** 改變時（以及第一次量到座位圖區大小時）把場地圖水平置中、捲到最上方（發布頁開啟與「全部展開」，PRM-R25） */
+  centerNonce?: number;
 }
 
 export function SeatMap(props: SeatMapProps) {
@@ -204,6 +213,14 @@ export function SeatMap(props: SeatMapProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在每次按下「{桌號}」時捲動一次
   }, [hit?.nonce, measured]);
 
+  // 發布頁：開啟與按「全部展開」時水平置中、從最上方（舞台）開始（PRM-R25、D-025）
+  useLayoutEffect(() => {
+    const vp = vpRef.current;
+    if (props.centerNonce === undefined || !vp || !measured) return;
+    vp.scrollTo({ left: Math.max(0, (vp.scrollWidth - vp.clientWidth) / 2), top: 0 });
+    // 只在開啟與每次按「全部展開」時置中一次
+  }, [props.centerNonce, measured]);
+
   const landmarkTop = (bottom: boolean) => (bottom ? g.y0 + 5 * g.u.h + g.u.itemH + GAP : PAD);
 
   return (
@@ -226,6 +243,7 @@ export function SeatMap(props: SeatMapProps) {
             <Maximize />
           </IconButton>
         </span>
+        {props.toolbarSearch ? <div className="min-w-0 max-md:order-last max-md:basis-full">{props.toolbarSearch}</div> : null}
         {props.onToggleExpanded ? (
           <Button
             variant="outline"
@@ -244,6 +262,7 @@ export function SeatMap(props: SeatMapProps) {
           </span>
         ) : null}
       </div>
+      {props.belowToolbar}
       <div className="relative flex min-h-0 flex-1">
         <div
           ref={vpRef}
@@ -296,6 +315,7 @@ export function SeatMap(props: SeatMapProps) {
                     selected={props.selected === key}
                     hit={hit?.tableIds.includes(place.id) ?? false}
                     draggable={props.draggable}
+                    hideCounts={props.hideCounts}
                     onOpen={() => props.onOpen(key)}
                   />
                 );

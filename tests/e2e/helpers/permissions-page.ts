@@ -9,8 +9,10 @@
 // - 發布對話框：dialog「發布座位表」，裡面有 checkbox「發布座位表」、文字正好「已發布」或「未發布」的徽章、唯讀的 textbox「連結」、
 //   按鈕「複製連結」「關閉」。
 // - 發布頁：H1「尾牙座位表」；搜尋框的提示文字「輸入姓名找座位」；搜尋結果每位一行，文字正好是「{顯示名稱}：{桌號} 桌」；
-//   座位圖、桌次與工具列和座位安排頁相同（helpers/seating-page.ts 的 region「座位圖」、group「{桌號} 桌」「工作人員桌」、縮小／放大／適合視窗）；
-//   桌次名單和桌次詳情相同（region 或 dialog「{桌號} 桌」，名單 list「名單」）。
+//   座位圖、桌次與工具列和座位安排頁相同（helpers/seating-page.ts 的 region「座位圖」、group「{桌號} 桌」「工作人員桌」、
+//   縮小／放大／適合視窗、button「全部展開」／「全部收合」）；開啟時全部展開（D-025）。
+//   桌次按鈕的無障礙名稱不含人數：「{桌號} 桌，{備註名稱}，{部門}」（沒有備註名稱時省略那一段），工作人員桌「工作人員桌・{部門}」（PRM-R24、D-025）；
+//   桌次名單和桌次詳情相同（region 或 dialog「{桌號} 桌」，名單 list「名單」），沒有人數副標。
 import { expect, type Locator, type Page } from '@playwright/test';
 import { isMobileWidth } from './page-checks';
 

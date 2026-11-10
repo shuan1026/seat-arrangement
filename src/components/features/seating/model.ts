@@ -64,6 +64,10 @@ export type TableInfo = TableFace & {
 /** 有完整名單的桌次（座位安排頁）；發布頁的桌次只有 TableFace */
 export const isTableInfo = (t: TableFace): t is TableInfo => 'roster' in t;
 
+/** 發布頁的桌次：沒有參與人員資料，只有依名單順序的顯示名稱，展開卡片用（docs/spec/permissions.md 第 2.3 節、D-025） */
+export type PublicTableFace = TableFace & { names: readonly string[] };
+export const isPublicTableFace = (t: TableFace): t is PublicTableFace => 'names' in t;
+
 /** 部門在員工名單中第一次出現的順序 */
 export function departmentsInOrder(employees: readonly Employee[]): string[] {
   const out: string[] = [];

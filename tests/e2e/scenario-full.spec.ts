@@ -679,7 +679,8 @@ test.describe('手機：只能檢視的同仁查座位（README 1.2 第 9、10 �
       await tableButton(page, B4).click();
       const list = page.getByRole('dialog', { name: 'B4 桌', exact: true });
       await expect(list).toBeVisible();
-      await expect(list).toContainText('4/10 人');
+      // 發布頁的桌次名單沒有人數副標（permissions.md 第 2.3 節「桌次名單」、D-025）
+      await expect(list).not.toContainText(/\d+\s*\/\s*10/);
       await expect(list).toContainText('部門：業務部＋研發部');
       await expectRoster(detailRows(list), ['王小明', '王小明_眷屬', '林小青', '周子翔']);
       // 發布頁不顯示分機、組別、兒童椅、素食（PRM-R27）
