@@ -1,6 +1,8 @@
 // seed（D-007）：docs/architecture.md 第 7.3 節——只在 SEED_IMPORT=1 時執行；員工表是空的、而且 roster.csv 與
 // registrations.csv 都存在時才匯入；員工表已有資料或資料檔不存在時跳過，重新部署與冷啟動不會蓋掉上線後的修改；
 // 兩份匯入在同一個交易內完成，任何錯誤就整批不寫入；seed 失敗就結束程序。只用暫存資料夾裡的空檔，不用真實資料。
+// D-015：staff.csv、tables.csv 是可選的，存在時才把路徑交給匯入程式（files.staff、files.tables），不存在就不傳；
+// 只有這兩個檔、沒有 roster.csv 與 registrations.csv 時仍然跳過。真正的匯入程式見 seed-import.test.ts。
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,7 +14,16 @@ import { createEmployee } from '../../helpers/factory';
 /** 目前的環境變數，只換掉 SEED_IMPORT */
 const envWith = (seedImport: string | undefined): NodeJS.ProcessEnv => ({ ...process.env, SEED_IMPORT: seedImport });
 const ENABLED = envWith('1');
-const SUMMARY = { employees: 2, participants: 1, dependents: 0, unmatched: 0 };
+const SUMMARY = {
+  employees: 2,
+  participants: 1,
+  dependents: 0,
+  unmatched: 0,
+  staff: 0,
+  staffSkipped: 0,
+  tableNotes: 0,
+  tableNotesSkipped: 0,
+};
 
 let dir: string;
 
@@ -101,6 +112,55 @@ describe('runSeed', () => {
       roster: path.join(dir, SEED_FILES.roster),
       registrations: path.join(dir, SEED_FILES.registrations),
     });
+  });
+
+  it('資料檔名（D-007、D-015）', () => {
+    expect(SEED_FILES).toEqual({
+      roster: 'roster.csv',
+      registrations: 'registrations.csv',
+      staff: 'staff.csv',
+      tables: 'tables.csv',
+    });
+  });
+
+  it('staff.csv 與 tables.csv 也在時，一併把路徑交給匯入程式（D-015）', async () => {
+    const importer = spyImporter();
+    writeBothFiles();
+    writeFiles(SEED_FILES.staff, SEED_FILES.tables);
+
+    await expect(runSeed(ENABLED, dir)).resolves.toEqual({ status: 'imported', ...SUMMARY });
+    expect(importer).toHaveBeenCalledTimes(1);
+    expect(importer).toHaveBeenCalledWith({
+      roster: path.join(dir, SEED_FILES.roster),
+      registrations: path.join(dir, SEED_FILES.registrations),
+      staff: path.join(dir, SEED_FILES.staff),
+      tables: path.join(dir, SEED_FILES.tables),
+    });
+  });
+
+  it.each([
+    ['只有 staff.csv', 'staff'],
+    ['只有 tables.csv', 'tables'],
+  ] as const)('兩個可選檔%s 時只傳這一個，另一個不傳（D-015）', async (_name, key) => {
+    const importer = spyImporter();
+    writeBothFiles();
+    writeFiles(SEED_FILES[key]);
+
+    await expect(runSeed(ENABLED, dir)).resolves.toMatchObject({ status: 'imported' });
+    expect(importer).toHaveBeenCalledWith({
+      roster: path.join(dir, SEED_FILES.roster),
+      registrations: path.join(dir, SEED_FILES.registrations),
+      [key]: path.join(dir, SEED_FILES[key]),
+    });
+  });
+
+  it('只有 staff.csv 與 tables.csv、沒有 roster.csv 與 registrations.csv 時跳過（no_files）', async () => {
+    const importer = spyImporter();
+    writeFiles(SEED_FILES.staff, SEED_FILES.tables);
+
+    await expect(runSeed(ENABLED, dir)).resolves.toEqual({ status: 'skipped', reason: 'no_files' });
+    expect(importer).not.toHaveBeenCalled();
+    expect(await prisma.seatTable.count({ where: { noteName: { not: null } } })).toBe(0);
   });
 
   it('匯入程式用 seedDb() 寫入的資料在成功後保留', async () => {
