@@ -3,7 +3,7 @@
 | 項目 | 內容 |
 |---|---|
 | 系統 | Seat Arrangement |
-| 文件版本 | v0.3（技術選型、登入與衝突處理已定，細節待正式規格確認後補） |
+| 文件版本 | v0.4（加入權限與座位發布，D-021） |
 | 日期 | 2026-11-10 |
 | 適用範圍 | 本系統的架構、模組邊界、技術選型、資料、API、部署與演進方式 |
 | 讀者 | 參與開發的工程師、Code Reviewer |
@@ -41,7 +41,8 @@
 - **資料庫**：用平台一鍵建立的 MySQL 8.4，以 Prisma 管理資料表與 migration。
 - **資料量很小**（約 180 位員工、200 多位參與人員、31 張桌），所以前端開頁時一次載入全部資料，搜尋、篩選、桌次部門標示都在瀏覽器算；每個操作送一個小請求到 API 立即儲存。
 - **業務規則寫成純 TypeScript 模組**（`src/domain/`），前端用來即時提示（例如桌次已滿），後端用同一份程式在交易中驗證並寫入。
-- **用公司 Google 帳號登入**：只允許公司網域的帳號，登入後所有人權限相同（D-003）。
+- **用公司 Google 帳號登入**：只允許公司網域的帳號（D-003）。登入後分成編輯者與只能檢視兩種權限：編輯者名單存在資料庫，每個寫入請求都在 `route()` 檢查，不是編輯者就回 403（D-021，第 9.3 節）。
+- **發布頁 `/seats`**：編輯者開啟發布後，公司同仁登入就能看座位圖與找座位；資料由專用的服務組出，只含發布頁要顯示的欄位（第 11.5 節）。
 - **多人同時操作**：每個操作只寫入這一步，後端在交易內檢查規則；違反時前端重新載入最新資料並提示（D-004）。
 - **沒有背景工作、沒有檔案儲存**：匯入的 CSV 與匯出的 Excel 都在單次請求的記憶體內處理完。
 
@@ -87,7 +88,7 @@ flowchart LR
 1. `src/proxy.ts`（Next.js 16 的 proxy，舊名 middleware）先檢查登入：沒登入時，頁面導向登入頁、API 回 401（第 9 節）。
 2. 開啟網址時，伺服器端元件直接讀資料庫，把全部資料（員工、參與人員、桌次）連同頁面一起送到瀏覽器。
 3. 使用者每做一個操作（拖移、新增、編輯、刪除），前端先更新畫面，再把這個操作送到對應的 API。
-4. API 用 zod 檢查輸入，在一個資料庫交易內套用 `src/domain/` 的規則並寫入，回傳變更後的資料。
+4. API 先由 `route()` 確認登入；會修改資料的 API 再確認登入者是編輯者（第 9.3 節）。接著用 zod 檢查輸入，在一個資料庫交易內套用 `src/domain/` 的規則並寫入，回傳變更後的資料。
 5. 前端用回傳的資料校正畫面，Header 顯示「已儲存 {時:分}」。失敗時保留畫面上的結果，顯示「重試」。
 
 別人的改動不會自動出現在畫面上，重新整理才看到（需求已確認不做即時同步）；操作違反規則時才會自動重新載入（D-004）。
@@ -118,7 +119,7 @@ flowchart LR
 
 不採用：
 
-- **帳號與角色管理**：登入只用來確認是公司同仁，不建使用者資料表、不分角色（D-003）。
+- **完整的帳號與角色管理**：不建使用者資料表、不存登入紀錄；權限只有編輯者與只能檢視兩種，只用一張編輯者名單（email）判斷（D-003、D-021）。
 - **WebSocket、即時同步**：需求已確認不做；Cloud Run 也不適合長連線。
 - **Server Actions 作為主要 API**：見 D-001。
 - **獨立後端服務（Express、FastAPI）**：見第 16 節。
@@ -145,6 +146,7 @@ flowchart LR
 | 座位安排 | `seating-rules.ts`、`auto-arrange.ts`、`layout.ts` | `seating.ts` | `/api/seating`、`/api/tables` |
 | 匯出座位表 | `seating-sheet.ts` | `export.ts` | `/api/export/seating` |
 | 登入 | `auth-policy.ts`（公司網域檢查） | `server/auth.ts`（Auth.js 設定） | `/api/auth/*`、`src/proxy.ts` |
+| 權限與發布 | `editors.ts`（email 正規化、格式與公司網域檢查） | `editors.ts`（名單、`isEditor`）、`publish.ts`（發布設定、發布頁資料） | `/api/editors`、`/api/publish`、`/api/seats` |
 
 ## 6. 專案目錄結構
 
@@ -167,7 +169,9 @@ seat-arrangement/
 │   │   │   ├── layout.tsx        # App Shell：左側導覽、Header、儲存狀態；伺服器端讀全部資料
 │   │   │   ├── page.tsx          # 座位安排（/）
 │   │   │   ├── people/page.tsx   # 參與人員
-│   │   │   └── employees/page.tsx# 員工名單
+│   │   │   ├── employees/page.tsx# 員工名單
+│   │   │   └── permissions/page.tsx # 權限頁，只有編輯者（D-021）
+│   │   ├── seats/page.tsx        # 發布頁，不套 App Shell（D-021）
 │   │   ├── api/                  # Route Handlers（第 8 節），含 auth/[...nextauth]
 │   │   └── not-found.tsx
 │   ├── contracts/                # 所有 API 的 zod 輸入格式與回應型別，前後端共用
@@ -212,7 +216,7 @@ seat-arrangement/
 
 ### 7.1 資料表
 
-三張表。部門、組別、顯示名稱、桌次部門標示、工作人員身分都由資料推導，不另外存。
+五張表：員工、參與人員、桌次三張業務資料，加上編輯者名單與發布設定（D-021）。部門、組別、顯示名稱、桌次部門標示、工作人員身分都由資料推導，不另外存。
 
 ```prisma
 model Employee {
@@ -276,6 +280,19 @@ model SeatTable {
   noteName     String?       @db.VarChar(50)   // 備註名稱
   participants Participant[]
 }
+
+model Editor {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique @db.VarChar(254)   // 一律去空白、轉小寫後存（PRM-R03）
+  createdAt DateTime @default(now())            // 權限頁依這個欄位排序
+  createdBy String?  @db.VarChar(254)           // 新增者的 email；啟動時由 INITIAL_EDITOR_EMAILS 寫入的是 null
+}
+
+model Setting {
+  id             Int      @id @default(1)       // 單列表，只有 id = 1 這一列
+  seatsPublished Boolean  @default(false)       // 發布頁是否開放（D-021）
+  updatedAt      DateTime @updatedAt
+}
 ```
 
 設計說明：
@@ -283,7 +300,8 @@ model SeatTable {
 - **連動刪除交給外鍵**：刪除員工 → 參與人員 → 眷屬依序 cascade；取消報名刪除參與人員時眷屬一併刪除。座位存在參與人員列上，人刪了座位就空出來，不需要另外處理。
 - **工作人員 = 坐在工作人員桌的員工**：不另存旗標，避免兩個欄位不一致。人員對話框勾「工作人員」時，後端把他移進工作人員桌；取消勾選則移出成未入座。
 - **桌次固定**：1–30 桌與工作人員桌寫在第一個 migration 的 INSERT。30 桌在座位圖上的位置寫在 `src/domain/layout.ts`，不存資料庫。
-- **沒有使用者資料表**：登入狀態是存在 cookie 的 JWT session，不建帳號或 session 資料表（D-003）。
+- **沒有使用者資料表，只有編輯者名單**：登入狀態是存在 cookie 的 JWT session，不建帳號或 session 資料表，不存登入紀錄（D-003）。`Editor` 只記哪些 email 可以編輯，以及誰在什麼時候加入（`createdBy`、`createdAt` 只留在資料庫，畫面只依加入順序排列）。是否為編輯者每個請求查一次，不放進 JWT，所以權限變更從對方的下一次操作起生效（D-021）。
+- **發布設定用單列表**：`Setting` 只有 id = 1 一列，由新增它的 migration 用 INSERT 建好（`seatsPublished = false`）。欄位有型別、讀寫都是同一列，比 key-value 表單純；之後有其他全站設定就加欄位。
 - **只存需要的欄位**：通訊錄的手機號碼與代接群組沒有用到，匯入時略過不存。
 - **不對 `(tableId, seatOrder)` 加 unique**：調整順序時會短暫重複，改由服務層在交易內重排並保證連續。
 
@@ -302,12 +320,13 @@ model SeatTable {
 
 - 開發時用 `prisma migrate dev` 產生 migration，提交進 repo。
 - 正式環境啟動時執行 `prisma migrate deploy` 與 `seed`（第 14 節）。
-- 1–30 桌與工作人員桌寫在第一個 migration 的 INSERT，不靠 seed。
+- 1–30 桌與工作人員桌寫在第一個 migration 的 INSERT，不靠 seed。`Setting` 那一列寫在新增它的 migration 的 INSERT。
 - seed 在 `prisma migrate deploy` 之後、伺服器接受請求之前執行：Next.js 啟動時由 `src/instrumentation.ts` 呼叫 `src/server/seed.ts`，失敗就結束程序。正式映像沒有 TypeScript 執行工具，借用 Next.js 已打包好的程式與 Prisma Client，不另外建置。只在 `SEED_IMPORT=1`（Dockerfile 設定）時執行，本機開發與測試不會匯入真實資料。員工表是空的、而且 `prisma/seed-data/roster.csv` 與 `registrations.csv` 都存在時，匯入員工名單，再匯入報名表成為參與人員（D-007）。接著有 `staff.csv`（姓名、部門）時，把這些人設為工作人員、依檔案順序放進工作人員桌；有 `tables.csv`（桌號、備註名稱）時寫入備註名稱（D-015）；桌號欄寫桌號（A1～A15、B1～B15，D-019）。對不到、沒有報名、超過工作人員桌人數或格式不符的列略過並記 Log。seed 不自動排座。
   - 這幾步在同一個 `READ COMMITTED` 交易內完成，交易一開始 `SELECT … FOR UPDATE` 鎖住工作人員桌那一列（第一個 migration 就有，一定存在），鎖到 commit 或 rollback 才放開；多個執行個體同時啟動時，後面的會等前面的 commit 後才檢查員工表，看到已有資料就跳過。任何一列以外的錯誤就整批不寫入。
   - Log 只記筆數（匯入、對不到、略過），不記姓名（第 15.2 節）；對不到與略過的人名在部署前用本機試跑確認（D-007）。
   - 員工表已有資料、或資料檔不存在時跳過，並記一筆 Log；所以重新部署與冷啟動都不會蓋掉上線後的修改。
   - 匯入摘要（員工、參與人員、眷屬的筆數，以及對不到員工名單的報名者）寫進 Log，不印電子郵件。
+- 初始編輯者（D-021）：伺服器啟動時，`src/instrumentation.ts` 在 seed 之後呼叫 `server/services/editors.ts` 的 bootstrap。這一步不看 `SEED_IMPORT`，本機開發也會執行。`Editor` 表是空的時，把 `INITIAL_EDITOR_EMAILS` 的 email 依 `domain/editors.ts` 正規化，只收格式正確、網域等於 `ALLOWED_EMAIL_DOMAIN` 的，用 `createMany({ skipDuplicates: true })` 寫入；多個執行個體同時啟動時靠 email 的 unique 不會重複。表不是空的就跳過，所以改變數不會增減編輯者。選「名單是空的時寫入」而不是「沒有編輯者時把變數裡的人視為編輯者」：後者在第一位編輯者新增別人之後，名單就不再是空的，變數裡的人會突然失去權限。表是空的、變數又沒有有效的 email 時記 WARNING，這時沒有人能編輯，要設定變數後重新部署。寫入失敗就結束程序，和 seed 相同。
 - 資料表變更只能新增 migration，不改已部署過的 migration。
 
 ### 7.4 資料量估算
@@ -316,19 +335,19 @@ model SeatTable {
 |---|---|---|
 | 資料筆數 | 員工約 200、參與人員約 250、桌次 31 | — |
 | 全部資料的 JSON | 約 100 KB | — |
-| 資料表 | 3 張（加上 Prisma 的 migration 紀錄表） | 50 張 |
+| 資料表 | 5 張（加上 Prisma 的 migration 紀錄表） | 50 張 |
 | 容量 | 遠小於 10 MB | 1 GB |
 | 寫入 | 一次拖移約 1–12 筆更新；自動排座約 200 筆，在一個交易內完成 | 每小時 1 萬次 |
 
 ## 8. API 設計
 
-全部是 JSON，路徑前綴 `/api`。除了 `/api/health` 與 `/api/auth/*`，都要登入（第 9 節）。每個寫入 API 在一個資料庫交易內完成，回傳變更後的資料讓前端校正。
+全部是 JSON，路徑前綴 `/api`。除了 `/api/health` 與 `/api/auth/*`，都要登入（第 9 節）。會修改資料的 API（`POST`、`PUT`、`PATCH`、`DELETE`）還要是編輯者，不是時回 403 `NOT_EDITOR`（第 9.3 節）。每個寫入 API 在一個資料庫交易內完成，回傳變更後的資料讓前端校正。
 
 | 方法與路徑 | 用途 |
 |---|---|
 | `GET /api/health` | 健康檢查，回 200；不需登入，不連資料庫（避免冷啟動時被判定失敗） |
 | `/api/auth/*` | Auth.js 的登入、回呼、登出，路徑由套件提供 |
-| `GET /api/state` | 全部員工、參與人員與桌次；重新整理或發生衝突後重新載入用 |
+| `GET /api/state` | 全部員工、參與人員與桌次，以及目前登入者是否為編輯者（`me.isEditor`）與發布狀態（`seatsPublished`）；重新整理或發生衝突後重新載入用 |
 | `POST /api/employees` | 新增員工 |
 | `PATCH /api/employees/{id}` | 編輯員工 |
 | `DELETE /api/employees/{id}` | 刪除員工；已報名者一併取消報名、移除眷屬、空出座位 |
@@ -341,7 +360,12 @@ model SeatTable {
 | `POST /api/participants/import` | 上傳參與人員 CSV |
 | `POST /api/seating/operations` | 座位異動指令（見下方） |
 | `PATCH /api/tables/{id}` | 修改桌次備註名稱 |
-| `GET /api/export/seating` | 下載座位表 Excel（`座位表_{YYYYMMDD}.xlsx`） |
+| `GET /api/export/seating` | 下載座位表 Excel（`座位表_{YYYYMMDD}.xlsx`）；只能檢視的人也能用 |
+| `GET /api/editors` | 編輯者名單（id、email，依加入先後）；只有編輯者能呼叫（D-021） |
+| `POST /api/editors` | 新增編輯者（`{ email }`）；空白、格式或網域不對回 400 `VALIDATION_FAILED`，已在名單回 409 `EDITOR_EXISTS` |
+| `DELETE /api/editors/{id}` | 移除編輯者；名單只剩這一位回 409 `LAST_EDITOR`，已被移除回 404 |
+| `PUT /api/publish` | 切換發布（`{ published: boolean }`），回傳目前狀態；讀取包含在 `GET /api/state` |
+| `GET /api/seats` | 發布頁的資料（第 11.5 節）：未發布時只有 `{ published: false }`；已發布時是每桌的桌次、備註名稱、部門標示與名單的顯示名稱。兩種權限都能呼叫 |
 
 ### 8.1 座位異動指令
 
@@ -384,16 +408,19 @@ type SeatingOperationResult = {
 | 400 | `VALIDATION_FAILED` | 輸入格式不對 | 顯示欄位錯誤（正常操作不會發生） |
 | 400 | `IMPORT_FORMAT_INVALID` | CSV 欄位和範本不一致 | 顯示匯入對話框的格式錯誤文案 |
 | 401 | `UNAUTHENTICATED` | 沒有登入或登入已過期 | 導向登入頁 |
+| 403 | `NOT_EDITOR` | 不是編輯者的人呼叫會修改資料的 API 或編輯者名單的 API，包括畫面開著時被移除編輯權限的人（D-021） | 不重試，捨棄佇列中還沒送出的操作，關閉開著的對話框，重新載入 `GET /api/state`（畫面切換成只能檢視），Sonner「你沒有編輯權限，已重新載入。」；在權限頁時導向 `/`（AUTH-R13） |
 | 404 | `NOT_FOUND` | 資料已被別人刪除 | 重新載入全部資料，顯示「資料已被其他人更新，已重新載入。」（D-004） |
 | 409 | `TABLE_FULL`、`STAFF_TABLE_FULL`（10 位，選單類入口）、`TABLE_LIMIT`、`STAFF_TABLE_LIMIT`（12 位，拖移與加入人員，D-018）、`STAFF_EMPLOYEE_ONLY` | 寫入時才發現違反規則（通常是別人剛改過） | 重新載入全部資料，顯示規格中既有的文案，例如桌次已滿（D-004） |
 | 409 | `DUPLICATE_PARTICIPANT`、`DEPENDENT_EXISTS` | 員工已被別人加入、已有眷屬 | 重新載入全部資料，顯示「資料已被其他人更新，已重新載入。」（D-004） |
+| 409 | `EDITOR_EXISTS` | 新增的 email 已在編輯者名單（通常是別人剛加入） | 重新載入名單，email 欄位顯示「{email} 已經是編輯者。」（PRM-R10） |
+| 409 | `LAST_EDITOR` | 要移除的是名單上最後一位編輯者 | 重新載入，顯示「資料已被其他人更新，已重新載入。」（PRM-R12） |
 | 500 | `INTERNAL` | 其他錯誤 | Header 顯示儲存失敗與「重試」 |
 
 畫面文案由前端依 `code` 對應正式規格，API 的 `message` 只給開發者看。
 
 ## 9. 認證與授權
 
-依 D-003：用公司 Google 帳號登入，只允許公司網域的帳號。登入只用來確認是公司同仁，登入後所有人權限相同，不分角色，也沒有唯讀模式。原因是平台的正式網址公開（第 2 節），而資料包含全公司員工的姓名、分機與座位。
+依 D-003：用公司 Google 帳號登入，只允許公司網域的帳號。原因是平台的正式網址公開（第 2 節），而資料包含全公司員工的姓名、分機與座位。登入後再依編輯者名單分成編輯者與只能檢視兩種權限（D-021，第 9.3 節）；發布頁 `/seats` 也要登入。
 
 ### 9.1 登入流程
 
@@ -414,11 +441,25 @@ type SeatingOperationResult = {
 | `/api/health` | 不需登入（平台健康檢查用） |
 | `/api/auth/*`、`/login` | 不需登入 |
 
+發布頁 `/seats` 與 `/api/seats` 和其他頁面、API 一樣要登入（D-021），不列進 proxy 的公開路徑；沒登入時導向 `/login`，登入後回到 `/seats`。
+
 - 檢查集中在 `src/proxy.ts`。每個 Route Handler 透過 `src/server/http.ts` 的 `route()` 再用 `getServerSession` 確認一次，避免 proxy 的路徑比對寫漏時 API 沒有保護。
 - 寫入 API 另外檢查 `Origin` 標頭與網站相同，搭配 `SameSite=Lax` 防跨站請求。
-- 不建使用者或 session 資料表，不保存誰登入過；Log 只記 Google 帳號的 ID（第 15.2 節）。
+- 不建使用者或 session 資料表，不保存誰登入過；只有編輯者名單存 email（第 7.1 節）。Log 只記 Google 帳號的 ID（第 15.2 節）。
 
-### 9.3 其他安全措施
+### 9.3 權限（D-021）
+
+| 項目 | 做法 |
+|---|---|
+| 編輯者判斷 | `server/services/editors.ts` 的 `isEditor(email)` 把登入者的 email 轉小寫後查 `Editor`。每個請求查一次，不放進 JWT、不在記憶體快取，所以新增或移除編輯者從對方的下一次請求起生效，不必重新登入（AUTH-R11） |
+| 寫入 API | 檢查集中在 `src/server/http.ts` 的 `route()`：方法是 `POST`、`PUT`、`PATCH`、`DELETE` 時，確認登入後再呼叫 `isEditor`，不是編輯者就回 403 `NOT_EDITOR`，不執行 handler。依方法自動檢查，之後新增的寫入 API 不會漏掉。匯入的 multipart 請求也在讀檔前就擋下 |
+| 讀取 API | `GET` 只要登入：`/api/state`、`/api/export/seating`、`/api/seats`。例外是 `GET /api/editors`，以 `route(handler, { editorOnly: true })` 限定編輯者，因為權限頁只有編輯者能開 |
+| proxy | `src/proxy.ts` 只檢查登入（JWT），不查資料庫；權限一律由 `route()` 與頁面的伺服器端元件判斷 |
+| 頁面 | `(main)/layout.tsx` 讀全部資料時一併讀 `isEditor`，放進 store 的 `me.isEditor`；導覽的「權限」、各頁的編輯操作依它顯示或隱藏（COM-R19）。`/permissions` 的伺服器端元件在不是編輯者時 `redirect("/")`（PRM-R06）。畫面隱藏只是介面，真正的保護是 API 的檢查 |
+| 最後一位編輯者 | 移除在 `READ COMMITTED` 交易內先 `SELECT … FOR UPDATE` 鎖住 `Editor` 全部列再數人數，只剩一位時回 409 `LAST_EDITOR`；兩人同時移除也不會讓名單變空（PRM-R12） |
+| 初始編輯者 | 啟動時名單是空的才由 `INITIAL_EDITOR_EMAILS` 寫入（第 7.3 節） |
+
+### 9.4 其他安全措施
 
 - API 一律驗證輸入。
 - 回應加上基本的安全標頭（`X-Content-Type-Options`、`Referrer-Policy`、`frame-ancestors 'none'`）。
@@ -434,12 +475,15 @@ type SeatingOperationResult = {
 | `/people` | 參與人員 | `people.html` |
 | `/employees` | 員工名單 | `employees.html` |
 | `/login` | 登入頁，不套 App Shell | `login.html` |
+| `/permissions` | 權限頁，只有編輯者（只能檢視的人導向 `/`） | 沒有原型；Settings Pattern，依 `docs/spec/permissions.md` |
+| `/seats` | 發布頁，不套 App Shell | 沒有原型；重用座位安排的座位圖元件，依 `docs/spec/permissions.md` |
 
-三頁共用 `(main)/layout.tsx` 的 App Shell。切換頁面時 layout 不重新渲染，store 裡的資料與儲存佇列都保留。
+座位安排、參與人員、員工名單與權限頁共用 `(main)/layout.tsx` 的 App Shell。切換頁面時 layout 不重新渲染，store 裡的資料與儲存佇列都保留。
 
 ### 10.2 資料載入
 
-- `(main)/layout.tsx` 是伺服器端元件，直接呼叫 `server/services` 讀全部資料（不經 HTTP），交給前端的 store provider；頁面設為動態渲染，不快取。
+- `(main)/layout.tsx` 是伺服器端元件，直接呼叫 `server/services` 讀全部資料（不經 HTTP），連同 `me.isEditor` 與發布狀態交給前端的 store provider；頁面設為動態渲染，不快取。
+- `/seats` 的伺服器端元件同樣直接呼叫 `server/services/publish.ts` 的 `getPublishedSeating()`，只把發布頁要的欄位交給前端；動態渲染、不快取，每次開啟都是最新的座位（PRM-R29）。
 - 之後的搜尋、篩選、分頁、找人、桌次部門標示、入座統計都在瀏覽器以 store 計算，呼叫 `src/domain/` 的同一份函式。
 - 載入中以 Skeleton 呈現。
 
@@ -453,7 +497,8 @@ type SeatingOperationResult = {
 4. 網路錯誤或 500：佇列暫停，畫面保留使用者看到的結果；按「重試」從失敗的請求接著送。
 5. 409 或 404（資料已被別人改過）：不重試，佇列中還沒送出的操作一併捨棄（它們是根據舊資料做的），重新載入 `GET /api/state`。違反桌次人數等規則時用規格中既有的文案（例如桌次已滿），其他情況以 Sonner 顯示「資料已被其他人更新，已重新載入。」（D-004）。
 6. 401（登入過期）：佇列暫停，導向登入頁；登入後重新載入資料，未送出的操作不保留。session 使用中會自動延長，正常使用很少遇到。
-7. 每個請求成功後，用回應的資料覆蓋 store 中對應的列，確保畫面與資料庫一致。
+7. 403 `NOT_EDITOR`（編輯權限被移除）：和 409 一樣不重試，捨棄佇列中還沒送出的操作，關閉開著的對話框，重新載入 `GET /api/state`；回傳的 `me.isEditor` 是 false，畫面切換成只能檢視。Sonner 顯示「你沒有編輯權限，已重新載入。」；在權限頁時導向 `/`（AUTH-R13）。只能檢視時佇列不會有請求，Header 顯示「只能檢視」徽章，不顯示儲存狀態（COM-R20）。
+8. 每個請求成功後，用回應的資料覆蓋 store 中對應的列，確保畫面與資料庫一致。
 
 ### 10.4 拖移與座位圖
 
@@ -500,6 +545,30 @@ type SeatingOperationResult = {
 - 底色來自設計系統 token 調淡後的色碼。Excel 只吃固定色碼，所以在 `server/excel.ts` 定義一組常數，註明對應的 token；token 改了要同步更新。
 - 版面模型可以單獨測試（某一桌在第幾欄第幾列、標題格內容），不必解析 Excel 檔。
 
+### 11.5 權限與發布（D-021）
+
+- `domain/editors.ts`：email 正規化（去前後空白、轉小寫）、格式與公司網域檢查，前端的欄位驗證、API 的 zod schema 與 `INITIAL_EDITOR_EMAILS` 的解析共用（PRM-R03、PRM-R08）。
+- `server/services/editors.ts`：`isEditor`、列出、新增、移除與啟動時的 bootstrap。新增時 email 已在名單回 `EDITOR_EXISTS`（靠 unique 判斷，兩人同時新增同一個 email 也只有一筆）；移除的鎖與最後一位的檢查見第 9.3 節。
+- `server/services/publish.ts`：讀寫 `Setting.seatsPublished`，並以 `getPublishedSeating()` 組出發布頁的資料。資料只含發布頁要顯示的欄位，型別寫在 `src/contracts/`，不重用 `/api/state` 的型別：
+
+  ```ts
+  type PublishedSeating =
+    | { published: false }                                  // 未發布時不查座位
+    | {
+        published: true;
+        tables: {
+          id: number;                                       // 內部編號 1–30，工作人員桌 0；桌號由 domain/layout.ts 對應
+          noteName: string | null;
+          departmentLabel: string;                          // 部門標示，伺服器用 domain/display.ts 算好（「研發一部＋貴賓」「空桌」）
+          people: { displayName: string; group: string }[]; // 依桌內順序；group 是部門，外部貴賓是「貴賓」，只在搜尋結果同名時顯示
+        }[];
+      };
+  ```
+
+  不含分機、素食、兒童椅、備註、稱謂、組別、單位／頭銜、參與人員與員工的 id，也不含未入座的人（PRM-R27）。人數是 `people.length`。
+- 發布頁的搜尋、同名區分與桌次標示都在前端用這份資料計算。座位圖重用座位安排的座位圖元件（排列、桌次的樣子、縮放與平移），只用來顯示：不掛 dnd-kit 的拖移、不顯示把手與工具列的編輯按鈕。
+- 發布對話框的連結在前端用 `window.location.origin` 加 `/seats` 組成，伺服器不組絕對網址（第 2 節）；複製用 `navigator.clipboard.writeText`。
+
 ## 12. 排程工作（Jobs）
 
 沒有排程或背景工作。匯入、自動排座、匯出都在單次請求內完成：最多約 250 筆資料，遠低於 Cloud Run 預設 300 秒的請求逾時與平台 60 秒的長交易限制。
@@ -541,19 +610,20 @@ type SeatingOperationResult = {
 | `ALLOWED_EMAIL_DOMAIN` | 自行設定 | 允許登入的公司網域：`program.com.tw`（已確認同仁都有這個網域的 Google 帳號） |
 | `NEXTAUTH_SECRET` | 自行設定（`openssl rand -base64 32` 產生） | 簽署 session cookie；正式與本機用不同值，只存在平台環境變數 |
 | `NEXTAUTH_URL` | 自行設定 | 正式網址，Auth.js 用來組回呼網址 |
+| `INITIAL_EDITOR_EMAILS` | 自行設定 | 第一位編輯者，以逗號分隔的公司帳號 email。只在編輯者名單是空的時，伺服器啟動時寫入名單（第 7.3 節、D-021）；之後的編輯者在權限頁管理。部署權限功能的那一版前一定要設定，否則沒有人能修改資料 |
 
 `PORT`、`TZ`、`NODE_ENV` 寫在 Dockerfile，不需要在平台設定。Auth.js 用 v4（`next-auth@4`，v5 仍是 beta），所以變數名稱是 `NEXTAUTH_*`；v4 依 `NEXTAUTH_URL` 組回呼網址，不需要另外設定信任代理。
 
 ### 14.3 部署流程
 
-1. 在 aiborn 建立專案，選動態網站，建立 MySQL 資料庫，按「帶入環境變數」，再補上 `APP_ENV`、`NEXTAUTH_SECRET`、`ALLOWED_EMAIL_DOMAIN`。
+1. 在 aiborn 建立專案，選動態網站，建立 MySQL 資料庫，按「帶入環境變數」，再補上 `APP_ENV`、`NEXTAUTH_SECRET`、`ALLOWED_EMAIL_DOMAIN`、`INITIAL_EDITOR_EMAILS`（承辦人的公司帳號，D-021）。
 2. 第一次部署（方式見第 4 步），取得正式網址，設定 `NEXTAUTH_URL`。
 3. 在平台申請 Google OAuth 用戶端：JavaScript 來源填正式網址與 `http://localhost:3000`；重新導向 URI 填 `{正式網址}/api/auth/callback/google` 與 `http://localhost:3000/api/auth/callback/google`。平台管理者完成後按「帶入環境變數」，再部署一次。在這之前網站沒辦法登入。
 4. 部署方式：
    - 手動：打包 ZIP（排除 `node_modules`、`.next`、`.env*`、`.git`）上傳；或
    - 自動：在 GitLab 設定平台產生的 CI job（推送到預設分支就部署），把部署權杖存成 masked、protected 的 CI 變數 `AIBORN_DEPLOY_TOKEN`。CI 以 `git archive` 打包已提交的檔案，未提交的 `.env`、`docs/glossary/` 與 `prisma/seed-data/` 不會被帶走。
    - 匯入真實名單（D-007）：在第 2 步的第一次部署前，把通訊錄（最後加「組別」欄）存成 `prisma/seed-data/roster.csv`，把 Google 表單匯出的報名表存成 `prisma/seed-data/registrations.csv`；工作人員名單與前方七桌的備註名稱是 `staff.csv`、`tables.csv`（D-015，已建立在本機）。用手動 ZIP 部署。部署前先在本機用這幾個檔試跑 seed，確認筆數與對不到、會被略過的人名（D-007）；部署後到「網站監控」的 Log 看匯入摘要，確認筆數和試跑一致。匯入成功後刪掉本機的 `prisma/seed-data/`，之後的 ZIP 不再帶資料檔。
-5. 到平台的部署中心看建置進度。完成後用公司帳號登入，確認 `/api/health` 與座位安排頁正常，再用非公司帳號確認會被擋。
+5. 到平台的部署中心看建置進度。完成後用公司帳號登入，確認 `/api/health` 與座位安排頁正常，`INITIAL_EDITOR_EMAILS` 的帳號是編輯者、其他公司帳號只能檢視（D-021），再用非公司帳號確認會被擋。
 
 ### 14.4 環境
 
@@ -579,8 +649,9 @@ aiborn 用舊版 Docker 建置器（不是 BuildKit），Dockerfile 不能用 `C
 | 前端狀態 | Vitest | 儲存佇列的順序、失敗後重試、409 後重新載入、復原 |
 | 端到端 | Playwright | 主要情境流程；320 px 與桌面寬度截圖，檢查整頁水平捲動與元件裁切 |
 | 登入 | Vitest + Playwright | 網域檢查（公司網域、其他網域、email 未驗證）；每個 API 未登入回 401、頁面導向登入頁；`/api/health` 不需登入 |
+| 權限與發布 | Vitest + Playwright | 每個寫入 API 在只能檢視時回 403 `NOT_EDITOR` 且資料不變，讀取 API 與匯出照常；移除權限後不必重新登入，下一個請求就被拒；初始編輯者只在名單是空的時寫入；最後一位不能移除（含兩人同時移除）；`GET /api/seats` 的回應不含分機、素食、兒童椅、備註、單位頭銜與未入座的人，未發布時不含座位；三頁只能檢視時隱藏的操作 |
 
-E2E 測試不經過 Google：測試環境用測試專用的 `NEXTAUTH_SECRET` 直接產生 session cookie。正式程式不提供任何測試用的登入方式。
+E2E 測試不經過 Google：測試環境用測試專用的 `NEXTAUTH_SECRET` 直接產生 session cookie。正式程式不提供任何測試用的登入方式。登入的測試帳號預設只能檢視（D-021）；要編輯的測試先由測試工具把這個帳號寫進 `Editor`，只能檢視的情境用另一個帳號。
 
 建立專案後，把「執行全部測試」的指令（預計 `npm test`，依序跑 Vitest 與 Playwright）補進 `AGENTS.md` 的測試指令表。
 
@@ -592,6 +663,7 @@ E2E 測試不經過 Google：測試環境用測試專用的 `NEXTAUTH_SECRET` �
 - seed 事件：`seed_imported`（摘要筆數）、`seed_skipped`（原因）、`seed_rows_skipped`（WARNING，哪個資料檔、略過幾列與各原因的筆數）、`seed_failed`。
 - 登入者以 `userId` 欄位記錄 Google 帳號的 ID（`sub`），不記 email。
 - 登入事件：`auth_sign_in_succeeded`、`auth_sign_in_denied`（只記被拒的原因與網域）。
+- 權限與發布事件（D-021）：`editors_bootstrapped`（寫入幾位）、`editors_bootstrap_skipped`（原因；名單是空的又沒有有效 email 時為 WARNING）、`editor_added`、`editor_removed`（記操作者的 `userId` 與目標的 `Editor` id，不記 email）、`seats_publish_changed`（`published`）。被拒的寫入由 `api_request_completed` 記 403 與 `errorCode: NOT_EDITOR`。
 - **不記錄姓名、分機、email 與 CSV 內容**，只記 ID 與數量。
 
 ### 15.3 程式碼規範
@@ -626,7 +698,10 @@ E2E 測試不經過 Google：測試環境用測試專用的 `NEXTAUTH_SECRET` �
 
 | 風險 | 影響 | 對策 |
 |---|---|---|
-| 正式網址公開 | 外部人士看到員工姓名、分機與座位 | 用公司 Google 帳號登入（D-003）；頁面與 API 在 proxy 與 Route Handler 兩層檢查 |
+| 正式網址公開 | 外部人士看到員工姓名、分機與座位 | 用公司 Google 帳號登入（D-003），發布頁也要登入（D-021）；頁面與 API 在 proxy 與 Route Handler 兩層檢查 |
+| 只能檢視的人呼叫寫入 API（用開發者工具、舊分頁或被移除權限後開著的畫面） | 沒有編輯權限的人修改或刪除資料 | 寫入 API 一律在 `route()` 依 HTTP 方法檢查編輯者，回 403 `NOT_EDITOR`；不放進 JWT，移除權限下一個請求就生效；畫面隱藏只是介面，不當作保護；每個寫入 API 都有只能檢視時被拒的整合測試（D-021） |
+| 發布頁的資料範圍 | 所有同仁都能看到不該給他們的欄位（分機、素食、兒童椅、備註、單位頭銜、未入座名單） | 發布頁只用專用的 `getPublishedSeating()` 與 `PublishedSeating` 型別，不重用 `/api/state`；未發布時不查座位；整合測試檢查回應不含這些欄位（第 11.5 節） |
+| 沒有任何編輯者 | 沒有人能修改資料 | 最後一位不能移除（交易內檢查）；名單是空的時啟動會依 `INITIAL_EDITOR_EMAILS` 補上；部署權限功能前先設定這個變數，啟動時名單是空的又沒有有效 email 會記 WARNING |
 | Google OAuth 用戶端靠平台管理者人工建立，可能要等 | 網站做好卻無法登入 | 階段 1 第一次部署後立刻送申請，本機與正式網址一起申請 |
 | 有人沒有公司 Google 帳號，或手機上沒登入公司帳號 | 協辦同仁或現場工作人員進不去 | 已和承辦人確認同仁都有公司 Google 帳號，手機上也能登入；活動前請現場人員先在手機登入一次（session 30 天） |
 | 兩人同時操作時互相覆蓋 | 座位被改掉而不自知 | 每個操作只送「這一步」而不是整份資料，後端在交易內鎖桌次並檢查規則；違反規則時前端重新載入並提示（D-004）。不違反規則的覆蓋（例如兩人先後改同一桌的備註名稱）以後送的為準 |
@@ -645,9 +720,10 @@ E2E 測試不經過 Google：測試環境用測試專用的 `NEXTAUTH_SECRET` �
 |---|---|---|---|
 | D-001 | 正式版的資料持久化與技術選型 | 已決議 | 部署到 aiborn 動態網站；Next.js 全端單一服務 + Prisma + MySQL 8.4；Route Handlers 作為 API |
 | D-002 | 原型線上連結的使用範圍與真實員工資料 | 已決議 | 原型連結只限內部 |
-| D-003 | 正式版網址的存取保護 | 已決議 | 用公司 Google 帳號登入，只允許公司網域；不分角色 |
+| D-003 | 正式版網址的存取保護 | 已決議 | 用公司 Google 帳號登入，只允許公司網域；登入後的權限見 D-021 |
 | D-004 | 多人同時操作的衝突處理 | 已決議 | 以操作為單位寫入，後端在交易內檢查規則；違反時重新載入並提示 |
 | D-007 | 正式版的真實名單用 seed 匯入 | 已決議 | 通訊錄與 Google 表單報名表放在 `prisma/seed-data/`，只隨第一次手動部署的 ZIP 進映像；員工表是空的時匯入一次 |
+| D-021 | 權限管理與座位發布頁 | 已決議 | 編輯者與只能檢視兩種權限，編輯者名單在權限頁管理、第一位由 `INITIAL_EDITOR_EMAILS` 指定；寫入 API 在 `route()` 檢查；發布頁 `/seats` 要登入，只回傳座位圖需要的欄位 |
 
 ## 20. 待決事項
 

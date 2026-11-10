@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 版本 | v0.1 |
+| 版本 | v0.2（階段 3 加入權限與座位發布，D-021） |
 | 日期 | 2026-11-10 |
 | 依據 | `docs/spec/`（正式規格）、`docs/architecture.md`（技術架構）、`docs/decision-record.md` |
 | 讀者 | 使用者、主 agent、各線的實作與測試 agent |
@@ -42,6 +42,7 @@
 | `docs/spec/seating.md` | 座位安排（SEAT-01～09、11）：座位圖、人員面板、桌次詳情、工作人員桌、復原 | C |
 | `docs/spec/auto-arrange.md` | 自動排座（SEAT-10） | D |
 | `docs/spec/export.md` | 匯出座位表（PLT-03） | D |
+| `docs/spec/permissions.md` | 權限與座位發布（PRM-01、PRM-02），D-021 時新增 | 階段 3 由主 agent 做 |
 
 - 每份都要有「驗收條件」，`test-writer` 直接照著寫測試。
 - 暫時規格的確認事項都已有答案：Q3（Logo 與配色）、Q20（同仁都有公司 Google 帳號）已和承辦人確認，Q7（參與人員匯入格式）依 D-010。各功能規格自己列的待確認，依 D-008 照目前假設實作。
@@ -132,7 +133,7 @@
 
 1. 接上第 5.2 節的跨線功能，補上對應的整合測試。
 2. 端到端測試：
-   - 核心情境全流程：登入 → 匯入員工 → 加入尾牙 → 自動排座 → 拖移微調 → 設定備註名稱 → 名單異動 → 匯出 → 手機查詢。
+   - 核心情境全流程（`docs/spec/README.md` 第 1.2 節）：登入 → 設定編輯者 → 匯入員工 → 加入尾牙 → 自動排座 → 拖移微調 → 設定備註名稱 → 名單異動 → 匯出 → 發布並在發布頁找座位 → 手機查詢。
    - 多人衝突：兩個瀏覽器同時操作同一桌。
 3. 全部頁面在 320、375、430、768、1024、1280 px 截圖，對照原型；檢查整頁水平捲動與元件裁切。
 4. seed 匯入真實名單（D-007）：seed 依序用 A 線的 `roster-import.ts` 與 B 線的 `registration-import.ts` 匯入，再依 `staff.csv` 設工作人員、依 `tables.csv` 寫備註名稱（D-015）；測試用虛構的通訊錄與表單 CSV，涵蓋員工表已有資料時跳過、兩個執行個體同時啟動只匯入一次，以及工作人員對不到、沒報名、超過 10 位與桌號或備註名稱不符時略過。
@@ -141,11 +142,15 @@
 7. 每桌可以放到 12 位（D-018）：座位規則與 API 的兩種上限（`allowOverflow`）、「超過」徽章、統計列、展開卡片 12 列、加入人員上限、提示文案、匯出時超過的段改為十二列；自動排座維持 10 位。等「不參加」合併後做，先由 test-writer 補 `seating.md` 第 5.12 節、EXP-AC22、AC23 等測試，並更新和新規則衝突的既有測試。
 8. 桌號改為 A1～A15、B1～B15（D-019）：畫面、文案、清單順序、網址參數、匯出、seed 的 `tables.csv`（seed 改成接受代碼後，再把本機的 `prisma/seed-data/tables.csv` 換成代碼：1→B1、2→A1、7→B2、22→A2、17→A3、12→B3、27→A4）；資料庫的內部編號與自動排座的填桌順序不變。等「每桌 12 位」合併後做，先由 test-writer 依新規格更新所有用到「第 n 桌」的測試。
 9. 深色主題（D-020）：Header 的介面配色鈕與選單、localStorage 記住選擇、繪製前套用、深色時 Logo 用白色版；匯出不受影響。和桌號（第 8 項）改的檔案幾乎不重疊，可以同時做。
-10. 全部測試通過。
+10. 權限與座位發布（D-021）：等桌號（第 8 項，D-019）與深色主題（第 9 項，D-020）兩條線都合併回主分支後再做，因為會改到同樣的 App Shell、Header、座位圖與三頁的按鈕。
+    - 內容：Prisma migration 加 `Editor`、`Setting`（含 `Setting` 那一列的 INSERT）；啟動時依 `INITIAL_EDITOR_EMAILS` 寫入初始編輯者；`route()` 對寫入方法檢查編輯者、回 403 `NOT_EDITOR`；`/api/state` 回傳 `me.isEditor` 與 `seatsPublished`；`/api/editors`、`/api/publish`、`/api/seats`；權限頁、導覽第 4 項、Header 的「只能檢視」徽章、三頁只能檢視時隱藏的操作、儲存佇列處理 403；座位安排頁的「發布」對話框；發布頁 `/seats`（重用座位圖元件，不能拖移與修改）。做法見 `docs/architecture.md` 第 7.1、7.3、8、9.3、10.3、11.5 節。
+    - 照流程先由 test-writer 依 `docs/spec/permissions.md`、`README.md` 的 COM-R19、COM-R20、AUTH-R11～R15，以及 SEAT-R90、PPL-R86、EMP-R67 補測試。登入後預設只能檢視，所以 E2E 的測試登入工具要能把測試帳號設為編輯者，既有會修改資料的測試改用編輯者帳號，不然會全部失敗。
+    - **部署這一版前，使用者要先在 aiborn 的環境變數設定 `INITIAL_EDITOR_EMAILS`**（承辦人的公司帳號，逗號分隔），否則上線後沒有人能修改資料。
+11. 全部測試通過。
 
 ## 7. 階段 4：上線
 
-1. 使用者：OAuth 用戶端核准後在平台按「帶入環境變數」；設定 `ALLOWED_EMAIL_DOMAIN=program.com.tw`。
+1. 使用者：OAuth 用戶端核准後在平台按「帶入環境變數」；設定 `ALLOWED_EMAIL_DOMAIN=program.com.tw`，以及第一位編輯者 `INITIAL_EDITOR_EMAILS`（D-021）。
 2. 部署正式版，用公司帳號登入，再用非公司帳號確認會被擋。
 3. 用 seed 匯入真實名單（D-007）：第一次部署的手動 ZIP 帶上 `prisma/seed-data/roster.csv`（通訊錄加「組別」欄）與 `registrations.csv`（Google 表單報名表），以及 `staff.csv`、`tables.csv`（D-015）；看 Log 的匯入摘要確認筆數、工作人員與七桌的備註名稱；成功後刪掉本機資料檔。再匯出座位表，和 2025 年的座位表比對版面。
 4. 和承辦人實際演練一次完整排座，手機上也試一次。
