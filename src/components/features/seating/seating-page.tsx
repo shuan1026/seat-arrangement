@@ -63,7 +63,7 @@ function Seating({ initialTable }: { initialTable: number | null }) {
   const stats = useMemo(() => seatingStats(data.participants), [data.participants]);
   const byId = useMemo(() => new Map(data.participants.map((p) => [p.id, p])), [data.participants]);
 
-  // 網址 /?table={n}：顯示那一桌的詳情並標示那一桌（PPL-R33、SEAT-R62）
+  // 網址 /?table={桌號}：顯示那一桌的詳情並標示那一桌（PPL-R33、SEAT-R62）；initialTable 是內部編號
   const [selected, setSelected] = useState<Selected>(initialTable);
   const [hit, setHit] = useState<Hit>(initialTable ? { tableId: initialTable, nonce: 1 } : null);
   const [mobileTab, setMobileTab] = useState<'map' | 'people'>('map');
@@ -92,7 +92,7 @@ function Seating({ initialTable }: { initialTable: number | null }) {
   const locate = useCallback(
     (tableId: number) => {
       setHit({ tableId, nonce: Date.now() });
-      // 手機在「人員」分頁按「第 {n} 桌」時切到「座位圖」（SEAT-Q10 的目前假設）
+      // 手機在「人員」分頁按「{桌號}」時切到「座位圖」（SEAT-Q10 的目前假設）
       if (mobile) setMobileTab('map');
     },
     [mobile],

@@ -759,7 +759,7 @@ test.describe('列操作（EMP-R27～R30）', () => {
     await expect(page.getByRole('button', { name: '更多操作' })).toHaveCount(3);
   });
 
-  test('EMP-AC36（按下確認前）、AC37：李小華已報名、帶眷屬坐第 5 桌 →「取消報名」的確認對話框；按「返回」→ 仍是已報名，參與人員與座位不變（EMP-R30）', async ({
+  test('EMP-AC36（按下確認前）、AC37：李小華已報名、帶眷屬坐 B10 桌（內部編號 5）→「取消報名」的確認對話框；按「返回」→ 仍是已報名，參與人員與座位不變（EMP-R30）', async ({
     page,
   }) => {
     const li = await insertEmployee({ name: '李小華', department: '研發部' });

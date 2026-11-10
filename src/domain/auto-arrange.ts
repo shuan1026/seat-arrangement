@@ -1,10 +1,11 @@
 // 自動排座（docs/spec/auto-arrange.md 第 3 節 ARR-R01～R16；員工與眷屬一定同桌依 D-009）。
 // 純函式：輸入員工名單、參與人員、桌次與範圍，回傳位置有改變的人與摘要，不改傳入的資料、不碰資料庫。
 // 待確認依 D-008 照目前假設：ARR-Q02 一位都沒排進去時座位都不變、ARR-Q05 部門依員工名單第一次出現的先後、
-// ARR-Q06 只排未入座時只看桌號與空位。
+// ARR-Q06 只排未入座時只看桌次與空位。
 import { TABLE_CAPACITY, type Employee, type Participant, type SeatTable } from '@/contracts/entities';
 import type { AutoArrangeSummary } from '@/contracts/seating';
 import { buildDirectory, departmentOf, teamOf, type Directory } from './display';
+import { FILL_ORDER } from './layout';
 import { participantComparator } from './participants';
 
 export type AutoArrangeMode = 'unseatedOnly' | 'rebuild';
@@ -65,11 +66,10 @@ export function autoArrange(input: AutoArrangeInput): AutoArrangeResult {
   const { employees, participants, tables, mode } = input;
   const dir = directoryOf({ employees, participants });
 
-  // ARR-R02：可用的桌是沒有備註名稱的一般桌，依桌號由小到大；工作人員桌不是可用的桌
-  const usable = tables
-    .filter((t) => t.kind === 'NORMAL' && !t.noteName)
-    .map((t) => t.id)
-    .sort((a, b) => a - b);
+  // ARR-R02：可用的桌是沒有備註名稱的一般桌，依填桌順序（B1、A1、B4、B7…A13，也就是內部編號 1–30，D-019）；
+  // 工作人員桌不是可用的桌
+  const usableIds = new Set(tables.filter((t) => t.kind === 'NORMAL' && !t.noteName).map((t) => t.id));
+  const usable = FILL_ORDER.filter((id) => usableIds.has(id));
   const usableSet = new Set(usable);
   const onUsable = (p: Participant) => p.tableId !== null && usableSet.has(p.tableId);
 
@@ -176,4 +176,14 @@ export function autoArrange(input: AutoArrangeInput): AutoArrangeResult {
     if (tableId !== p.tableId || seatOrder !== p.seatOrder) changes.push({ participantId: p.id, tableId, seatOrder });
   }
   return { changes, summary };
+}
+
+/**
+ * 自動排座套用後的 Sonner 文字（ARR-R14、ARR-Q02、ARR-Q03；D-019 改寫成桌數）：
+ * {k} 是這一次有排進人的桌數，不是桌號範圍；一位都沒排進去時是警告「沒有可以排的員工與眷屬。」
+ */
+export function autoArrangeMessage(summary: AutoArrangeSummary): string {
+  if (summary.placed === 0) return '沒有可以排的員工與眷屬。';
+  const head = `已把 ${summary.placed} 位安排到 ${summary.tableIds.length} 桌`;
+  return summary.left ? `${head}，還有 ${summary.left} 位排不下，留在未入座。` : `${head}。`;
 }

@@ -21,7 +21,8 @@
 //                                                                  // 搜尋與篩選同時作用；保留傳入的順序
 //   type TableChoice = { tableId: number; remaining: number; disabled: boolean };
 //   tableChoices(participants: readonly Participant[], self?: Participant | null): TableChoice[]
-//                                                                  // 第 1～30 桌；已滿的停用，但 self 目前所在的桌次不算已滿
+//                                                                  // 30 桌，依 A1～A15、B1～B15 排列（PPL-R56、D-019；tableId 仍是內部編號）；
+//                                                                  // 已滿的停用，但 self 目前所在的桌次不算已滿
 //   canMarkStaff(participants: readonly Participant[], self?: Participant | null): boolean
 //                                                                  // 工作人員桌未滿 10 位，或 self 已經是工作人員
 import { describe, expect, it } from 'vitest';
@@ -40,6 +41,7 @@ import {
   unitLabel,
   type ParticipantFilters,
 } from '@/domain/participants';
+import { IDS_IN_LIST_ORDER } from '../../helpers/table-codes';
 
 const employee = (id: number, data: Partial<Employee> = {}): Employee => ({
   id,
@@ -287,7 +289,7 @@ describe('部門篩選的選項（PPL-R24）', () => {
 });
 
 describe('搜尋與篩選（PPL-R21～R26）', () => {
-  // 王小明在第 3 桌、有眷屬（配偶，未入座）；李美華未入座；陳大文是工作人員；林董（○○科技 董事長）在第 5 桌
+  // 王小明在 B4 桌（內部編號 3）、有眷屬（配偶，未入座）；李美華未入座；陳大文是工作人員；林董（○○科技 董事長）在 B10 桌（5）
   const pWang = asEmployee(11, WANG.id, { tableId: 3, seatOrder: 0 });
   const pDep = asDependent(12, pWang.id, { relation: '配偶' });
   const pLee = asEmployee(13, LEE.id);
@@ -386,9 +388,10 @@ describe('對話框的桌次選項（PPL-R56、PPL-Q08、PPL-AC43）', () => {
   const unseated = [asGuest(400, '未入座的貴賓')];
   const all = [...seated, ...staff, ...unseated];
 
-  it('列出第 1～30 桌與剩幾位；工作人員桌與未入座的人不算', () => {
+  it('列出 30 桌與剩幾位，依 A1～A15、B1～B15 排列；工作人員桌與未入座的人不算（PPL-R56、D-019）', () => {
     const choices = tableChoices(all);
-    expect(choices.map((c) => c.tableId)).toEqual(Array.from({ length: 30 }, (_, i) => i + 1));
+    // 內部編號依桌號的清單順序：A1（2）、A2（22）、A3（17）…A15（21）、B1（1）、B2（7）…B15（16）
+    expect(choices.map((c) => c.tableId)).toEqual(IDS_IN_LIST_ORDER);
     expect(choices.find((c) => c.tableId === 1)).toEqual({ tableId: 1, remaining: 10, disabled: false });
     expect(choices.find((c) => c.tableId === 3)).toEqual({ tableId: 3, remaining: 5, disabled: false });
   });

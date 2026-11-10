@@ -5,9 +5,11 @@
 // - 員工姓名「{部門}-{組別}-員工NN」，沒有組別時「{部門}-員工NN」；眷屬「{員工姓名}_眷屬」；外部貴賓「外部貴賓NN」。
 // - 規格說未報名的 15 位員工不影響結果、可以省略。這裡仍放 15 位未報名的員工（姓名「…-未報名NN」），都排在同部門同組別
 //   第一位已報名的員工後面（另一位是軟體開發部沒有組別的員工），不改變部門與組別第一次出現的先後，用來確認沒報名的人不會被排。
-// - 30 桌一開始都是空桌；第 1、2 桌「主桌」，第 12、17 桌「供應商」，第 22 桌「客戶貴賓」，這 5 桌都沒有人。
+// - 30 桌一開始都是空桌；A1、B1 桌「主桌」，A3、B3 桌「供應商」，A2 桌「客戶貴賓」，這 5 桌都沒有人（D-019 的桌號；
+//   內部編號分別是 2、1、17、12、22，對應見 tests/helpers/table-codes.ts）。
 // - 223 位參與人員全部未入座。
 import { dep, Scenario } from './auto-arrange-scenario';
+import { idOfCode } from './table-codes';
 
 export type Group2026 = { department: string; team: string | null; pattern: string };
 
@@ -48,13 +50,13 @@ export const GROUPS_2026: readonly Group2026[] = [
   { department: '測試工程部', team: null, pattern: '員' },
 ];
 
-/** 有備註名稱的桌（5 桌，都沒有人） */
+/** 有備註名稱的桌（5 桌，都沒有人）：規格寫桌號，這裡是內部編號（D-019） */
 export const NOTE_TABLES_2026: Readonly<Record<number, string>> = {
-  1: '主桌',
-  2: '主桌',
-  12: '供應商',
-  17: '供應商',
-  22: '客戶貴賓',
+  [idOfCode('B1')]: '主桌', // 1
+  [idOfCode('A1')]: '主桌', // 2
+  [idOfCode('B3')]: '供應商', // 12
+  [idOfCode('A3')]: '供應商', // 17
+  [idOfCode('A2')]: '客戶貴賓', // 22
 };
 
 export const GUEST_COUNT_2026 = 12;

@@ -6,7 +6,10 @@
 // - D-012、docs/spec/employees.md EMP-R44～R62：roster.csv 是通訊錄匯出檔加「組別」欄，沿用畫面匯入的規則。
 // - D-010、docs/spec/participants.md PPL-R64～R85：registrations.csv 是 Google 表單原檔，沿用畫面匯入的規則。
 // - D-015：可選的 staff.csv（姓名、部門）與 tables.csv（桌號、備註名稱）；對不到、沒有報名、工作人員超過 10 位、
-//   桌號不在 1～30、備註名稱超過 20 字的列略過並記 Log，其他照常；工作人員的眷屬不另外處理；seed 不自動排座。
+//   桌號不對、備註名稱超過 20 字的列略過並記 Log，其他照常；工作人員的眷屬不另外處理；seed 不自動排座。
+// - D-019、docs/architecture.md 第 7.3 節：tables.csv 的桌號欄寫桌號 A1～A15、B1～B15，寫入時換成內部編號
+//   （A1 → 2、B1 → 1…，對應見 tests/helpers/table-codes.ts）；數字（例如「1」「31」）或不存在的桌號（例如「C1」「A16」）略過，
+//   算在 tableNotesSkipped。
 // - docs/architecture.md 第 7.1 節（工作人員 = 坐在工作人員桌 tableId 0 的員工）、第 7.3 節（任何一列以外的錯誤就整批
 //   不寫入；匯入摘要寫進 Log、不印電子郵件）、第 15.2 節（Log 不記分機、email 與 CSV 內容）；
 //   docs/spec/seating.md SEAT-R42、SEAT-R44；備註名稱上限 20 字依 SEAT-Q13 的目前假設（src/contracts/seating.ts）。
@@ -23,7 +26,7 @@
 //     staff              放進工作人員桌的人數
 //     staffSkipped       staff.csv 略過的列數（對不到、沒有報名、工作人員桌已滿）
 //     tableNotes         寫入備註名稱的桌數
-//     tableNotesSkipped  tables.csv 略過的列數（桌號不是 1～30 的整數、備註名稱空白或超過 20 字）
+//     tableNotesSkipped  tables.csv 略過的列數（桌號不是 A1～A15、B1～B15、備註名稱空白或超過 20 字）
 //   完全空白的列算不算在 *Skipped 裡規格沒寫，測試不斷言。
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -47,6 +50,7 @@ import {
   type RosterRecord,
 } from '../../helpers/employees-roster';
 import { createRegisteredEmployee } from '../../helpers/factory';
+import { CODES_IN_LIST_ORDER, idOfCode } from '../../helpers/table-codes';
 import {
   answer,
   FORM_COLUMNS,
@@ -76,7 +80,7 @@ const registrationFile = (
 const staffFile = (rows: readonly (readonly string[])[], header: readonly string[] = ['姓名', '部門']) =>
   toCsvText([header, ...rows]);
 
-/** tables.csv：欄位「桌號、備註名稱」（D-015） */
+/** tables.csv：欄位「桌號、備註名稱」（D-015）；桌號寫 A1～A15、B1～B15（D-019） */
 const tablesFile = (rows: readonly (readonly string[])[], header: readonly string[] = ['桌號', '備註名稱']) =>
   toCsvText([header, ...rows]);
 
@@ -121,14 +125,15 @@ const MAIN_STAFF = [
   ['李四', '行政部'],
 ];
 
-/** 備註名稱：0（工作人員桌）與 31 不是 1～30 */
+/** 備註名稱：B1、A1、A3 桌寫入（內部編號 1、2、17）；0（工作人員桌）與 31 不是桌號 */
 const MAIN_TABLES = [
-  ['1', '主桌'],
-  ['2', '董事桌'],
-  ['17', '供應商桌 1'],
+  ['B1', '主桌'],
+  ['A1', '董事桌'],
+  ['A3', '供應商桌 1'],
   ['0', '工作人員桌'],
   ['31', '第三十一桌'],
 ];
+/** 寫入後的備註名稱，以內部編號為鍵（B1 = 1、A1 = 2、A3 = 17） */
 const MAIN_NOTES = { 1: '主桌', 2: '董事桌', 17: '供應商桌 1' };
 
 const MAIN_SUMMARY = {
@@ -214,7 +219,7 @@ async function staffTable() {
 const staffAt = (...people: (readonly [string, string])[]) =>
   people.map(([name, department], seatOrder) => ({ name, department, kind: 'EMPLOYEE', seatOrder }));
 
-/** 有備註名稱的桌次：桌號 → 備註名稱 */
+/** 有備註名稱的桌次：內部編號 → 備註名稱 */
 async function noteNames(): Promise<Record<number, string>> {
   const tables = await prisma.seatTable.findMany({ where: { noteName: { not: null } }, orderBy: { id: 'asc' } });
   return Object.fromEntries(tables.map((t) => [t.id, t.noteName ?? ''] as const));
@@ -432,33 +437,61 @@ describe('staff.csv：預設工作人員（D-015）', () => {
   });
 });
 
-describe('tables.csv：備註名稱（D-015）', () => {
-  it('寫入第 1～30 桌的備註名稱；工作人員桌（0）與 31 略過', async () => {
+describe('tables.csv：備註名稱（D-015、D-019）', () => {
+  it('依桌號寫入那一桌的備註名稱（B1 → 內部編號 1、A1 → 2、A3 → 17）；工作人員桌（0）與 31 略過', async () => {
     writeSeedFiles(mainFiles());
     await runSeed(ENABLED, dir);
     expect(await noteNames()).toEqual(MAIN_NOTES);
   });
 
-  it('桌號不是 1～30 的整數（0、31、文字、小數、負數、空白）：那一列略過，其他照常', async () => {
+  it('A1～A15、B1～B15 各寫一列：30 桌都寫入，每個桌號對到 D-019 的那一桌', async () => {
+    writeSeedFiles({
+      ...threeRegistered(),
+      tables: tablesFile(CODES_IN_LIST_ORDER.map((code) => [code, `${code} 的備註`])),
+    });
+    await expect(runSeed(ENABLED, dir)).resolves.toMatchObject({ status: 'imported', tableNotes: 30, tableNotesSkipped: 0 });
+    expect(await noteNames()).toEqual(Object.fromEntries(CODES_IN_LIST_ORDER.map((code) => [idOfCode(code), `${code} 的備註`])));
+    // 例：A1 是內部編號 2、B15 是 16、A13 是 30
+    const notes = await noteNames();
+    expect([notes[2], notes[16], notes[30]]).toEqual(['A1 的備註', 'B15 的備註', 'A13 的備註']);
+  });
+
+  it('桌號不是 A1～A15、B1～B15（數字、0、31、C1、A16、A0、B16、舊的「B-1」寫法、文字、空白）：那一列略過、算在 tableNotesSkipped，其他照常', async () => {
     writeSeedFiles({
       ...threeRegistered(),
       tables: tablesFile([
-        ['1', '主桌'],
+        ['B1', '主桌'],
+        ['1', '數字桌號'],
         ['0', '工作人員桌'],
         ['31', '第三十一桌'],
+        ['C1', '不存在的區'],
+        ['A16', '不存在的桌'],
+        ['A0', '零號桌'],
+        ['B16', '不存在的桌二'],
+        ['B-1', '舊的寫法'],
         ['第5桌', '文字桌號'],
-        ['5.5', '小數桌號'],
-        ['-1', '負數桌號'],
         ['', '沒有桌號'],
-        ['30', '最後一桌'],
+        ['A13', '最後一桌'],
       ]),
     });
     await expect(runSeed(ENABLED, dir)).resolves.toMatchObject({
       status: 'imported',
       tableNotes: 2,
-      tableNotesSkipped: 6,
+      tableNotesSkipped: 10,
     });
-    expect(await noteNames()).toEqual({ 1: '主桌', 30: '最後一桌' });
+    expect(await noteNames()).toEqual({ [idOfCode('B1')]: '主桌', [idOfCode('A13')]: '最後一桌' });
+  });
+
+  it('「A1」只寫入 A1 桌，不會寫到 A10～A15；「B1」只寫入 B1 桌', async () => {
+    writeSeedFiles({
+      ...threeRegistered(),
+      tables: tablesFile([
+        ['A1', '甲'],
+        ['B1', '乙'],
+      ]),
+    });
+    await expect(runSeed(ENABLED, dir)).resolves.toMatchObject({ status: 'imported', tableNotes: 2, tableNotesSkipped: 0 });
+    expect(await noteNames()).toEqual({ [idOfCode('A1')]: '甲', [idOfCode('B1')]: '乙' });
   });
 
   it('備註名稱空白或超過 20 字：那一列略過；剛好 20 字照常寫入（SEAT-Q13）', async () => {
@@ -467,11 +500,11 @@ describe('tables.csv：備註名稱（D-015）', () => {
     writeSeedFiles({
       ...threeRegistered(),
       tables: tablesFile([
-        ['1', twenty],
-        ['2', `${twenty}一`],
-        ['3', ''],
-        ['6', '   '],
-        ['4', '主桌'],
+        ['B1', twenty],
+        ['A1', `${twenty}一`],
+        ['B4', ''],
+        ['B13', '   '],
+        ['B7', '主桌'],
       ]),
     });
     await expect(runSeed(ENABLED, dir)).resolves.toMatchObject({
@@ -479,15 +512,17 @@ describe('tables.csv：備註名稱（D-015）', () => {
       tableNotes: 2,
       tableNotesSkipped: 3,
     });
+    // B1 = 1、B7 = 4
     expect(await noteNames()).toEqual({ 1: twenty, 4: '主桌' });
   });
 
   it('空白列略過，其他照常', async () => {
     writeSeedFiles({
       ...threeRegistered(),
-      tables: tablesFile([['3', '部門桌'], [''], ['', ''], ['5', '財務桌']]),
+      tables: tablesFile([['B4', '部門桌'], [''], ['', ''], ['B10', '財務桌']]),
     });
     await expect(runSeed(ENABLED, dir)).resolves.toMatchObject({ status: 'imported', tableNotes: 2 });
+    // B4 = 3、B10 = 5
     expect(await noteNames()).toEqual({ 3: '部門桌', 5: '財務桌' });
   });
 
@@ -564,7 +599,7 @@ describe('列以外的錯誤：整批不寫入，seed 失敗（D-007、docs/arch
     ['registrations.csv 放的是通訊錄（PPL-R68）', { registrations: ROSTER_CSV }],
     ['staff.csv 少了「部門」欄', { staff: staffFile([['王小明', '研發一部']], ['姓名', '單位']) }],
     ['staff.csv 少了「姓名」欄', { staff: staffFile([['研發一部']], ['部門']) }],
-    ['tables.csv 少了「備註名稱」欄', { tables: tablesFile([['1', '主桌']], ['桌號', '名稱']) }],
+    ['tables.csv 少了「備註名稱」欄', { tables: tablesFile([['B1', '主桌']], ['桌號', '名稱']) }],
     ['tables.csv 少了「桌號」欄', { tables: tablesFile([['主桌']], ['備註名稱']) }],
   ])('%s：runSeed 失敗；員工表維持 0 筆，參與人員、工作人員與備註名稱都沒有寫入', async (_name, override) => {
     writeSeedFiles({ ...mainFiles(), ...override });
@@ -573,7 +608,7 @@ describe('列以外的錯誤：整批不寫入，seed 失敗（D-007、docs/arch
   });
 
   it('失敗後修正資料檔再啟動：照常匯入（鎖有釋放、沒有留下部分資料）', async () => {
-    writeSeedFiles({ ...mainFiles(), tables: tablesFile([['1', '主桌']], ['桌號', '名稱']) });
+    writeSeedFiles({ ...mainFiles(), tables: tablesFile([['B1', '主桌']], ['桌號', '名稱']) });
     await expect(runSeed(ENABLED, dir)).rejects.toThrow();
 
     writeSeedFiles(mainFiles());

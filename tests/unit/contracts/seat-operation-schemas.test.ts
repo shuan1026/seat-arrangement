@@ -9,11 +9,16 @@ import { accepts } from '../../helpers/schema';
 const ok = (input: unknown) => accepts(seatingOperationSchema, input);
 
 describe('seat：入座、搬移、放進工作人員桌', () => {
-  it.each([1, 30, 0])('可以放到第 %i 桌（0 是工作人員桌）', (tableId) => {
+  // API 的桌次仍用內部編號 1–30，工作人員桌 0（docs/architecture.md「桌號」、D-019）
+  it.each([1, 30, 0])('可以放到內部編號 %i 的桌（0 是工作人員桌）', (tableId) => {
     expect(ok({ type: 'seat', participantId: 1, tableId })).toBe(true);
   });
 
-  it.each([31, -1, 1.5])('桌號 %s 不存在', (tableId) => {
+  it.each([31, -1, 1.5])('內部編號 %s 的桌不存在', (tableId) => {
+    expect(ok({ type: 'seat', participantId: 1, tableId })).toBe(false);
+  });
+
+  it.each(['A1', 'B15', '1'])('API 不收桌號字串「%s」，只收內部編號（D-019）', (tableId) => {
     expect(ok({ type: 'seat', participantId: 1, tableId })).toBe(false);
   });
 
@@ -71,7 +76,7 @@ describe('seatMany：加入人員', () => {
     expect(ok({ type: 'seatMany', tableId: 3, participantIds: [1], allowOverflow: 'true' })).toBe(false);
   });
 
-  it('桌號 31 不存在', () => {
+  it('內部編號 31 的桌不存在', () => {
     expect(ok({ type: 'seatMany', tableId: 31, participantIds: [1] })).toBe(false);
   });
 });
@@ -110,7 +115,7 @@ describe('clear：清空桌次', () => {
     expect(ok({ type: 'clear', tableId: 0 })).toBe(false);
   });
 
-  it('桌號 31 不存在', () => {
+  it('內部編號 31 的桌不存在', () => {
     expect(ok({ type: 'clear', tableId: 31 })).toBe(false);
   });
 });
@@ -126,7 +131,7 @@ describe('swap：對調桌次', () => {
     expect(ok({ type: 'swap', tableA: 3, tableB: 0 })).toBe(false);
   });
 
-  it('桌號 31 不存在', () => {
+  it('內部編號 31 的桌不存在', () => {
     expect(ok({ type: 'swap', tableA: 3, tableB: 31 })).toBe(false);
   });
 });

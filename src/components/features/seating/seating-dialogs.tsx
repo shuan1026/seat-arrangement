@@ -4,8 +4,9 @@
 // 加入人員到工作人員桌（2.5.3、SEAT-R50）、清空確認（2.3.5、SEAT-R29），以及自動排座的範圍（auto-arrange.md 2.2）。
 import { useId, useMemo, useState } from 'react';
 import { useAppStore } from '@/client/app-provider';
-import { STAFF_TABLE_ID, TABLE_COUNT, type Participant } from '@/contracts/entities';
+import { STAFF_TABLE_ID, type Participant } from '@/contracts/entities';
 import { departmentOf, displayName, teamOf } from '@/domain/display';
+import { TABLE_IDS_IN_ORDER, tableTitle } from '@/domain/layout';
 import { AlertDialog, AlertDialogContent } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -20,18 +21,21 @@ import { useSeatingOps } from './use-seating-ops';
 
 type OpenProps = { open: boolean; onOpenChange: (open: boolean) => void };
 
-/** 調換桌次：列出自己以外的 29 桌「第 {m} 桌（{人數}/10）・{備註名稱或部門}」，已滿與超過的桌也能選（SEAT-R39、SEAT-R88） */
+/**
+ * 調換桌次：依 A1～A15、B1～B15 列出自己以外的 29 桌「{目標桌號} 桌（{人數}/10）・{備註名稱或部門}」，
+ * 已滿與超過的桌也能選（SEAT-R39、SEAT-R88）
+ */
 export function SwapDialog({ open, onOpenChange, tableId, tables }: OpenProps & { tableId: number; tables: Map<number, TableInfo> }) {
   const ops = useSeatingOps();
   const [value, setValue] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const options = useMemo(() => {
     const out = [];
-    for (let n = 1; n <= TABLE_COUNT; n++) {
+    for (const n of TABLE_IDS_IN_ORDER) {
       if (n === tableId) continue;
       const t = tables.get(n)!;
       const desc = tableDesc(t);
-      out.push({ value: String(n), label: `第 ${n} 桌（${t.count}/${CAPACITY}）${desc ? `・${desc}` : ''}` });
+      out.push({ value: String(n), label: `${tableTitle(n)}（${t.count}/${CAPACITY}）${desc ? `・${desc}` : ''}` });
     }
     return out;
   }, [tables, tableId]);
@@ -53,7 +57,7 @@ export function SwapDialog({ open, onOpenChange, tableId, tables }: OpenProps & 
   };
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent title={`把第 ${tableId} 桌和哪一桌對調？`}>
+      <DialogContent title={`把 ${tableTitle(tableId)}和哪一桌對調？`}>
         <form
           className="contents"
           onSubmit={(e) => {
@@ -115,7 +119,7 @@ export function AddPeopleDialog({
     ? sorted.filter((p) => p.kind === 'EMPLOYEE' && p.tableId !== STAFF_TABLE_ID)
     : sorted.filter((p) => p.tableId === null);
   const rows = all.filter((p) => searchMatch(p, dir, q));
-  const title = isStaff ? '加入人員到工作人員桌' : `加入人員到第 ${target} 桌`;
+  const title = isStaff ? '加入人員到工作人員桌' : `加入人員到 ${tableTitle(target)}`;
 
   const close = (next: boolean) => {
     if (!next) {
@@ -140,7 +144,7 @@ export function AddPeopleDialog({
   const meta = (p: Participant) => {
     if (!isStaff) return detailMeta(p, dir);
     const team = teamOf(p, dir);
-    return `${departmentOf(p, dir) ?? ''}${team ? `・${team}` : ''}${p.tableId !== null ? `・第 ${p.tableId} 桌` : ''}`;
+    return `${departmentOf(p, dir) ?? ''}${team ? `・${team}` : ''}${p.tableId !== null ? `・${tableTitle(p.tableId)}` : ''}`;
   };
   const confirm = () => {
     if (!picked.length) return;
@@ -216,7 +220,7 @@ export function ClearDialog({ open, onOpenChange, info }: OpenProps & { info: Ta
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent
-        title={`要清空第 ${info.id} 桌嗎？`}
+        title={`要清空 ${tableTitle(info.id)}嗎？`}
         description={`${info.count} 位人員會變成未入座，名單不會刪除。`}
         confirmLabel="清空桌次"
         destructive

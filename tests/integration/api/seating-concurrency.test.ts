@@ -31,7 +31,7 @@ async function codeOf(res: Response): Promise<string | null> {
 }
 
 describe('同時搶同一桌最後一個位子', () => {
-  it('兩人同時從選擇桌次把不同的人排進第 5 桌（剩 1 位、不帶 allowOverflow）：只有一個成功，另一個回 409 TABLE_FULL；第 5 桌剛好 10 位（COM-AC04、SEAT-AC97）', async () => {
+  it('兩人同時從選擇桌次把不同的人排進 B10 桌（內部編號 5，剩 1 位、不帶 allowOverflow）：只有一個成功，另一個回 409 TABLE_FULL；B10 桌剛好 10 位（COM-AC04、SEAT-AC97）', async () => {
     await seatNewEmployees(5, 9);
     const a = await newUnseated({ name: '甲' });
     const b = await newUnseated({ name: '乙' });
@@ -105,7 +105,7 @@ describe('同時搶同一桌最後一個位子', () => {
 });
 
 describe('D-018 同時搶第 12 位（帶 allowOverflow）', () => {
-  it('兩人同時把不同的人拖進 11 位的第 5 桌：只有一個成功，另一個回 409 TABLE_LIMIT；第 5 桌剛好 12 位（SEAT-R20、SEAT-R86、SEAT-AC88、SEAT-AC97）', async () => {
+  it('兩人同時把不同的人拖進 11 位的 B10 桌：只有一個成功，另一個回 409 TABLE_LIMIT；B10 桌剛好 12 位（SEAT-R20、SEAT-R86、SEAT-AC88、SEAT-AC97）', async () => {
     await seatNewEmployees(5, 11);
     const a = await newUnseated({ name: '甲' });
     const b = await newUnseated({ name: '乙' });
@@ -126,7 +126,7 @@ describe('D-018 同時搶第 12 位（帶 allowOverflow）', () => {
     await expectAllContiguous();
   });
 
-  it('兩人同時把人拖進 10 位的第 5 桌：兩個都成功，第 5 桌 12 位（拖移上限是 12 位）', async () => {
+  it('兩人同時把人拖進 10 位的 B10 桌：兩個都成功，B10 桌 12 位（拖移上限是 12 位）', async () => {
     await seatNewEmployees(5, 10);
     const a = await newUnseated();
     const b = await newUnseated();
@@ -191,7 +191,7 @@ describe('D-018 同時搶第 12 位（帶 allowOverflow）', () => {
 });
 
 describe('同時操作不同順序的桌次不會死結（docs/architecture.md 第 7.2 節）', () => {
-  it('甲把第 3 桌的人搬到第 5 桌、乙同時把第 5 桌的人搬到第 3 桌：兩個都完成，名單連續', async () => {
+  it('甲把 B4 桌（3）的人搬到 B10 桌（5）、乙同時把 B10 桌的人搬到 B4 桌：兩個都完成，名單連續', async () => {
     const [x] = await seatNewEmployees(3, 3);
     const [y] = await seatNewEmployees(5, 3);
 

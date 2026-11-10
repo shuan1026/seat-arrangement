@@ -6,8 +6,10 @@
 // 受測介面（src/domain/auto-arrange.ts）：
 //   autoArrange({ employees, participants, tables, mode }) → { changes, summary }
 //   - 純函式；changes 只列位置有改變的人，tableId 為 null 表示回到未入座；seatOrder 0 起算（prisma/schema.prisma）。
-//   - summary 是 src/contracts/seating.ts 的 AutoArrangeSummary：placed 排進桌次的人數、tableIds 有排進人的桌號（由小到大）、
-//     left 空位不夠留在未入座的人數。
+//   - summary 是 src/contracts/seating.ts 的 AutoArrangeSummary：placed 排進桌次的人數、tableIds 有排進人的桌（內部編號，由小到大）、
+//     left 空位不夠留在未入座的人數。Sonner 的 {k} 是 tableIds 的個數（ARR-R14，D-019）。
+// 桌次一律用內部編號 1–30（D-019）：填桌順序就是內部編號的順序（auto-arrange.md「填桌順序」：1 = B1、2 = A1、3 = B4…30 = A13）。
+// 規格寫的桌號換成內部編號見 tests/helpers/table-codes.ts。
 import { expect } from 'vitest';
 import {
   STAFF_TABLE_ID,
@@ -19,12 +21,19 @@ import {
 } from '@/contracts/entities';
 import type { AutoArrangeSummary } from '@/contracts/seating';
 import { autoArrange } from '@/domain/auto-arrange';
+import { TABLE_CODE_BY_ID } from './table-codes';
 
 export type ArrangeMode = 'unseatedOnly' | 'rebuild';
 export const ARRANGE_MODES: readonly ArrangeMode[] = ['unseatedOnly', 'rebuild'];
 
 export type Position = { tableId: number | null; seatOrder: number | null };
 export type ArrangeChange = { participantId: number; tableId: number | null; seatOrder: number | null };
+
+/** 失敗訊息用：內部編號 3 →「B4 桌（3）」；不是 1–30 時寫內部編號 */
+const tableLabel = (id: number): string => {
+  const code = TABLE_CODE_BY_ID.get(id);
+  return code ? `${code} 桌（${id}）` : `內部編號 ${id} 的桌`;
+};
 
 /** 「業1–業7」→ ['業1', '業2', …, '業7'] */
 export const range = (prefix: string, from: number, to: number): string[] =>
@@ -101,7 +110,7 @@ export class Scenario {
     return this;
   }
 
-  /** 第 n 桌依序再坐這些人，接在這一桌原本的人後面（座位順序 0 起算） */
+  /** 內部編號 tableId 的桌依序再坐這些人，接在這一桌原本的人後面（座位順序 0 起算） */
   seat(tableId: number, names: readonly string[]): this {
     for (const name of names) {
       const p = this.get(name);
@@ -121,7 +130,7 @@ export class Scenario {
 
   note(tableId: number, noteName: string): this {
     const t = this.tables.find((x) => x.id === tableId);
-    if (!t) throw new Error(`沒有第 ${tableId} 桌`);
+    if (!t) throw new Error(`沒有內部編號 ${tableId} 的桌次`);
     t.noteName = noteName;
     return this;
   }
@@ -204,7 +213,7 @@ export class Outcome {
     this.final = final;
   }
 
-  /** 第 n 桌依座位順序的顯示名稱（名單長度就是人數，後面的位子是空位） */
+  /** 內部編號 tableId 那一桌依座位順序的顯示名稱（名單長度就是人數，後面的位子是空位） */
   table(tableId: number): string[] {
     return [...this.final.entries()]
       .filter(([, pos]) => pos.tableId === tableId)
@@ -242,7 +251,7 @@ export class Outcome {
  *   其他桌（例如有備註名稱的桌、只排未入座時已有 10 位以上的桌）人數不增加，原本 11、12 位的照舊（D-018）。
  *   座位順序從 0 起連續（SEAT-R06）
  * - 眷屬和所屬員工都是候選人時，一定同桌、緊接在員工後面，或一起留在未入座（ARR-R05 ④、ARR-R09、D-009）
- * - 摘要：排進的人數、有排進人的桌號（由小到大）、排不下的人數（ARR-R11、ARR-R14、ARR-R15）
+ * - 摘要：排進的人數、有排進人的桌（內部編號，由小到大；個數是 Sonner 的 {k}）、排不下的人數（ARR-R11、ARR-R14、ARR-R15）
  * - 一位都沒排進去時座位都不變，清空後重排也不清空（ARR-Q02 的目前假設）
  */
 export function checkInvariants(s: Scenario, o: Outcome): void {
@@ -262,7 +271,7 @@ export function checkInvariants(s: Scenario, o: Outcome): void {
     expect(c.tableId === null, `${who} 的桌號與座位順序要同時有值或同時為 null`).toBe(c.seatOrder === null);
     expect(p.tableId === STAFF_TABLE_ID, `${who} 是工作人員，不該被移動`).toBe(false);
     expect(p.tableId !== null && noteTables.has(p.tableId), `${who} 坐在有備註名稱的桌，不該被移動`).toBe(false);
-    if (c.tableId !== null) expect(usable.has(c.tableId), `${who} 被排進第 ${c.tableId} 桌，不是可用的桌`).toBe(true);
+    if (c.tableId !== null) expect(usable.has(c.tableId), `${who} 被排進 ${tableLabel(c.tableId)}，不是可用的桌`).toBe(true);
     if (p.kind === 'GUEST') {
       expect(c.tableId, `外部貴賓 ${who} 不會被排進桌次`).toBeNull();
       expect(o.mode, `只排未入座時外部貴賓 ${who} 不動`).toBe('rebuild');
@@ -284,23 +293,23 @@ export function checkInvariants(s: Scenario, o: Outcome): void {
     const gained = [...o.final.entries()].some(([pid, pos]) => pos.tableId === id && original.get(pid)?.tableId !== id);
     const rebuilt = o.mode === 'rebuild' && usable.has(id) && placed.length > 0;
     if (gained || rebuilt) {
-      expect(orders.length, `第 ${id} 桌排到超過 ${TABLE_CAPACITY} 人（ARR-R17）`).toBeLessThanOrEqual(TABLE_CAPACITY);
+      expect(orders.length, `${tableLabel(id)}排到超過 ${TABLE_CAPACITY} 人（ARR-R17）`).toBeLessThanOrEqual(TABLE_CAPACITY);
     } else {
-      expect(orders.length, `第 ${id} 桌沒有排進人，人數不該增加`).toBeLessThanOrEqual(beforeCount);
+      expect(orders.length, `${tableLabel(id)}沒有排進人，人數不該增加`).toBeLessThanOrEqual(beforeCount);
     }
-    expect(orders, `第 ${id} 桌的座位順序要從 0 起連續`).toEqual(orders.map((_, i) => i));
+    expect(orders, `${tableLabel(id)}的座位順序要從 0 起連續`).toEqual(orders.map((_, i) => i));
   }
   const tablesUsed = [...new Set(placed.map((p) => o.final.get(p.id)?.tableId ?? 0))].sort((a, b) => a - b);
   expect(o.summary.placed, '摘要：這一次排進桌次的人數').toBe(placed.length);
   expect(o.summary.left, '摘要：排不下、留在未入座的人數').toBe(candidates.length - placed.length);
-  expect(o.summary.tableIds, '摘要：有排進人的桌號，由小到大').toEqual(tablesUsed);
+  expect(o.summary.tableIds, '摘要：有排進人的桌（內部編號），由小到大').toEqual(tablesUsed);
 
   if (placed.length === 0) {
     expect(o.changes, '一位都沒排進去時座位都不變（ARR-Q02）').toEqual([]);
   } else if (o.mode === 'rebuild') {
     for (const p of s.participants) {
       if (p.kind === 'GUEST' && p.tableId !== null && usable.has(p.tableId)) {
-        expect(o.final.get(p.id)?.tableId, `原本坐在第 ${p.tableId} 桌的外部貴賓 ${s.nameOf(p.id)} 回到未入座`).toBeNull();
+        expect(o.final.get(p.id)?.tableId, `原本坐在 ${tableLabel(p.tableId)}的外部貴賓 ${s.nameOf(p.id)} 回到未入座`).toBeNull();
       }
     }
   }

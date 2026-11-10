@@ -112,7 +112,7 @@ const LI = emp(2, '李小華', '研發部', { extension: '2001' });
 const ZHANG = emp(3, '張三', '研發部');
 const CHEN = emp(4, '陳四', '研發部');
 const LIN = emp(5, '林五', '業務部');
-/** 李小華已報名，帶一位眷屬，兩人坐第 5 桌 */
+/** 李小華已報名，帶一位眷屬，兩人坐 B10 桌（內部編號 5） */
 const LI_JOINED = participant(101, { kind: 'EMPLOYEE', employeeId: LI.id, tableId: 5, seatOrder: 0 });
 const LI_DEPENDENT = participant(102, { kind: 'DEPENDENT', hostId: LI_JOINED.id, relation: '配偶', tableId: 5, seatOrder: 1 });
 
@@ -325,7 +325,7 @@ describe('一次加入多位（EMP-R22～R24）', () => {
 });
 
 describe('取消報名（EMP-R30、EMP-R31）', () => {
-  it('EMP-AC36：李小華已報名、帶眷屬坐第 5 桌 → 確認取消報名 → 送出 DELETE /api/participants/101；李小華與眷屬從參與人員移除，仍在員工名單、變回未報名；Sonner「已取消 李小華 的報名。」沒有「復原」', async () => {
+  it('EMP-AC36：李小華已報名、帶眷屬坐 B10 桌 → 確認取消報名 → 送出 DELETE /api/participants/101；李小華與眷屬從參與人員移除，仍在員工名單、變回未報名；Sonner「已取消 李小華 的報名。」沒有「復原」', async () => {
     const calls = mockApi((c) =>
       c.method === 'DELETE' && c.url === `/api/participants/${LI_JOINED.id}`
         ? { status: 200, body: { removedIds: [LI_JOINED.id, LI_DEPENDENT.id], participants: [] } }

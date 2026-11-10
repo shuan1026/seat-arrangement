@@ -480,7 +480,7 @@ describe('員工名單上標記為不參加的員工（PPL-R72、D-014）', () =
 });
 
 describe('已報名的員工（PPL-R80～R84、PPL-Q20）', () => {
-  // 王小明已報名、在第 3 桌、不素食、備註「舊備註」；王小明_眷屬在第 3 桌、沒有兒童椅、素食（PPL-AC78）
+  // 王小明已報名、在 B4 桌（內部編號 3）、不素食、備註「舊備註」；王小明_眷屬在 B4 桌、沒有兒童椅、素食（PPL-AC78）
   const pWang = registered(11, WANG, { tableId: 3, seatOrder: 0, vegetarian: false, note: '舊備註' });
   const pWangDependent = dependentOf(12, pWang.id, { tableId: 3, seatOrder: 1, childSeat: false, vegetarian: true });
   const pLee = registered(13, LEE, { tableId: 5, seatOrder: 0, vegetarian: true });

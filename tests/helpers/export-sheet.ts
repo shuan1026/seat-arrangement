@@ -1,5 +1,7 @@
 // 匯出座位表的版面：Excel 位址（A1）工具、規格 3.3 節每一桌的位置、讀取 src/domain/seating-sheet.ts 版面模型的工具。
 // 不引用 src/，E2E 也可以用。位址寫法依 docs/spec/export.md「本檔寫法」：欄 A 是第 1 欄…L 是第 12 欄，列從 1 起算。
+// 注意：Excel 位址「A1」「B21」和桌號 A1～A15、B1～B15（D-019）寫法相像；本檔的位址一律是儲存格，桌號用 TABLE_BLOCKS_BY_CODE 的鍵。
+import { codeOf, idOfCode } from './table-codes';
 
 /** 版面模型的底色類別：標題格、貴賓、兒童椅、素食 */
 export type SheetFillName = 'header' | 'guest' | 'childSeat' | 'vegetarian';
@@ -68,46 +70,55 @@ export const sortAddresses = (addresses: Iterable<string>): string[] => [...addr
 export const column = (letter: string, fromRow: number, toRow: number): string[] =>
   Array.from({ length: toRow - fromRow + 1 }, (_, i) => `${letter}${fromRow + i}`);
 
-/** 規格 3.3 節「各桌位置」：桌號 → 標題格的合併範圍、名單欄 */
-export const TABLE_BLOCKS: ReadonlyMap<number, { range: string; listCol: string }> = new Map([
-  [1, { range: 'G1:G10', listCol: 'H' }],
-  [2, { range: 'D1:D10', listCol: 'E' }],
-  [3, { range: 'I21:I30', listCol: 'J' }],
-  [4, { range: 'I41:I50', listCol: 'J' }],
-  [5, { range: 'I61:I70', listCol: 'J' }],
-  [6, { range: 'I81:I90', listCol: 'J' }],
-  [7, { range: 'H11:H20', listCol: 'I' }],
-  [8, { range: 'H31:H40', listCol: 'I' }],
-  [9, { range: 'H51:H60', listCol: 'I' }],
-  [10, { range: 'H71:H80', listCol: 'I' }],
-  [11, { range: 'H91:H100', listCol: 'I' }],
-  [12, { range: 'G21:G30', listCol: 'H' }],
-  [13, { range: 'G41:G50', listCol: 'H' }],
-  [14, { range: 'G61:G70', listCol: 'H' }],
-  [15, { range: 'G81:G90', listCol: 'H' }],
-  [16, { range: 'G101:G110', listCol: 'H' }],
-  [17, { range: 'D21:D30', listCol: 'E' }],
-  [18, { range: 'D41:D50', listCol: 'E' }],
-  [19, { range: 'D61:D70', listCol: 'E' }],
-  [20, { range: 'D81:D90', listCol: 'E' }],
-  [21, { range: 'D101:D110', listCol: 'E' }],
-  [22, { range: 'C11:C20', listCol: 'D' }],
-  [23, { range: 'C31:C40', listCol: 'D' }],
-  [24, { range: 'C51:C60', listCol: 'D' }],
-  [25, { range: 'C71:C80', listCol: 'D' }],
-  [26, { range: 'C91:C100', listCol: 'D' }],
-  [27, { range: 'B21:B30', listCol: 'C' }],
-  [28, { range: 'B41:B50', listCol: 'C' }],
-  [29, { range: 'B61:B70', listCol: 'C' }],
-  [30, { range: 'B81:B90', listCol: 'C' }],
+/** 規格 3.3 節「各桌位置」表（原文，依 A1～A15、B1～B15 列出）：桌號 → 標題格的合併範圍、名單欄（D-019） */
+export const TABLE_BLOCKS_BY_CODE: ReadonlyMap<string, { range: string; listCol: string }> = new Map([
+  ['A1', { range: 'D1:D10', listCol: 'E' }],
+  ['A2', { range: 'C11:C20', listCol: 'D' }],
+  ['A3', { range: 'D21:D30', listCol: 'E' }],
+  ['A4', { range: 'B21:B30', listCol: 'C' }],
+  ['A5', { range: 'C31:C40', listCol: 'D' }],
+  ['A6', { range: 'D41:D50', listCol: 'E' }],
+  ['A7', { range: 'B41:B50', listCol: 'C' }],
+  ['A8', { range: 'C51:C60', listCol: 'D' }],
+  ['A9', { range: 'D61:D70', listCol: 'E' }],
+  ['A10', { range: 'B61:B70', listCol: 'C' }],
+  ['A11', { range: 'C71:C80', listCol: 'D' }],
+  ['A12', { range: 'D81:D90', listCol: 'E' }],
+  ['A13', { range: 'B81:B90', listCol: 'C' }],
+  ['A14', { range: 'C91:C100', listCol: 'D' }],
+  ['A15', { range: 'D101:D110', listCol: 'E' }],
+  ['B1', { range: 'G1:G10', listCol: 'H' }],
+  ['B2', { range: 'H11:H20', listCol: 'I' }],
+  ['B3', { range: 'G21:G30', listCol: 'H' }],
+  ['B4', { range: 'I21:I30', listCol: 'J' }],
+  ['B5', { range: 'H31:H40', listCol: 'I' }],
+  ['B6', { range: 'G41:G50', listCol: 'H' }],
+  ['B7', { range: 'I41:I50', listCol: 'J' }],
+  ['B8', { range: 'H51:H60', listCol: 'I' }],
+  ['B9', { range: 'G61:G70', listCol: 'H' }],
+  ['B10', { range: 'I61:I70', listCol: 'J' }],
+  ['B11', { range: 'H71:H80', listCol: 'I' }],
+  ['B12', { range: 'G81:G90', listCol: 'H' }],
+  ['B13', { range: 'I81:I90', listCol: 'J' }],
+  ['B14', { range: 'H91:H100', listCol: 'I' }],
+  ['B15', { range: 'G101:G110', listCol: 'H' }],
 ]);
 
+/** 同一張表，鍵換成內部編號（1–30，測試資料用的 tableId）：例如 1（B1）→ G1:G10 */
+export const TABLE_BLOCKS: ReadonlyMap<number, { range: string; listCol: string }> = new Map(
+  [...TABLE_BLOCKS_BY_CODE].map(([code, block]): [number, { range: string; listCol: string }] => [idOfCode(code), block]),
+);
+
+/** 內部編號 1–30 */
 export const TABLE_IDS: readonly number[] = Array.from({ length: 30 }, (_, i) => i + 1);
 
-/** 第 n 桌：標題格（左上角位址）、合併範圍、十格名單格 */
+/** 桌次標題格第一行「{桌號} 桌」（EXP-R11、EXP-R12），參數是內部編號，例如 1 →「B1 桌」 */
+export const headerTitle = (n: number): string => `${codeOf(n)} 桌`;
+
+/** 內部編號 n 的桌：標題格（左上角位址）、合併範圍、十格名單格 */
 export function tableBlock(n: number): { header: string; range: string; list: string[] } {
   const b = TABLE_BLOCKS.get(n);
-  if (!b) throw new Error(`沒有第 ${n} 桌`);
+  if (!b) throw new Error(`沒有內部編號 ${n} 的桌次`);
   const [top = ''] = b.range.split(':');
   const { row } = parseAddress(top);
   return { header: top, range: b.range, list: column(b.listCol, row, row + 9) };
@@ -120,10 +131,10 @@ export function unseatedAddress(i: number): string {
   return toAddress(row, col);
 }
 
-/** 第 n 桌所在的段（1–11）：沒有超過時第 k 段是第 10k−9 到 10k 列（EXP-R09、本檔 3.3） */
+/** 內部編號 n 的桌所在的段（1–11）：沒有超過時第 k 段是第 10k−9 到 10k 列（EXP-R09、本檔 3.3） */
 export function segmentOf(n: number): number {
   const b = TABLE_BLOCKS.get(n);
-  if (!b) throw new Error(`沒有第 ${n} 桌`);
+  if (!b) throw new Error(`沒有內部編號 ${n} 的桌次`);
   const { row } = parseAddress(b.range.split(':')[0] ?? '');
   return (row - 1) / 10 + 1;
 }
@@ -143,10 +154,10 @@ export function overflowLayout(tallSegments: Iterable<number>) {
   };
   const shift = 2 * tall.size;
 
-  /** 第 n 桌：標題格、合併範圍、名單格（十或十二格） */
+  /** 內部編號 n 的桌：標題格、合併範圍、名單格（十或十二格） */
   const block = (n: number): { header: string; range: string; list: string[] } => {
     const b = TABLE_BLOCKS.get(n);
-    if (!b) throw new Error(`沒有第 ${n} 桌`);
+    if (!b) throw new Error(`沒有內部編號 ${n} 的桌次`);
     const { col } = parseAddress(b.range.split(':')[0] ?? '');
     const seg = segmentOf(n);
     const top = segmentTop(seg);

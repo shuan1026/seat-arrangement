@@ -14,6 +14,7 @@ import { tableFullMessage, tableLimitMessage } from '@/client/conflict-messages'
 import { STAFF_TABLE_ID, TABLE_CAPACITY, type AppState, type SeatTable } from '@/contracts/entities';
 import type { ErrorCode } from '@/contracts/errors';
 import type { SeatingOperation, SeatingResult, SeatingSnapshot, TableResult } from '@/contracts/seating';
+import { autoArrangeMessage } from '@/domain/auto-arrange';
 import { applySeatingOperation, type RuleOperation, type SeatingViolation } from '@/domain/seating-rules';
 import { dismissNotify, notify } from '@/components/ui/toaster';
 import { msg, withOverflowNote } from './model';
@@ -188,20 +189,14 @@ export function useSeatingOps() {
       mutate<SeatingResult>({
         send: () => postOperation(op),
         onSuccess: (res, s) => {
-          const summary = res.summary;
-          if (!summary || summary.placed === 0) {
+          const summary = res.summary ?? { placed: 0, tableIds: [], left: 0 };
+          if (summary.placed === 0) {
             if (latestUndo === token) latestUndo = null;
-            notify('沒有可以排的員工與眷屬。', { type: 'warning' });
+            notify(autoArrangeMessage(summary), { type: 'warning' });
             return;
           }
           s.update((d) => mergeResult(d, res));
-          const a = Math.min(...summary.tableIds);
-          const b = Math.max(...summary.tableIds);
-          const range = a === b ? `${a}` : `${a}–${b}`;
-          const text = summary.left
-            ? `已把 ${summary.placed} 位安排到第 ${range} 桌，還有 ${summary.left} 位排不下，留在未入座。`
-            : `已把 ${summary.placed} 位安排到第 ${range} 桌。`;
-          offerUndo(token, text, res.undo);
+          offerUndo(token, autoArrangeMessage(summary), res.undo);
         },
       });
     },

@@ -10,7 +10,7 @@ import { logInfo } from '../log';
 import { toEmployee, toParticipant, toSeatTable } from './state';
 
 // 座位異動指令（docs/architecture.md 第 7.2、8.1 節）：一個指令一個交易。
-// 交易一開始依桌號由小到大鎖住全部桌次列（SELECT ... FOR UPDATE），所有座位指令依同一個順序取得鎖，不會死結；
+// 交易一開始依內部編號由小到大鎖住全部桌次列（SELECT ... FOR UPDATE），所有座位指令依同一個順序取得鎖，不會死結；
 // 拿到鎖之後才讀資料，再用 src/domain/seating-rules.ts 的同一份規則驗證，只寫入有改變的列。
 // 兩人同時搶最後一個位子時，後拿到鎖的一方看到已滿，回 409：從選單入座（上限 10 位）是 TABLE_FULL，
 // 拖移或「加入人員」（allowOverflow，上限 12 位）是 TABLE_LIMIT；工作人員桌是 STAFF_TABLE_FULL／STAFF_TABLE_LIMIT（D-018）。

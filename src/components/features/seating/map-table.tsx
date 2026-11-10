@@ -9,6 +9,7 @@ import { useState, type ReactNode } from 'react';
 import { useAppStore } from '@/client/app-provider';
 import type { Participant } from '@/contracts/entities';
 import { displayName } from '@/domain/display';
+import { tableCodeLabel, tableTitle } from '@/domain/layout';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/components/ui/cn';
 import { IconButton } from '@/components/ui/icon-button';
@@ -98,6 +99,17 @@ function CountOrFull({ info, mode }: { info: TableInfo; mode: TableMode }) {
   );
 }
 
+/**
+ * 收合時桌號的字級：一般收合 Text-xl（2.1.5）；精簡顯示 Text-4xl（2.1.6）。
+ * 有拖移把手（桌面）時，三個字元的桌號（A10～A15、B10～B15）改用 Text-3xl，不然最後一個字會被右上角 36 px 的把手蓋住（D-019）
+ */
+function codeFont(code: string, mode: TableMode, withHandle: boolean): string {
+  if (mode !== 'compact') return 'type-xl-semi-bold leading-6';
+  return withHandle && code.length > 2
+    ? '[font:var(--text-3xl-semi-bold)] [font-family:var(--font-sans)]'
+    : '[font:var(--text-4xl-semi-bold)] [font-family:var(--font-sans)]';
+}
+
 /** 拖移把手：只能從這裡拖整桌去對調（SEAT-R35、SEAT-R37）；Tooltip 與無障礙名稱「拖移調換桌次」 */
 function Handle({ info, mode, scale }: { info: TableInfo; mode: TableMode; scale: number }) {
   const { setNodeRef, listeners, attributes } = useSeatingDraggable(`table:${info.id}`, { kind: 'table', tableId: info.id }, { scale });
@@ -124,11 +136,13 @@ function Handle({ info, mode, scale }: { info: TableInfo; mode: TableMode; scale
 export function MapTable(props: MapTableProps) {
   const { info, x, y, mode, scale, draggable } = props;
   const drop = useDropState(info);
-  const name = info.isStaff ? '工作人員桌' : `第 ${info.id} 桌`;
+  // 收合時只顯示桌號「A1」，展開與無障礙名稱寫「A1 桌」（SEAT-R04、D-019）
+  const code = tableCodeLabel(info.id);
+  const name = info.isStaff ? '工作人員桌' : tableTitle(info.id);
   const tooltip = info.isStaff ? `工作人員桌・${info.label}` : tableTooltip(info);
   const ariaLabel = info.isStaff
     ? tooltip
-    : `第 ${info.id} 桌，${info.noteName ? `${info.noteName}，` : ''}${info.label}，${info.count}/${CAPACITY}`;
+    : `${name}，${info.noteName ? `${info.noteName}，` : ''}${info.label}，${info.count}/${CAPACITY}`;
 
   return (
     <div
@@ -157,14 +171,7 @@ export function MapTable(props: MapTableProps) {
               {info.isStaff ? (
                 <span className={cn('whitespace-nowrap', mode === 'compact' ? 'type-lg-semi-bold' : 'type-sm-semi-bold')}>工作人員</span>
               ) : (
-                <span
-                  className={cn(
-                    mode === 'compact' ? '[font:var(--text-4xl-semi-bold)] [font-family:var(--font-sans)]' : 'type-xl-semi-bold leading-6',
-                    info.count === 0 && 'text-muted-foreground',
-                  )}
-                >
-                  {info.id}
-                </span>
+                <span className={cn('whitespace-nowrap', codeFont(code, mode, draggable), info.count === 0 && 'text-muted-foreground')}>{code}</span>
               )}
               {!info.isStaff && mode !== 'compact' ? (
                 <span className="max-w-full truncate type-xs-regular text-muted-foreground">{info.noteName || info.label}</span>

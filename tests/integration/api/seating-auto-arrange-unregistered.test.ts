@@ -13,6 +13,8 @@
 // 假設：src/server/services/seating.ts 的自動排座預設使用 src/domain/auto-arrange.ts 的 autoArrange，
 // 只要 import Route Handler（tests/helpers/seating-api.ts）就是接好的，不必先呼叫 registerAutoArranger。
 // 測試資料用 tests/helpers/auto-arrange-scenario.ts 的 Scenario 照規格的寫法建構，再原樣寫進測試資料庫；都是虛構資料。
+// D-019：資料庫與 summary 用內部編號；規格寫的桌號換成內部編號（B1 = 1、A1 = 2、B4 = 3、B7 = 4、A10 = 29、A13 = 30），
+// 填桌順序就是內部編號的順序。Sonner 的 {k} 是 summary.tableIds 的個數。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { STAFF_TABLE_ID, TABLE_COUNT } from '@/contracts/entities';
 import type { SeatingResult } from '@/contracts/seating';
@@ -20,6 +22,7 @@ import { buildFixture2026, GUEST_COUNT_2026, NOTE_TABLES_2026 } from '../../help
 import { dep, range, Scenario, type ArrangeMode } from '../../helpers/auto-arrange-scenario';
 import { prisma, resetData } from '../../helpers/db';
 import { allPositions, expectAllContiguous, noteNameOf, operate } from '../../helpers/seating-api';
+import { codeOf } from '../../helpers/table-codes';
 
 vi.mock('@/server/auth', () => ({
   currentUser: async () => ({ id: 'u1', name: '測試', email: 't@program.com.tw' }),
@@ -37,7 +40,7 @@ class Stored {
     readonly nameOf: ReadonlyMap<number, string>,
   ) {}
 
-  /** 第 n 桌依座號的顯示名稱（0 是工作人員桌） */
+  /** 內部編號 tableId 的桌依座號的顯示名稱（0 是工作人員桌） */
   async table(tableId: number): Promise<string[]> {
     const rows = await prisma.participant.findMany({ where: { tableId }, orderBy: [{ seatOrder: 'asc' }, { id: 'asc' }] });
     return rows.map((p) => this.nameOf.get(p.id) ?? `#${p.id}`);
@@ -101,12 +104,12 @@ const arrange = (mode: ArrangeMode): Promise<SeatingResult> => operate({ type: '
 async function expectValidSeats() {
   await expectAllContiguous();
   for (let t = 1; t <= TABLE_COUNT; t++) {
-    expect(await prisma.participant.count({ where: { tableId: t } }), `第 ${t} 桌`).toBeLessThanOrEqual(10);
+    expect(await prisma.participant.count({ where: { tableId: t } }), `${codeOf(t)} 桌`).toBeLessThanOrEqual(10);
   }
 }
 
 describe('只排未入座（ARR-R03、ARR-R05～R10）', () => {
-  it('ARR-AC01：同部門依組別第一次出現的先後、沒有組別的排在部門最後、眷屬緊接在員工後面 → 第 1 桌依序為業1、業4、業4_眷屬、業2、業5、業3、研1；Sonner 的數字是 7 位、第 1 桌（ARR-AC15）', async () => {
+  it('ARR-AC01：同部門依組別第一次出現的先後、沒有組別的排在部門最後、眷屬緊接在員工後面 → B1 桌依序為業1、業4、業4_眷屬、業2、業5、業3、研1；Sonner 的數字是 7 位、1 桌（ARR-AC15）', async () => {
     const s = new Scenario()
       .addEmployee('業1', '業務部', '二組')
       .addEmployee('業2', '業務部', '一組')
@@ -124,7 +127,7 @@ describe('只排未入座（ARR-R03、ARR-R05～R10）', () => {
     await expectValidSeats();
   });
 
-  it('ARR-AC02：業務部 7 人、研發部 7 人 → 第 1 桌業1–業7、研1–研3；第 2 桌研4–研7；「已把 14 位安排到第 1–2 桌。」的數字', async () => {
+  it('ARR-AC02：業務部 7 人、研發部 7 人 → B1 桌業1–業7、研1–研3；A1 桌研4–研7；「已把 14 位安排到 2 桌。」的數字', async () => {
     const s = new Scenario().addGroup('業務部', null, range('業', 1, 7)).addGroup('研發部', null, range('研', 1, 7));
     const db = await store(s);
 
@@ -136,7 +139,7 @@ describe('只排未入座（ARR-R03、ARR-R05～R10）', () => {
     await expectValidSeats();
   });
 
-  it('ARR-AC03：一組 12 人 → 第 1 桌研1–研10；第 2 桌研11–研12（ARR-R09）', async () => {
+  it('ARR-AC03：一組 12 人 → B1 桌研1–研10；A1 桌研11–研12（ARR-R09）', async () => {
     const db = await store(new Scenario().addGroup('研發部', '前端組', range('研', 1, 12)));
     const result = await arrange('unseatedOnly');
     expect(await db.table(1)).toEqual(range('研', 1, 10));
@@ -171,7 +174,7 @@ describe('只排未入座（ARR-R03、ARR-R05～R10）', () => {
     expect(result.summary).toEqual({ placed: 17, tableIds: [1, 2], left: 0 });
   });
 
-  it('ARR-AC06：第 1 桌已坐 9 位，業1 帶眷屬（2 人）排不進 → 第 1 桌第 10 位是業2；第 2 桌業1、業1_眷屬', async () => {
+  it('ARR-AC06：B1 桌已坐 9 位，業1 帶眷屬（2 人）排不進 → B1 桌第 10 位是業2；A1 桌業1、業1_眷屬', async () => {
     const s = new Scenario()
       .addGroup('行政部', null, range('行', 1, 9))
       .addEmployee('業1', '業務部', null, { dependent: true })
@@ -189,7 +192,7 @@ describe('只排未入座（ARR-R03、ARR-R05～R10）', () => {
     await expectValidSeats();
   });
 
-  it('ARR-AC07：拆點落在員工與眷屬之間、沒有人可以補 → 第 1 桌第 9 位業1、第 10 位空著；第 2 桌業2、業2_眷屬（ARR-R09、ARR-R16、D-009）', async () => {
+  it('ARR-AC07：拆點落在員工與眷屬之間、沒有人可以補 → B1 桌第 9 位業1、第 10 位空著；A1 桌業2、業2_眷屬（ARR-R09、ARR-R16、D-009）', async () => {
     const s = new Scenario()
       .addGroup('行政部', null, range('行', 1, 8))
       .addGroup('業務部', '北區組', ['業1', '業2'], ['業2'])
@@ -203,7 +206,7 @@ describe('只排未入座（ARR-R03、ARR-R05～R10）', () => {
     expect(result.summary).toEqual({ placed: 3, tableIds: [1, 2], left: 0 });
   });
 
-  it('ARR-AC08：有備註名稱的桌不用；已坐滿的桌跳過；外部貴賓不排 → 第 2 桌研1–研8、業1、業2；第 4 桌業3；賓4 未入座；摘要是第 2–4 桌（ARR-R01、R02、R03、R14）', async () => {
+  it('ARR-AC08：有備註名稱的桌不用；已坐滿的桌跳過；外部貴賓不排 → A1 桌研1–研8、業1、業2；B7 桌業3；賓4 未入座；摘要是 A1、B7 兩桌（Sonner「2 桌」）（ARR-R01、R02、R03、R14）', async () => {
     const s = new Scenario()
       .addGroup('研發部', null, range('研', 1, 8))
       .addGroup('行政部', null, range('行', 1, 10))
@@ -229,7 +232,7 @@ describe('只排未入座（ARR-R03、ARR-R05～R10）', () => {
     expect(await noteNameOf(1)).toBe('主桌');
   });
 
-  it('ARR-AC11：工作人員不排、工作人員的眷屬照常排；外部貴賓不排 → 第 1 桌第 10 位業1_眷屬；第 2 桌業2（ARR-R01、ARR-R05）', async () => {
+  it('ARR-AC11：工作人員不排、工作人員的眷屬照常排；外部貴賓不排 → B1 桌第 10 位業1_眷屬；A1 桌業2（ARR-R01、ARR-R05）', async () => {
     const db = await store(arrangeWithStaff());
 
     const result = await arrange('unseatedOnly');
@@ -241,7 +244,7 @@ describe('只排未入座（ARR-R03、ARR-R05～R10）', () => {
     expect(result.summary).toEqual({ placed: 2, tableIds: [1, 2], left: 0 });
   });
 
-  it('ARR-AC13：空位不夠 → 第 29 桌第 9、10 位業1、業2；第 30 桌第 10 位業3；研1–研4 留在未入座；摘要「還有 4 位排不下」（ARR-R09、ARR-R11、ARR-R14）', async () => {
+  it('ARR-AC13：空位不夠 → A10 桌第 9、10 位業1、業2；A13 桌第 10 位業3；研1–研4 留在未入座；摘要「還有 4 位排不下」（ARR-R09、ARR-R11、ARR-R14）', async () => {
     const s = new Scenario()
       .addGroup('行政部', null, range('行', 1, 17))
       .addGroup('業務部', '北區組', range('業', 1, 3))
@@ -257,10 +260,10 @@ describe('只排未入座（ARR-R03、ARR-R05～R10）', () => {
     expect(await db.table(30)).toEqual([...range('行', 9, 17), '業3']);
     expect(await db.unseated()).toEqual(range('研', 1, 4));
     expect(result.summary).toEqual({ placed: 3, tableIds: [29, 30], left: 4 });
-    for (let t = 1; t <= 28; t++) expect(await db.table(t), `第 ${t} 桌`).toEqual([]);
+    for (let t = 1; t <= 28; t++) expect(await db.table(t), `${codeOf(t)} 桌`).toEqual([]);
   });
 
-  it('ARR-AC21：拆點落在員工與眷屬之間、有人可以補 → 第 1 桌第 9、10 位業1、南2；第 2 桌業2、業2_眷屬、南1、南1_眷屬、南3、研1–研3（ARR-R16）', async () => {
+  it('ARR-AC21：拆點落在員工與眷屬之間、有人可以補 → B1 桌第 9、10 位業1、南2；A1 桌業2、業2_眷屬、南1、南1_眷屬、南3、研1–研3（ARR-R16）', async () => {
     const s = new Scenario()
       .addGroup('行政部', null, range('行', 1, 8))
       .addGroup('業務部', '北區組', ['業1', '業2'], ['業2'])
@@ -276,7 +279,7 @@ describe('只排未入座（ARR-R03、ARR-R05～R10）', () => {
     expect(result.summary).toEqual({ placed: 10, tableIds: [1, 2], left: 0 });
   });
 
-  it('ARR-AC22：沒有組別的員工與眷屬遇到只剩 1 個空位 → 第 1 桌第 10 位研1；第 2 桌業1、業1_眷屬、研2（ARR-R06、R09、R16）', async () => {
+  it('ARR-AC22：沒有組別的員工與眷屬遇到只剩 1 個空位 → B1 桌第 10 位研1；A1 桌業1、業1_眷屬、研2（ARR-R06、R09、R16）', async () => {
     const s = new Scenario()
       .addGroup('行政部', null, range('行', 1, 9))
       .addEmployee('業1', '業務部', null, { dependent: true })
@@ -292,7 +295,7 @@ describe('只排未入座（ARR-R03、ARR-R05～R10）', () => {
   });
 });
 
-/** ARR-AC11、AC12 的資料：第 1 桌坐行1–行9；業1 是工作人員、業1_眷屬未入座；業2、外部貴賓賓1 未入座 */
+/** ARR-AC11、AC12 的資料：B1 桌坐行1–行9；業1 是工作人員、業1_眷屬未入座；業2、外部貴賓賓1 未入座 */
 function arrangeWithStaff(): Scenario {
   return new Scenario()
     .addGroup('行政部', null, range('行', 1, 9))
@@ -303,7 +306,7 @@ function arrangeWithStaff(): Scenario {
     .staff(['業1']);
 }
 
-/** ARR-AC09 的資料：第 1 桌「主桌」業1、業2、賓1；第 2 桌賓2、研1–研9；第 3 桌「供應商」沒有人；第 4 桌業3；研10 未入座 */
+/** ARR-AC09 的資料：B1 桌「主桌」業1、業2、賓1；A1 桌賓2、研1–研9；B4 桌「供應商」沒有人；B7 桌業3；研10 未入座 */
 function rebuildScenario(): Scenario {
   return new Scenario()
     .addGroup('業務部', null, range('業', 1, 3))
@@ -318,7 +321,7 @@ function rebuildScenario(): Scenario {
 }
 
 describe('清空後重排（ARR-R04、ARR-R12）與復原（ARR-R13）', () => {
-  it('ARR-AC09：有備註名稱的桌與桌上的人不動；可用的桌清空重排；原本坐在可用桌的外部貴賓回到未入座 → 第 2 桌業3、研1–研9；第 4 桌研10；摘要 11 位、第 2–4 桌', async () => {
+  it('ARR-AC09：有備註名稱的桌與桌上的人不動；可用的桌清空重排；原本坐在可用桌的外部貴賓回到未入座 → A1 桌業3、研1–研9；B7 桌研10；摘要 11 位、2 桌', async () => {
     const db = await store(rebuildScenario());
 
     const result = await arrange('rebuild');
@@ -331,7 +334,7 @@ describe('清空後重排（ARR-R04、ARR-R12）與復原（ARR-R13）', () => {
     expect(result.summary).toEqual({ placed: 11, tableIds: [2, 4], left: 0 });
     expect(await noteNameOf(1)).toBe('主桌');
     expect(await noteNameOf(3)).toBe('供應商');
-    for (const t of [2, 4, 5, 30]) expect(await noteNameOf(t), `第 ${t} 桌`).toBeNull();
+    for (const t of [2, 4, 5, 30]) expect(await noteNameOf(t), `${codeOf(t)} 桌`).toBeNull();
     await expectValidSeats();
   });
 
@@ -352,7 +355,7 @@ describe('清空後重排（ARR-R04、ARR-R12）與復原（ARR-R13）', () => {
     expect(await noteNameOf(3)).toBe('供應商');
   });
 
-  it('ARR-AC12：清空後重排也不排工作人員 → 第 1 桌行1–行9、業1_眷屬；第 2 桌業2；摘要 11 位（ARR-R01、ARR-R04）', async () => {
+  it('ARR-AC12：清空後重排也不排工作人員 → B1 桌行1–行9、業1_眷屬；A1 桌業2；摘要 11 位（ARR-R01、ARR-R04）', async () => {
     const db = await store(arrangeWithStaff());
 
     const result = await arrange('rebuild');
@@ -423,7 +426,7 @@ describe('一位都沒排進去（ARR-Q02 的目前假設）', () => {
 
 describe('2026 年示範資料的結構（auto-arrange.md 第 5.2 節、ARR-AC19、ARR-AC20）', () => {
   it.each<ArrangeMode>(['rebuild', 'unseatedOnly'])(
-    '%s：寫進資料庫的結果和演算法算出來的完全相同；211 位排進第 3–27 桌（第 26 桌 9 位、第 27 桌 2 位）、外部貴賓都留在未入座、有備註名稱的 5 桌是空桌',
+    '%s：寫進資料庫的結果和演算法算出來的完全相同；211 位排進 B4 到 A4 之間的 22 桌（Sonner「已把 211 位安排到 22 桌。」；A14 桌 9 位、A4 桌 2 位）、外部貴賓都留在未入座、有備註名稱的 5 桌是空桌',
     async (mode) => {
       const fixture = buildFixture2026();
       const db = await store(fixture.scenario);
@@ -433,15 +436,18 @@ describe('2026 年示範資料的結構（auto-arrange.md 第 5.2 節、ARR-AC19
       const result = await arrange(mode);
 
       expect(result.summary).toEqual({ placed: 211, tableIds: expected.summary.tableIds, left: 0 });
+      // 填桌順序的第一桌 B4（內部編號 3）到最後一桌 A4（27）；{k} 是 22 桌
       expect(Math.min(...(result.summary?.tableIds ?? []))).toBe(3);
       expect(Math.max(...(result.summary?.tableIds ?? []))).toBe(27);
+      expect(new Set(result.summary?.tableIds ?? []).size).toBe(22);
       for (let t = 1; t <= TABLE_COUNT; t++) {
-        expect(await db.table(t), `第 ${t} 桌`).toEqual(expected.table(t));
+        expect(await db.table(t), `${codeOf(t)} 桌`).toEqual(expected.table(t));
       }
-      expect((await db.table(26)).length).toBe(9);
-      expect((await db.table(27)).length).toBe(2);
+      expect((await db.table(26)).length).toBe(9); // A14 桌
+      expect((await db.table(27)).length).toBe(2); // A4 桌
+      // A7、A10、A13 桌（28、29、30）與有備註名稱的 5 桌是空桌
       for (const t of [28, 29, 30, ...Object.keys(NOTE_TABLES_2026).map(Number)]) {
-        expect(await db.table(t), `第 ${t} 桌`).toEqual([]);
+        expect(await db.table(t), `${codeOf(t)} 桌`).toEqual([]);
       }
       for (const [id, noteName] of Object.entries(NOTE_TABLES_2026)) expect(await noteNameOf(Number(id))).toBe(noteName);
       const unseated = await db.unseated();

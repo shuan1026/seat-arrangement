@@ -7,6 +7,7 @@
 // 登入後回到原本的頁面。Google 登入本身不測：確認登入頁網址帶著原本的頁面（同 auth-guard.spec.ts），再用測試的 session cookie 回去。
 // 工作表每一格的內容在 tests/unit/domain/seating-sheet.test.ts、tests/integration/api/export-seating.test.ts；這裡只確認按鈕下載的是
 // 伺服器用資料庫目前的資料產生的檔案。資料用 tests/e2e/helpers/seating-data.ts 寫進測試資料庫（export.md 5.1 的「資料甲」，虛構）。
+// 桌號（D-019）：資料用內部編號（1 = B1、5 = B10、17 = A3、22 = A2），檔案與畫面上是桌號。
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Download, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
@@ -86,7 +87,7 @@ test.describe('參與人員頁頁首的「匯出座位表」（PPL-R39、EXP-R01
     const sheet = await readSheet(download);
     expect(sheet.names).toEqual(['座位表']);
     // EXP-AC04、EXP-AC09：主桌與工作人員區塊
-    expect(cellText(sheet.ws.getCell('G1'))).toBe('第 1 桌\n主桌\n總經理室＋貴賓\n(3)');
+    expect(cellText(sheet.ws.getCell('G1'))).toBe('B1 桌\n主桌\n總經理室＋貴賓\n(3)');
     expect(cellText(sheet.ws.getCell('H1'))).toBe('王大同');
     expect(cellText(sheet.ws.getCell('H3'))).toBe('周董事(+兒童椅)(素食)');
     expect(cellText(sheet.ws.getCell('K1'))).toBe('工作人員\n(1)');
@@ -128,14 +129,14 @@ test.describe('參與人員頁頁首的「匯出座位表」（PPL-R39、EXP-R01
     await expect(page.getByText(FAILURE, { exact: true })).toBeVisible();
   });
 
-  test('EXP-AC18：參與人員頁搜尋「陳志明」並篩選「桌次：第 5 桌」後匯出 → 檔案內容和沒有搜尋、篩選時相同（EXP-R02）', async ({ page }) => {
+  test('EXP-AC18：參與人員頁搜尋「陳志明」並篩選「桌次：B10」後匯出 → 檔案內容和沒有搜尋、篩選時相同（EXP-R02）', async ({ page }) => {
     desktopOnly(page);
     await seedDataA();
     await gotoPeople(page);
     const plain = await readSheet((await clickExport(page)).download);
 
     await searchBox(page).fill('陳志明');
-    await chooseOption(page, filterSelect(page, '桌次'), '第 5 桌', '5');
+    await chooseOption(page, filterSelect(page, '桌次'), 'B10', 'B10');
     await expect(personRow(page, '王大同')).toHaveCount(0);
     const filtered = await readSheet((await clickExport(page)).download);
 
@@ -207,10 +208,10 @@ function callbackTarget(pageUrl: string): URL | undefined {
 }
 
 test.describe('登入已過期時按「匯出座位表」（D-016、EXP-AC21、AUTH-R07）', () => {
-  // 手機開 /?table=5 時桌次詳情是 Dialog，會擋住頁首的按鈕，所以手機用不帶參數的座位安排頁
+  // 手機開 /?table=B10 時桌次詳情是 Dialog，會擋住頁首的按鈕，所以手機用不帶參數的座位安排頁（網址參數用桌號，D-019）
   const cases = [
     { label: '參與人員頁', desktop: '/people', mobile: '/people', heading: '參與人員' },
-    { label: '座位安排頁', desktop: '/?table=5', mobile: '/', heading: '座位安排' },
+    { label: '座位安排頁', desktop: '/?table=B10', mobile: '/', heading: '座位安排' },
   ];
 
   for (const c of cases) {

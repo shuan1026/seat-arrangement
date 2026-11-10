@@ -7,6 +7,8 @@
 // 第 8.1 節（每個指令回傳 undo；seat、seatMany 帶 allowOverflow 時上限 12、不帶時上限 10；restore、swap 上限 12；
 // 10 位擋下回 TABLE_FULL、12 位擋下回 TABLE_LIMIT）；docs/decision-record.md D-018；
 // docs/spec/README.md COM-R07（別人剛改過資料、操作不能完成）。
+// 桌次一律用內部編號 tableId 1–30（工作人員桌 0），畫面上的桌號不在這一層（D-019；3 = B4、5 = B10、6 = B13、7 = B2，
+// 對應見 tests/helpers/table-codes.ts）。
 //
 // 假設 src/domain/seating-rules.ts 的匯出（實作請照這個介面）：
 //
@@ -90,7 +92,7 @@ function expectContiguous(data: SeatingData) {
       .filter((p) => p.tableId === t)
       .map((p) => p.seatOrder)
       .sort((a, b) => (a ?? -1) - (b ?? -1));
-    expect(orders, `第 ${t} 桌的座號`).toEqual(orders.map((_, i) => i));
+    expect(orders, `內部編號 ${t} 的桌的座號`).toEqual(orders.map((_, i) => i));
   }
   for (const p of data.participants) {
     if (p.tableId === null) expect(p.seatOrder, `未入座的 ${p.id} 沒有座號`).toBeNull();
@@ -128,7 +130,7 @@ function expectUndoRestores(before: SeatingData, after: SeatingData, undo: Seati
     expect(positionOf(restored.participants, p.id), `參與人員 ${p.id}`).toEqual(positionOf(before.participants, p.id));
   }
   for (const t of before.tables) {
-    expect(restored.tables.find((x) => x.id === t.id)?.noteName ?? null, `第 ${t.id} 桌的備註名稱`).toBe(t.noteName);
+    expect(restored.tables.find((x) => x.id === t.id)?.noteName ?? null, `內部編號 ${t.id} 的桌的備註名稱`).toBe(t.noteName);
   }
   expectContiguous(restored);
 }
@@ -233,7 +235,7 @@ describe('seat：入座（SEAT-R16、R17、R18）', () => {
 
 describe('seat：搬移（SEAT-R19、R06、R20）', () => {
   it('已在某一桌的人放到另一桌：離開原桌，原桌其他人依原本順序往前補（SEAT-R19、SEAT-R06、SEAT-Q01、SEAT-AC04）', () => {
-    // 第 3 桌：1、王小明、2、3；第 7 桌：11、12
+    // B4 桌（3）：1、王小明、2、3；B2 桌（7）：11、12
     const before = make([
       asEmployee(1, { tableId: 3, seatOrder: 0 }),
       asEmployee(WANG, { tableId: 3, seatOrder: 1 }),
@@ -360,7 +362,7 @@ describe('seatMany：加入人員（SEAT-R30、R31、R50）', () => {
   });
 
   it('加入工作人員桌：已入座與未入座的員工都成為工作人員，已入座的人離開原桌（SEAT-R50、SEAT-AC47）', () => {
-    // 工作人員桌 8 位；陳大華（60）在第 3 桌第 2 列；乙（61）未入座
+    // 工作人員桌 8 位；陳大華（60）在 B4 桌（3）第 2 列；乙（61）未入座
     const before = make([
       ...seatEmployees(1, STAFF_TABLE_ID, 8),
       asEmployee(20, { tableId: 3, seatOrder: 0 }),
@@ -457,7 +459,7 @@ describe('clear：清空桌次（SEAT-R28、R29）', () => {
 
 describe('swap：對調桌次（SEAT-R35、R36、R38）', () => {
   it('兩桌的名單（含順序）與備註名稱整組對調（SEAT-R35、SEAT-AC30）', () => {
-    // 第 3 桌「主桌」：甲 1、乙 2；第 7 桌沒有備註名稱：丙 11、丁 12、戊 13
+    // B4 桌（3）「主桌」：甲 1、乙 2；B2 桌（7）沒有備註名稱：丙 11、丁 12、戊 13
     const before = make([...seatEmployees(1, 3, 2), ...seatEmployees(11, 7, 3)], { 3: '主桌' });
     const after = run(before, { type: 'swap', tableA: 3, tableB: 7 });
     expect(rosterIds(after.participants, 3)).toEqual([11, 12, 13]);
@@ -538,7 +540,7 @@ describe('restore：復原（SEAT-R76～R78）', () => {
   });
 
   it('復原會讓某一桌變成 11 位（別人在這之間坐進來）：復原上限是 12 位，可以復原，回到原本的座號（SEAT-R88、D-018）', () => {
-    // 原本王小明在第 5 桌第 1 位（共 10 位），移出後別人補進第 5 桌，再復原就會變成 11 位
+    // 原本王小明在 B10 桌（5）第 1 位（共 10 位），移出後別人補進 B10 桌，再復原就會變成 11 位
     const before = make([asEmployee(WANG, { tableId: 5, seatOrder: 0 }), ...seatEmployees(1, 5, 9, 1), asEmployee(60)]);
     const removed = expectOk(applySeatingOperation(before, { type: 'unseat', participantId: WANG }));
     const othersSat = expectOk(applySeatingOperation(removed.data, { type: 'seat', participantId: 60, tableId: 5 }));
@@ -547,7 +549,7 @@ describe('restore：復原（SEAT-R76～R78）', () => {
   });
 
   it('復原會讓某一桌變成 13 位（別人在這之間坐滿 12 位）：回 TABLE_LIMIT，資料不變（SEAT-R02、SEAT-R88、COM-R07）', () => {
-    // 王小明在第 5 桌（共 12 位），移出後別人補進第 12 位，再復原就會變成 13 位
+    // 王小明在 B10 桌（5）（共 12 位），移出後別人補進第 12 位，再復原就會變成 13 位
     const before = make([asEmployee(WANG, { tableId: 5, seatOrder: 0 }), ...seatEmployees(1, 5, 11, 1), asEmployee(60)]);
     const removed = expectOk(applySeatingOperation(before, { type: 'unseat', participantId: WANG }));
     const othersSat = expectOk(
@@ -847,7 +849,7 @@ describe('D-018「加入人員」（seatMany 帶 allowOverflow）：最多勾到
     );
   });
 
-  it('10 位的桌加入 2 位後復原：這 2 位回到未入座，第 3 桌回到原本的 10 位（SEAT-R78、SEAT-AC79）', () => {
+  it('10 位的桌加入 2 位後復原：這 2 位回到未入座，B4 桌（3）回到原本的 10 位（SEAT-R78、SEAT-AC79）', () => {
     const before = make([...seatEmployees(1, 3, 10), asEmployee(200), asEmployee(201)]);
     const added = expectOk(
       applySeatingOperation(before, { type: 'seatMany', tableId: 3, participantIds: [200, 201], allowOverflow: true }),
@@ -895,7 +897,7 @@ describe('D-018 復原、對調、調整順序、清空可以處理 11、12 位�
     expect(reject(othersIn.data, { type: 'restore', snapshot: removed.undo })).toBe('STAFF_TABLE_LIMIT');
   });
 
-  it('11 位的第 5 桌和 9 位的第 6 桌對調：名單整組交換，第 6 桌變成 11 位（SEAT-R35、SEAT-AC98）', () => {
+  it('11 位的 B10 桌（5）和 9 位的 B13 桌（6）對調：名單整組交換，B13 桌變成 11 位（SEAT-R35、SEAT-AC98）', () => {
     const before = make([...seatEmployees(1, 5, 11), ...seatEmployees(31, 6, 9)]);
     const after = run(before, { type: 'swap', tableA: 5, tableB: 6 });
     expect(rosterIds(after.participants, 6)).toEqual(ids(1, 11));
@@ -948,7 +950,7 @@ describe('D-018 統計列（SEAT-R75）', () => {
     });
   });
 
-  it('SEAT-AC91：第 5 桌 10 位再放進 1 位 → 已滿 1 桌・超過 1 桌，空位不因第 5 桌變成負數', () => {
+  it('SEAT-AC91：B10 桌（5）10 位再放進 1 位 → 已滿 1 桌・超過 1 桌，空位不因 B10 桌變成負數', () => {
     const before = make([...seatEmployees(1, 5, 10), asEmployee(WANG)]);
     expect(seatingStats(before.participants)).toEqual({
       seated: 10,

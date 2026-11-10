@@ -68,7 +68,7 @@ describe('修改備註名稱（SEAT-R12、SEAT-AC27）', () => {
 });
 
 describe('不能修改的桌次', () => {
-  it('第 31 桌不存在：404 NOT_FOUND（SEAT-R01）', async () => {
+  it('內部編號 31 的桌不存在：404 NOT_FOUND（SEAT-R01；API 用內部編號，D-019）', async () => {
     await expectError(await patchTable(31, { noteName: '主桌' }), 404, 'NOT_FOUND');
   });
 

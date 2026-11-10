@@ -1,7 +1,8 @@
 import 'server-only';
 import { readFileSync } from 'node:fs';
-import { STAFF_TABLE_CAPACITY, STAFF_TABLE_ID, TABLE_COUNT } from '@/contracts/entities';
+import { STAFF_TABLE_CAPACITY, STAFF_TABLE_ID } from '@/contracts/entities';
 import { tableUpdateSchema } from '@/contracts/seating';
+import { parseTableCode } from '@/domain/layout';
 import { normalizeText } from '@/domain/registration-import';
 import { decodeCsv, parseCsv } from './csv';
 import { AppError } from './http';
@@ -103,21 +104,21 @@ async function importStaff(sheet: Sheet<(typeof STAFF_COLUMNS)[number]>) {
 }
 
 const TABLE_COLUMNS = ['桌號', '備註名稱'] as const;
-type TableReasons = { invalidTableNumber: number; invalidNoteName: number; duplicate: number };
+type TableReasons = { invalidTableCode: number; invalidNoteName: number; duplicate: number };
 
 /**
- * tables.csv：寫入第 1～30 桌的備註名稱（D-015）。桌號只收整數（「05」視為 5）；
+ * tables.csv：寫入 30 桌的備註名稱（D-015）。桌號欄寫桌號 A1～A15、B1～B15（D-019），不分大小寫、去掉前後空白，
+ * 寫入時換成內部編號；數字、舊的「B-1」寫法或不存在的桌號（C1、A16）略過。
  * 備註名稱沿用畫面的規則（去掉前後空白、不能空白、最多 20 字，SEAT-Q13 的目前假設）；同一桌第二次起略過。
  */
 async function importTableNotes(sheet: Sheet<(typeof TABLE_COLUMNS)[number]>) {
   const db = seedDb();
-  const reasons: TableReasons = { invalidTableNumber: 0, invalidNoteName: 0, duplicate: 0 };
+  const reasons: TableReasons = { invalidTableCode: 0, invalidNoteName: 0, duplicate: 0 };
   const written = new Set<number>();
   for (const row of sheet.body) {
-    const raw = sheet.cell(row, '桌號');
-    const tableId = /^\d+$/.test(raw) ? Number(raw) : NaN;
-    if (!Number.isInteger(tableId) || tableId < 1 || tableId > TABLE_COUNT) {
-      reasons.invalidTableNumber++;
+    const tableId = parseTableCode(sheet.cell(row, '桌號'));
+    if (tableId === undefined) {
+      reasons.invalidTableCode++;
       continue;
     }
     if (written.has(tableId)) {

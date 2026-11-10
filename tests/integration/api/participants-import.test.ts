@@ -289,7 +289,7 @@ describe('重複匯入：已報名的員工（PPL-R79～R84、PPL-Q20）', () =>
   });
 
   it('表單裡沒有的人不受影響；不新增外部貴賓；不改座位與工作人員（PPL-R79、PPL-R80、PPL-R84、PPL-AC82）', async () => {
-    // 李美華已報名、外部貴賓林董在第 5 桌、陳大文已報名而且是工作人員
+    // 李美華已報名、外部貴賓林董在 B10 桌（內部編號 5）、陳大文已報名而且是工作人員
     const { participant: lee } = await createRegisteredEmployee({ name: '李美華', department: '業務部', extension: '5678' });
     const lin = await createGuest({ guestName: '林董', organization: '○○科技 董事長' });
     await seatAt(5, lin.id);

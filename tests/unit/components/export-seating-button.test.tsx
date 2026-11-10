@@ -236,7 +236,8 @@ describe('ExportSeatingButton：登入已過期（D-016、EXP-AC21、docs/spec/R
     ['參與人員頁', '/people', { pathname: '/people' }],
     ['參與人員頁（帶網址參數）', `/people?employee=12`, { pathname: '/people', params: { employee: '12' } }],
     ['座位安排頁', '/', { pathname: '/' }],
-    ['座位安排頁（帶網址參數）', '/?table=5', { pathname: '/', params: { table: '5' } }],
+    // 網址參數用桌號（D-019、PPL-R33）
+    ['座位安排頁（帶網址參數）', '/?table=B10', { pathname: '/', params: { table: 'B10' } }],
   ])(
     '在%s按「匯出座位表」、API 回 401：不下載檔案，不顯示匯出失敗的 Sonner；整頁回到登入頁並顯示「登入已過期。」，登入後回到原本的頁面（含網址參數）',
     async (_page, path, back) => {

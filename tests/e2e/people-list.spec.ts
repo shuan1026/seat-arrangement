@@ -2,10 +2,12 @@
 // 依據：docs/spec/participants.md 第 2.1 節、第 4.1 節的文案、PPL-R12、R16、R19～R33、R39、R40、R75、R76、R78，
 // PPL-AC01～AC08、AC09（匯入的部分）、AC10～AC24、AC71～AC75、AC77；待確認 PPL-Q13～Q16、Q18、Q19 依原型做法（D-008）；
 // docs/spec/README.md 第 9 節（整頁不能水平捲動）、第 14 節（分頁文案）。
-// 這裡只測「第 n 桌」的連結網址；接上之後開啟的桌次詳情在 people-seating.spec.ts，
+// 桌號 A1～A15、B1～B15（D-019）：測試資料用內部編號（tableId 3 = B4），畫面上是桌號；對應見 tests/helpers/table-codes.ts。
+// 這裡只測「{桌號}」的連結網址；接上之後開啟的桌次詳情在 people-seating.spec.ts，
 // 「匯出座位表」按鈕在 export-seating-button.spec.ts，頁首按鈕的手機版面在 page-head.spec.ts。
 // 資料直接寫進測試資料庫（tests/e2e/helpers/participants-db.ts），都是虛構資料。
 import { expect, test, type Page } from '@playwright/test';
+import { CODES_IN_LIST_ORDER } from '../helpers/table-codes';
 import { signIn } from './helpers/auth';
 import { expectNoHorizontalScroll, isMobileWidth, requireBaseURL } from './helpers/page-checks';
 import { demoEmployees, STAFF_TABLE, withDb } from './helpers/participants-db';
@@ -41,7 +43,7 @@ const desktopOnly = async ({ page }: { page: Page }) => {
   test.skip(isMobileWidth(page), '桌面版面；手機版面在「手機（767 px 以下）」另外測');
 };
 
-/** 王小明在第 3 桌、有眷屬（配偶，未入座）；李美華未入座；陳大文是工作人員；外部貴賓林董（○○科技 董事長）未入座 */
+/** 王小明在 B4 桌（內部編號 3）、有眷屬（配偶，未入座）；李美華未入座；陳大文是工作人員；外部貴賓林董（○○科技 董事長）未入座 */
 async function seedFilterDemo() {
   return withDb(async (db) => {
     const { wang, lee, chen } = await demoEmployees(db);
@@ -166,7 +168,7 @@ test.describe('頁首與表格', () => {
     await expect(cellOf(personRow(page, '陳大文'), '分機')).toHaveText('—');
   });
 
-  test('桌次欄：「第 3 桌」「未入座」「工作人員」（PPL-AC05、PPL-R33）', async ({ page }) => {
+  test('桌次欄：「B4」「未入座」「工作人員」（PPL-AC05、PPL-R33）', async ({ page }) => {
     await withDb(async (db) => {
       const { wang, lee, chen } = await demoEmployees(db);
       await db.register(wang, { tableId: 3 });
@@ -174,21 +176,44 @@ test.describe('頁首與表格', () => {
       await db.register(chen, { tableId: STAFF_TABLE });
     });
     await gotoPeople(page);
-    await expect(cellOf(personRow(page, '王小明'), '桌次')).toHaveText('第 3 桌');
+    await expect(cellOf(personRow(page, '王小明'), '桌次')).toHaveText('B4');
     await expect(cellOf(personRow(page, '李美華'), '桌次')).toHaveText('未入座');
     await expect(cellOf(personRow(page, '陳大文'), '桌次')).toHaveText('工作人員');
   });
 
-  test('按「第 3 桌」開啟座位安排並帶著第 3 桌（/?table=3）（PPL-AC06、PPL-R33）', async ({ page }) => {
+  test('按「B4」開啟座位安排並帶著 B4 桌（/?table=B4）（PPL-AC06、PPL-R33）', async ({ page }) => {
     await withDb(async (db) => {
       const { wang } = await demoEmployees(db);
       await db.register(wang, { tableId: 3 });
     });
     await gotoPeople(page);
-    const link = cellOf(personRow(page, '王小明'), '桌次').getByRole('link', { name: '第 3 桌' });
-    await expect(link).toHaveAttribute('href', '/?table=3');
+    const link = cellOf(personRow(page, '王小明'), '桌次').getByRole('link', { name: 'B4', exact: true });
+    await expect(link).toHaveAttribute('href', '/?table=B4');
     await link.click();
-    await expect(page).toHaveURL((url) => url.pathname === '/' && url.searchParams.get('table') === '3');
+    await expect(page).toHaveURL((url) => url.pathname === '/' && url.searchParams.get('table') === 'B4');
+  });
+
+  test('桌次欄的桌號：A1、A15、B15 照實顯示，「B1」不會寫成「B10」以後的桌（PPL-R33、D-019）', async ({ page }) => {
+    await withDb(async (db) => {
+      const { wang, lee, chen } = await demoEmployees(db);
+      await db.register(wang, { tableId: 2 }); // A1
+      await db.register(lee, { tableId: 21 }); // A15
+      await db.register(chen, { tableId: 1 }); // B1
+      await db.guest('林董', { tableId: 16 }); // B15
+    });
+    await gotoPeople(page);
+    await expect(cellOf(personRow(page, '王小明'), '桌次')).toHaveText('A1');
+    await expect(cellOf(personRow(page, '李美華'), '桌次')).toHaveText('A15');
+    await expect(cellOf(personRow(page, '陳大文'), '桌次')).toHaveText('B1');
+    await expect(cellOf(personRow(page, '林董'), '桌次')).toHaveText('B15');
+    await expect(cellOf(personRow(page, '王小明'), '桌次').getByRole('link', { name: 'A1', exact: true })).toHaveAttribute(
+      'href',
+      '/?table=A1',
+    );
+    await expect(cellOf(personRow(page, '林董'), '桌次').getByRole('link', { name: 'B15', exact: true })).toHaveAttribute(
+      'href',
+      '/?table=B15',
+    );
   });
 
   test('員工名單上沒報名的員工不會出現（PPL-AC07、PPL-R19）', async ({ page }) => {
@@ -335,7 +360,7 @@ test.describe('搜尋與篩選', () => {
     await expect.poll(() => listedNames(page)).toEqual(['陳大文']);
   });
 
-  test('桌次選「第 3 桌」（可搜尋桌號）：只列出王小明；未入座與工作人員都不列出（PPL-AC17、PPL-R26）', async ({ page }) => {
+  test('桌次選「B4」（可搜尋桌號）：只列出王小明；未入座與工作人員都不列出（PPL-AC17、PPL-R26）', async ({ page }) => {
     await withDb(async (db) => {
       const { wang, lee, chen } = await demoEmployees(db);
       await db.register(wang, { tableId: 3 });
@@ -347,8 +372,35 @@ test.describe('搜尋與篩選', () => {
     await expect(listbox.getByRole('option')).toHaveCount(31);
     await expect(listbox.getByRole('option').first()).toHaveText('不限');
     await expect(page.getByPlaceholder('搜尋桌號')).toBeVisible();
-    await page.keyboard.type('3');
-    await optionIn(listbox, '第 3 桌').click();
+    await page.keyboard.type('B4');
+    await optionIn(listbox, 'B4').click();
+    await expect.poll(() => listedNames(page)).toEqual(['王小明']);
+  });
+
+  test('桌次篩選的選項：「不限」後依 A1～A15、B1～B15 排列，選項只寫桌號（PPL-R26、第 2.1 節篩選表、D-019）', async ({ page }) => {
+    await seedFilterDemo();
+    await gotoPeople(page);
+    const listbox = await openOptions(page, filterSelect(page, '桌次'));
+    await expect(listbox.getByRole('option')).toHaveText(['不限', ...CODES_IN_LIST_ORDER]);
+  });
+
+  test('桌次篩選搜尋「A1」：找得到 A1，選了只列出 A1 桌的人，不含 A10～A15 與 B1 桌的人（PPL-R26、第 2.1 節「例如輸入 A1」）', async ({
+    page,
+  }) => {
+    await withDb(async (db) => {
+      const { wang, lee, chen } = await demoEmployees(db);
+      await db.register(wang, { tableId: 2 }); // A1
+      await db.register(lee, { tableId: 29 }); // A10
+      await db.register(chen, { tableId: 1 }); // B1
+      await db.guest('林董', { tableId: 25 }); // A11
+    });
+    await gotoPeople(page);
+    const listbox = await openOptions(page, filterSelect(page, '桌次'), 'A1');
+    await expect(optionIn(listbox, 'A1')).toBeVisible();
+    // 搜尋的是桌號：B 區的桌不會出現
+    await expect(optionIn(listbox, 'B1')).toHaveCount(0);
+    await expect(optionIn(listbox, 'B4')).toHaveCount(0);
+    await optionIn(listbox, 'A1').click();
     await expect.poll(() => listedNames(page)).toEqual(['王小明']);
   });
 
@@ -493,7 +545,7 @@ test.describe('和員工名單的連動（PPL-R12、PPL-R16）', () => {
     await expect.poll(() => listedNames(page)).toEqual(['王小明', '王小明_眷屬']);
   });
 
-  test('員工名單刪除王小明：王小明與眷屬都不在，第 3 桌少 2 人（PPL-AC73）', async ({ page }) => {
+  test('員工名單刪除王小明：王小明與眷屬都不在，B4 桌少 2 人（PPL-AC73）', async ({ page }) => {
     const wangId = await withDb(async (db) => {
       const { wang } = await demoEmployees(db);
       await db.fillTable(3, 1);
@@ -528,7 +580,7 @@ test.describe('手機（767 px 以下）', () => {
 
     const card = personRow(page, '王小明');
     await expect(card).toBeVisible();
-    for (const text of ['王小明', '員工', '研發一部', '1234', '第 3 桌']) {
+    for (const text of ['王小明', '員工', '研發一部', '1234', 'B4']) {
       await expect(card).toContainText(text);
     }
     await expect(markIn(card, '素食')).toBeVisible();

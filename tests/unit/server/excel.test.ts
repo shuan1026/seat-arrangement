@@ -125,10 +125,10 @@ describe.each([
 });
 
 describe('資料甲在 Excel 裡的樣子', () => {
-  it('EXP-AC04 G1:G10 合併，內容「第 1 桌↵主桌↵總經理室＋貴賓↵(3)」；H3 兒童椅底色；H1、H2 沒有底色；H4–H10 空白有框線', async () => {
+  it('EXP-AC04 G1:G10 合併，內容「B1 桌↵主桌↵總經理室＋貴賓↵(3)」；H3 兒童椅底色；H1、H2 沒有底色；H4–H10 空白有框線', async () => {
     const { ws } = await sampleAWorkbook();
     expect(mergeRanges(ws)).toContain('G1:G10');
-    expect(cellText(ws.getCell('G1'))).toBe('第 1 桌\n主桌\n總經理室＋貴賓\n(3)');
+    expect(cellText(ws.getCell('G1'))).toBe('B1 桌\n主桌\n總經理室＋貴賓\n(3)');
     expect(cellText(ws.getCell('H3'))).toBe('周董事(+兒童椅)(素食)');
     expectColor(fillRgb(ws.getCell('H3')), COLORS.childSeat, 'H3');
     expect([fillRgb(ws.getCell('H1')), fillRgb(ws.getCell('H2'))]).toEqual([null, null]);
