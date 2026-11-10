@@ -1,6 +1,7 @@
 import 'server-only';
 import type { Employee, Participant, SeatTable } from '@/contracts/entities';
 import type { AutoArrangeSummary, SeatingOperation, SeatingResult, SeatingSnapshot } from '@/contracts/seating';
+import { autoArrange as arrangeSeats } from '@/domain/auto-arrange';
 import { applySeatingOperation, normalizeTables } from '@/domain/seating-rules';
 import { Prisma } from '@/generated/prisma/client';
 import { prisma } from '../db';
@@ -27,8 +28,9 @@ export type AutoArrangeOutput = {
 };
 export type AutoArranger = (input: AutoArrangeInput) => AutoArrangeOutput;
 
-// 排座演算法由 D 線實作（src/domain/auto-arrange.ts），階段 3 由主 agent 在這裡登記；沒有登記時自動排座回錯誤、不寫入
-let autoArranger: AutoArranger | null = null;
+// 排座演算法：預設是 src/domain/auto-arrange.ts（docs/spec/auto-arrange.md）。
+// registerAutoArranger 換成別的函式，只給測試用（例如只驗證指令流程、不管排座規則的整合測試）。
+let autoArranger: AutoArranger = arrangeSeats;
 
 export function registerAutoArranger(fn: AutoArranger): void {
   autoArranger = fn;
@@ -79,7 +81,6 @@ async function autoArrange(
   participants: Participant[],
   tables: SeatTable[],
 ): Promise<SeatingResult> {
-  if (!autoArranger) throw new AppError('INTERNAL', 'auto arranger is not registered');
   const employees = (await tx.employee.findMany({ orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] })).map(toEmployee);
   const { changes, summary } = autoArranger({
     employees,

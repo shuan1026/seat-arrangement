@@ -19,7 +19,7 @@ export type SeatingRuleResult =
   | { ok: true; data: SeatingData; undo: SeatingSnapshot }
   | { ok: false; violation: SeatingViolation };
 
-/** 自動排座（autoArrange）不在這裡處理，見 src/server/services/seating.ts 的 registerAutoArranger */
+/** 自動排座（autoArrange）不在這裡處理：伺服器用 src/domain/auto-arrange.ts 排座（src/server/services/seating.ts） */
 export type RuleOperation = Exclude<SeatingOperation, { type: 'autoArrange' }>;
 
 type Position = { tableId: number | null; seatOrder: number | null };

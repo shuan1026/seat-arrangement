@@ -19,6 +19,7 @@ import {
   teamOf,
   type Directory,
 } from '@/domain/display';
+import { sortParticipants } from '@/domain/participants';
 
 export const CAPACITY = TABLE_CAPACITY;
 export const NOTE_SUGGESTIONS = ['主桌', '董事貴賓', '供應商', '客戶貴賓'] as const;
@@ -47,37 +48,9 @@ export function departmentsInOrder(employees: readonly Employee[]): string[] {
   return out;
 }
 
-/**
- * 參與人員的預設排序（participants.md PPL-R20、PPL-Q13 的目前假設，原型的做法）：
- * 部門依員工名單首次出現、部門內依組別首次出現（沒有組別的最後）、再依員工名單順序；眷屬緊接在所屬員工後面；外部貴賓最後，依新增順序。
- */
-export function sortPeople(data: Pick<AppState, 'employees' | 'participants'>, dir: Directory): Participant[] {
-  const depts = departmentsInOrder(data.employees);
-  const groups = new Map<string, string[]>();
-  const order = new Map<number, number>();
-  data.employees.forEach((e, i) => {
-    order.set(e.id, i);
-    const g = groups.get(e.department) ?? [];
-    if (e.team && !g.includes(e.team)) g.push(e.team);
-    groups.set(e.department, g);
-  });
-  const porder = new Map(data.participants.map((p, i) => [p.id, i]));
-  const key = (p: Participant): number[] => {
-    if (p.kind === 'GUEST') return [depts.length + 1, 0, porder.get(p.id) ?? 0, 0];
-    const e = employeeOf(p, dir);
-    if (!e) return [depts.length, 0, porder.get(p.id) ?? 0, 0];
-    const d = depts.indexOf(e.department);
-    const g = groups.get(e.department) ?? [];
-    return [d < 0 ? depts.length : d, e.team ? g.indexOf(e.team) : g.length, order.get(e.id) ?? 0, p.kind === 'DEPENDENT' ? 1 : 0];
-  };
-  return data.participants
-    .map((p) => [key(p), p] as const)
-    .sort(([a], [b]) => {
-      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i]! - b[i]!;
-      return 0;
-    })
-    .map(([, p]) => p);
-}
+/** 參與人員的預設排序（participants.md PPL-R20、PPL-Q13）：和參與人員頁同一份，見 src/domain/participants.ts */
+export const sortPeople = (data: Pick<AppState, 'participants'>, dir: Directory): Participant[] =>
+  sortParticipants(data.participants, dir);
 
 /** 30 桌與工作人員桌的名單與標示 */
 export function buildTables(data: AppState, dir: Directory, sorted: readonly Participant[]): Map<number, TableInfo> {

@@ -2,7 +2,8 @@
 // 依據：docs/spec/participants.md 第 2.1 節、第 4.1 節的文案、PPL-R12、R16、R19～R33、R39、R40、R75、R76、R78，
 // PPL-AC01～AC08、AC09（匯入的部分）、AC10～AC24、AC71～AC75、AC77；待確認 PPL-Q13～Q16、Q18、Q19 依原型做法（D-008）；
 // docs/spec/README.md 第 9 節（整頁不能水平捲動）、第 14 節（分頁文案）。
-// 「匯出座位表」按鈕（D 線）與「第 n 桌」開啟的桌次詳情（C 線）在階段 3 接上，這裡只測連結網址。
+// 這裡只測「第 n 桌」的連結網址；接上之後開啟的桌次詳情在 people-seating.spec.ts，
+// 「匯出座位表」按鈕在 export-seating-button.spec.ts，頁首按鈕的手機版面在 page-head.spec.ts。
 // 資料直接寫進測試資料庫（tests/e2e/helpers/participants-db.ts），都是虛構資料。
 import { expect, test, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';

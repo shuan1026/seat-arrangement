@@ -3,20 +3,23 @@
 // 座位安排頁（docs/spec/seating.md；版面依 ui-design-system/source-reference/html/seating.html）：
 // 頁首（H1、統計列、新增人員、匯出座位表）、工作區（人員面板 280 px ＋ 座位圖，桌次詳情浮在座位圖區右側）。
 // 手機（767 px 以下）用分頁切換座位圖與人員，不提供拖移，桌次詳情改為 Dialog。
-import { Download, GripVertical, Plus } from 'lucide-react';
+// 人員的新增、編輯、取消報名與刪除用參與人員的對話框（participants.md 第 2.2、2.3 節），經 PersonActionsContext 接到列操作；
+// 頁首的「匯出座位表」是共用的 ExportSeatingButton（export.md）。
+import { GripVertical, Plus } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useAppStore } from '@/client/app-provider';
-import { downloadBlob } from '@/client/download';
 import { STAFF_TABLE_ID, type Participant } from '@/contracts/entities';
 import { displayName } from '@/domain/display';
 import { seatingStats } from '@/domain/seating-rules';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { notify } from '@/components/ui/toaster';
+import { ExportSeatingButton } from '../export/export-seating-button';
+import { PersonDialog } from '../people/person-dialog';
+import { RemovePersonDialog, type RemoveTarget } from '../people/remove-person-dialog';
 import { SeatingDnd, type DragSource, type DropTarget, type ResolveDrop } from './drag';
 import { buildTables, msg, seatMessage, sortPeople } from './model';
 import { PeoplePanel } from './people-panel';
-import { usePersonActions } from './person-actions';
+import { PersonActionsContext, type PersonActions } from './person-actions';
 import { SeatingUiContext, type SeatingUi } from './person-menu';
 import { AddPeopleDialog, AutoArrangeDialog, ClearDialog, SwapDialog } from './seating-dialogs';
 import { SeatingSkeleton } from './seating-skeleton';
@@ -44,13 +47,13 @@ export function SeatingPage({ initialTable }: { initialTable: number | null }) {
 }
 
 type Selected = number | 'staff' | null;
+type PersonDialogState = { mode: 'create' } | { mode: 'edit'; participantId: number };
 type Hit = { tableId: number; nonce: number } | null;
 
 function Seating({ initialTable }: { initialTable: number | null }) {
   const data = useAppStore((s) => s.data);
   const dir = useAppStore((s) => s.dir);
   const ops = useSeatingOps();
-  const personActions = usePersonActions();
   const mobile = useIsMobile();
   const wide = useWideDesktop();
   const [prefs, setPrefs] = useViewPrefs();
@@ -67,6 +70,9 @@ function Seating({ initialTable }: { initialTable: number | null }) {
   const [seatFor, setSeatFor] = useState<number | null>(null);
   const [seatOpen, setSeatOpen] = useState(false);
   const [dialog, setDialog] = useState<'add' | 'swap' | 'clear' | 'auto' | null>(null);
+  // 新增、編輯人員對話框與取消報名、刪除的確認（參與人員的元件）
+  const [personDialog, setPersonDialog] = useState<PersonDialogState | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<RemoveTarget | null>(null);
 
   // 搜尋標示 4 秒後恢復（SEAT-R62）
   useEffect(() => {
@@ -111,6 +117,17 @@ function Seating({ initialTable }: { initialTable: number | null }) {
       locate,
     }),
     [unseat, locate],
+  );
+
+  // 人員面板、桌次詳情與工作人員桌詳情的列操作「編輯」「取消報名」「刪除」（person-menu.tsx）
+  const personActions = useMemo<PersonActions>(
+    () => ({
+      onAddPerson: () => setPersonDialog({ mode: 'create' }),
+      onEdit: (p) => setPersonDialog({ mode: 'edit', participantId: p.id }),
+      onCancelRegistration: (p) => setRemoveTarget({ action: 'cancelRegistration', participant: p }),
+      onDelete: (p) => setRemoveTarget({ action: 'delete', participant: p }),
+    }),
+    [],
   );
 
   // ---- 拖移（docs/spec/seating.md 3.3～3.8）
@@ -222,6 +239,7 @@ function Seating({ initialTable }: { initialTable: number | null }) {
   const noted = data.tables.filter((t) => t.id !== STAFF_TABLE_ID && t.noteName).length;
 
   return (
+    <PersonActionsContext.Provider value={personActions}>
     <SeatingUiContext.Provider value={ui}>
       {/* 工作區底部離視窗 16 px（原型的做法）；抵掉 App Shell 內容區多出來的底部留白，整頁才不會上下捲動 */}
       <section className="min-w-0 md:-mb-4">
@@ -232,12 +250,10 @@ function Seating({ initialTable }: { initialTable: number | null }) {
           </div>
           {/* 手機：頁首按鈕滿版（原型 prototype.css 的 .page-actions） */}
           <div className="flex flex-wrap items-center gap-2 max-md:w-full max-md:*:flex-[1_1_100%]">
-            <Button variant="primary" leadingIcon={<Plus />} onClick={() => personActions.onAddPerson?.()}>
+            <Button variant="primary" leadingIcon={<Plus />} onClick={() => setPersonDialog({ mode: 'create' })}>
               新增人員
             </Button>
-            <Button variant="outline" leadingIcon={<Download />} onClick={exportSeating}>
-              匯出座位表
-            </Button>
+            <ExportSeatingButton />
           </div>
         </header>
 
@@ -311,8 +327,18 @@ function Seating({ initialTable }: { initialTable: number | null }) {
           onOpenChange={(o) => setDialog(o ? 'auto' : null)}
           data={{ participants: data.participants, noted }}
         />
+        <PersonDialog
+          open={personDialog !== null}
+          onOpenChange={(open) => {
+            if (!open) setPersonDialog(null);
+          }}
+          mode={personDialog?.mode ?? 'create'}
+          participantId={personDialog?.mode === 'edit' ? personDialog.participantId : undefined}
+        />
+        <RemovePersonDialog target={removeTarget} onClose={() => setRemoveTarget(null)} />
       </section>
     </SeatingUiContext.Provider>
+    </PersonActionsContext.Provider>
   );
 }
 
@@ -339,20 +365,4 @@ function StatsLine({ stats }: { stats: ReturnType<typeof seatingStats> }) {
       </span>
     </div>
   );
-}
-
-/** 匯出座位表（docs/spec/export.md EXP-R01、EXP-R06、EXP-R07）：直接下載，不開對話框 */
-async function exportSeating() {
-  try {
-    const res = await fetch('/api/export/seating', { credentials: 'same-origin' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const blob = await res.blob();
-    const cd = res.headers.get('content-disposition') ?? '';
-    const star = /filename\*=UTF-8''([^;]+)/i.exec(cd)?.[1];
-    const plain = /filename="?([^";]+)"?/i.exec(cd)?.[1];
-    downloadBlob(star ? decodeURIComponent(star) : (plain ?? '座位表.xlsx'), blob);
-    notify('已匯出座位表。');
-  } catch {
-    notify('匯出座位表失敗，請確認網路連線後再試一次。', { type: 'destructive' });
-  }
 }

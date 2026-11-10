@@ -22,7 +22,9 @@ import {
   FULL_WIDTH_HEADERS,
   ISSUE_REASON,
   registrationCsv,
+  registrationRows,
   ROSTER_CSV,
+  toCsvText,
   type RegistrationAnswer,
 } from '../../helpers/participants-registration-csv';
 
@@ -311,5 +313,71 @@ describe('重複匯入：已報名的員工（PPL-R79～R84、PPL-Q20）', () =>
     const before = await prisma.employee.findMany({ orderBy: { id: 'asc' } });
     await importOk(sheet(answer('陳大文／行銷部／是／否／否／素食／／備註文字')));
     expect(await prisma.employee.findMany({ orderBy: { id: 'asc' } })).toEqual(before);
+  });
+});
+
+// 錯誤清單的列號（errors[].row）是這一列在檔案中的列號，和用 Excel 開啟時一致：表頭是第 1 列，空白列也算一列，
+// 儲存格內的換行不另算一列（階段 3 決定；src/server/csv.ts 的 parseCsv 保留空白列）。空白列沒有名字，不處理也不算需要處理。
+describe('錯誤清單的列號：和用 Excel 開啟時看到的列號一致（PPL-R74、PPL-Q06）', () => {
+  /**
+   * 報名表的 CSV 文字，插入原樣的幾行文字（'' 是空行）；at 是插入後那一行在檔案中的列號（表頭是第 1 列）。
+   * 回答裡的儲存格換行只用 \n，所以用 \r\n 切開不會切到儲存格中間。
+   */
+  function sheetWithLines(answers: RegistrationAnswer[], inserts: readonly { at: number; text: string }[]): string {
+    const lines = toCsvText(registrationRows(answers, { headers: FULL_WIDTH_HEADERS }))
+      .replace(/\r\n$/, '')
+      .split('\r\n');
+    for (const { at, text } of [...inserts].sort((a, b) => a.at - b.at)) lines.splice(at - 1, 0, text);
+    return `${lines.join('\r\n')}\r\n`;
+  }
+  const commasOnly = ','.repeat(FORM_COLUMNS.length - 1);
+
+  it('中間有空行與只有逗號的列：後面對不到員工名單的人，列號照檔案算；空白列不算需要處理', async () => {
+    const { chen } = await demoRoster();
+    // 1 表頭、2 陳大文、3 空行、4 只有逗號、5 趙六
+    const content = sheetWithLines(
+      [answer('陳大文／研發一部／是'), answer('趙六／行政部／是')],
+      [
+        { at: 3, text: '' },
+        { at: 4, text: commasOnly },
+      ],
+    );
+
+    const result = await importOk(content);
+
+    expect(result).toMatchObject({ imported: 1, created: 1 });
+    expect(result.errors).toEqual([expect.objectContaining({ row: 5, reason: ISSUE_REASON.notFound('趙六') })]);
+    expect(await registrationOf(chen.id)).not.toBeNull();
+  });
+
+  it('已報名的人最後一次填不參加：列號也照檔案算（PPL-R82）', async () => {
+    await demoRoster();
+    // 1 表頭、2 空行、3 王小明「否」
+    const content = sheetWithLines([answer('王小明／研發一部／否')], [{ at: 2, text: '' }]);
+    const result = await importOk(content);
+    expect(result.errors).toEqual([expect.objectContaining({ row: 3, reason: ISSUE_REASON.notAttending('王小明') })]);
+  });
+
+  it('備註欄有換行的那一列只算一列；之後又有空行：後面的人列號不受影響', async () => {
+    const { chen } = await demoRoster();
+    // 1 表頭、2 陳大文（備註兩行）、3 空行、4 趙六
+    const content = sheetWithLines(
+      [answer('陳大文／研發一部／是／否／否／／／第一行\n第二行'), answer('趙六／行政部／是')],
+      [{ at: 3, text: '' }],
+    );
+    const result = await importOk(content);
+    expect(result.errors).toEqual([expect.objectContaining({ row: 4, reason: ISSUE_REASON.notFound('趙六') })]);
+    expect((await registrationOf(chen.id))?.note).toContain('第一行');
+  });
+
+  it('只有空白列、沒有任何回答：「已匯入 0 位，0 筆需要處理。」', async () => {
+    await demoRoster();
+    const before = await snapshot();
+    const content = sheetWithLines([], [
+      { at: 2, text: '' },
+      { at: 3, text: commasOnly },
+    ]);
+    expect(await importOk(content)).toMatchObject({ imported: 0, errors: [] });
+    expect(await snapshot()).toEqual(before);
   });
 });

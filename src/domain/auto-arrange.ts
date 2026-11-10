@@ -4,7 +4,8 @@
 // ARR-Q06 只排未入座時只看桌號與空位。
 import { TABLE_CAPACITY, type Employee, type Participant, type SeatTable } from '@/contracts/entities';
 import type { AutoArrangeSummary } from '@/contracts/seating';
-import { buildDirectory, departmentOf, employeeOf, teamOf, type Directory } from './display';
+import { buildDirectory, departmentOf, teamOf, type Directory } from './display';
+import { participantComparator } from './participants';
 
 export type AutoArrangeMode = 'unseatedOnly' | 'rebuild';
 
@@ -20,81 +21,11 @@ export type AutoArrangeChange = { participantId: number; tableId: number | null;
 
 export type AutoArrangeResult = { changes: AutoArrangeChange[]; summary: AutoArrangeSummary };
 
-// ---- 員工名單順序與參與人員的預設排序 ----
+// ---- 參與人員的預設排序（ARR-R05）：和參與人員頁同一份，見 participants.ts 的 participantComparator ----
 
 /** display.ts 的索引；它的參數型別是可變陣列，這裡先複製一份，不動傳入的陣列 */
 const directoryOf = (state: { employees: readonly Employee[]; participants: readonly Participant[] }): Directory =>
   buildDirectory({ employees: [...state.employees], participants: [...state.participants] });
-
-/** 員工名單順序（EMP-R07）：sortOrder，相同時依 id */
-const byRosterOrder = (a: Employee, b: Employee) => a.sortOrder - b.sortOrder || a.id - b.id;
-
-/**
- * 員工在名單順序中的位置：①部門依員工名單中第一次出現的先後（ARR-Q05）；②同部門內，組別依第一次出現的先後，
- * 沒有組別的排在該部門最後；③員工名單順序。看整份員工名單，含沒有報名的員工。
- */
-export function rosterRanker(
-  employees: readonly Employee[],
-): (e: Employee) => [dept: number, team: number, order: number] {
-  const depts = new Map<string, number>();
-  const teams = new Map<string, Map<string, number>>();
-  const order = new Map<number, number>();
-  [...employees].sort(byRosterOrder).forEach((e, i) => {
-    order.set(e.id, i);
-    if (!depts.has(e.department)) depts.set(e.department, depts.size);
-    let deptTeams = teams.get(e.department);
-    if (!deptTeams) {
-      deptTeams = new Map();
-      teams.set(e.department, deptTeams);
-    }
-    if (e.team && !deptTeams.has(e.team)) deptTeams.set(e.team, deptTeams.size);
-  });
-  return (e) => {
-    const deptTeams = teams.get(e.department);
-    const noTeam = deptTeams?.size ?? 0;
-    return [
-      depts.get(e.department) ?? depts.size,
-      e.team ? (deptTeams?.get(e.team) ?? noTeam) : noTeam,
-      order.get(e.id) ?? order.size,
-    ];
-  };
-}
-
-/**
- * 參與人員的預設排序（participants.md PPL-R20、PPL-Q13 的目前假設；auto-arrange.md ARR-R05）：
- * 員工依員工名單的部門、組別與員工順序；眷屬緊接在所屬員工的位置（所屬員工不在名單裡也一樣）；
- * 外部貴賓排最後，依新增的先後。結果和傳入陣列的順序無關。
- */
-export function participantComparator(
-  state: { employees: readonly Employee[]; participants: readonly Participant[] },
-  dir: Directory = directoryOf(state),
-): (a: Participant, b: Participant) => number {
-  const rank = rosterRanker(state.employees);
-  const keys = new Map<number, number[]>();
-  const keyOf = (p: Participant): number[] => {
-    const cached = keys.get(p.id);
-    if (cached) return cached;
-    let key: number[];
-    if (p.kind === 'GUEST') {
-      key = [2];
-    } else {
-      const e = employeeOf(p, dir);
-      key = e ? [0, ...rank(e), p.kind === 'DEPENDENT' ? 1 : 0] : [1];
-    }
-    keys.set(p.id, key);
-    return key;
-  };
-  return (a, b) => {
-    const ka = keyOf(a);
-    const kb = keyOf(b);
-    for (let i = 0; i < Math.max(ka.length, kb.length); i++) {
-      const d = (ka[i] ?? 0) - (kb[i] ?? 0);
-      if (d !== 0) return d;
-    }
-    if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1;
-    return a.id - b.id;
-  };
-}
 
 // ---- 自動排座 ----
 
@@ -146,7 +77,7 @@ export function autoArrange(input: AutoArrangeInput): AutoArrangeResult {
   // 外部貴賓一律不排；工作人員在工作人員桌，不是未入座也不在可用的桌，所以不會是候選人。
   const isCandidate = (p: Participant) =>
     p.kind !== 'GUEST' && (p.tableId === null || (mode === 'rebuild' && onUsable(p)));
-  const candidates = participants.filter(isCandidate).sort(participantComparator({ employees, participants }, dir));
+  const candidates = participants.filter(isCandidate).sort(participantComparator(dir));
   const candidateIds = new Set(candidates.map((p) => p.id));
 
   // ARR-R16：單獨的員工是這一次要排的人裡沒有他的眷屬的員工

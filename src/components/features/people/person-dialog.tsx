@@ -43,6 +43,8 @@ export interface PersonDialogProps {
   participantId?: number;
   /** join：從員工名單帶入的員工 */
   employeeId?: number;
+  /** 儲存成功、畫面已用伺服器回應校正之後（例如員工名單取消這位員工的勾選，EMP-R23） */
+  onSaved?: (participants: Participant[]) => void;
 }
 
 /** 對話框開著時才掛上表單，每次開啟都從目前的資料重新帶入 */
@@ -104,7 +106,7 @@ function initialForm(mode: PersonDialogMode, self: Participant | null, employeeI
 const employeeOptionLabel = (e: { name: string; department: string; extension: string | null }) =>
   `${e.name}（${employeeSecondLine(e)}）`;
 
-function PersonForm({ onOpenChange, mode, participantId, employeeId }: PersonDialogProps) {
+function PersonForm({ onOpenChange, mode, participantId, employeeId, onSaved }: PersonDialogProps) {
   const data = useAppStore((s) => s.data);
   const dir = useAppStore((s) => s.dir);
   const save = useAwaitedSave();
@@ -325,6 +327,7 @@ function PersonForm({ onOpenChange, mode, participantId, employeeId }: PersonDia
         const dependent = result.participants.find((p) => p.kind === 'DEPENDENT');
         if (!edit && text.dependentLeft && dependent && dependent.tableId == null) notify(text.dependentLeft, { type: 'info' });
         notify(text.success);
+        onSaved?.(result.participants);
       },
       conflictMessage: (code) => conflictText(code, f).text,
     });

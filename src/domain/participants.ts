@@ -52,54 +52,72 @@ const byRoster = (a: Employee, b: Employee) => a.sortOrder - b.sortOrder || a.id
 export const rosterOrder = (employees: Iterable<Employee>): Employee[] => [...employees].sort(byRoster);
 
 /**
- * 預設排序（PPL-R20、PPL-Q13 的原型做法）：
- * 部門依員工名單上先出現的順序；部門內依組別先出現的順序，沒有組別的排最後；同組依員工名單順序；
- * 眷屬緊接在所屬員工的下一列；外部貴賓排在所有員工與眷屬之後，依新增順序。不改變傳入的陣列。
+ * 員工在員工名單順序中的位置（PPL-Q13 的原型做法；auto-arrange.md ARR-Q05）：
+ * ①部門依員工名單上先出現的順序；②同部門內，組別依先出現的順序，沒有組別的排在該部門最後；③員工名單順序。
+ * 看整份員工名單，含沒有報名的員工。
  */
-export function sortParticipants(list: readonly Participant[], dir: Directory): Participant[] {
-  const roster = rosterOrder(dir.employees.values());
-  const deptRank = new Map<string, number>();
-  const teamRank = new Map<string, number>();
-  const empRank = new Map<number, number>();
-  roster.forEach((e, i) => {
-    if (!deptRank.has(e.department)) deptRank.set(e.department, deptRank.size);
-    const team = e.team ? `${e.department}\u0000${e.team}` : null;
-    if (team && !teamRank.has(team)) teamRank.set(team, i);
-    empRank.set(e.id, i);
+export function rosterRanker(employees: Iterable<Employee>): (e: Employee) => [dept: number, team: number, order: number] {
+  const depts = new Map<string, number>();
+  const teams = new Map<string, Map<string, number>>();
+  const order = new Map<number, number>();
+  rosterOrder(employees).forEach((e, i) => {
+    order.set(e.id, i);
+    if (!depts.has(e.department)) depts.set(e.department, depts.size);
+    let deptTeams = teams.get(e.department);
+    if (!deptTeams) {
+      deptTeams = new Map();
+      teams.set(e.department, deptTeams);
+    }
+    if (e.team && !deptTeams.has(e.team)) deptTeams.set(e.team, deptTeams.size);
   });
-  const MISSING = Number.MAX_SAFE_INTEGER;
-
-  type Key = { group: number; dept: number; team: number; emp: number; dependent: number; created: string; id: number };
-  const keyOf = (p: Participant): Key => {
-    if (p.kind === 'GUEST') return { group: 1, dept: 0, team: 0, emp: 0, dependent: 0, created: p.createdAt, id: p.id };
-    const e = employeeOf(p, dir);
-    const team = e?.team ? teamRank.get(`${e.department}\u0000${e.team}`) : undefined;
-    return {
-      group: 0,
-      dept: e ? (deptRank.get(e.department) ?? MISSING) : MISSING,
-      team: team ?? MISSING,
-      emp: e ? (empRank.get(e.id) ?? MISSING) : MISSING,
-      dependent: p.kind === 'DEPENDENT' ? 1 : 0,
-      created: '',
-      id: p.id,
-    };
+  return (e) => {
+    const deptTeams = teams.get(e.department);
+    const noTeam = deptTeams?.size ?? 0;
+    return [
+      depts.get(e.department) ?? depts.size,
+      e.team ? (deptTeams?.get(e.team) ?? noTeam) : noTeam,
+      order.get(e.id) ?? order.size,
+    ];
   };
-  const keys = new Map(list.map((p) => [p.id, keyOf(p)]));
-  const cmp = (a: Participant, b: Participant): number => {
-    const ka = keys.get(a.id)!;
-    const kb = keys.get(b.id)!;
-    return (
-      ka.group - kb.group ||
-      ka.dept - kb.dept ||
-      ka.team - kb.team ||
-      ka.emp - kb.emp ||
-      ka.dependent - kb.dependent ||
-      (ka.created < kb.created ? -1 : ka.created > kb.created ? 1 : 0) ||
-      ka.id - kb.id
-    );
-  };
-  return [...list].sort(cmp);
 }
+
+/**
+ * 參與人員的預設排序（PPL-R20、PPL-Q13 的原型做法）。參與人員頁、座位安排的人員面板、自動排座（auto-arrange.md ARR-R05）
+ * 與匯出座位表的工作人員區塊都用這一份：
+ * 員工依員工名單的部門、組別與員工順序（rosterRanker）；眷屬緊接在所屬員工的下一列；
+ * 找不到員工的人排在所有員工與眷屬之後；外部貴賓排最後，依新增的先後。結果和傳入陣列的順序無關。
+ */
+export function participantComparator(dir: Directory): (a: Participant, b: Participant) => number {
+  const rank = rosterRanker(dir.employees.values());
+  const keys = new Map<number, number[]>();
+  const keyOf = (p: Participant): number[] => {
+    const cached = keys.get(p.id);
+    if (cached) return cached;
+    let key: number[];
+    if (p.kind === 'GUEST') {
+      key = [2];
+    } else {
+      const e = employeeOf(p, dir);
+      key = e ? [0, ...rank(e), p.kind === 'DEPENDENT' ? 1 : 0] : [1];
+    }
+    keys.set(p.id, key);
+    return key;
+  };
+  return (a, b) => {
+    const ka = keyOf(a);
+    const kb = keyOf(b);
+    for (let i = 0; i < Math.max(ka.length, kb.length); i++) {
+      const d = (ka[i] ?? 0) - (kb[i] ?? 0);
+      if (d !== 0) return d;
+    }
+    if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1;
+    return a.id - b.id;
+  };
+}
+
+/** 依預設排序排好（participantComparator）；不改變傳入的陣列 */
+export const sortParticipants = (list: readonly Participant[], dir: Directory): Participant[] =>
+  [...list].sort(participantComparator(dir));
 
 /** 部門篩選的選項（PPL-R24）：員工名單上的部門，不重複，依員工名單順序 */
 export function departmentOptions(employees: readonly Employee[]): string[] {

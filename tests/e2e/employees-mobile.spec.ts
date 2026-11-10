@@ -125,7 +125,8 @@ test('EMP-AC77：375 px → 勾選 2 張未報名的卡片 →「加入尾牙（
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText('只加入員工本人，眷屬請之後在參與人員補上。')).toBeVisible();
   await expectMobileDialog(page, dialog, '加入尾牙', '取消');
-  // 按下「加入尾牙」之後的結果（同 EMP-AC30）在 tests/unit/components/employees-page.test.tsx 以假的 API 驗證，階段 3 接上 B 線的 API 後再測
+  // 按下「加入尾牙」之後的結果（同 EMP-AC30）：tests/unit/components/employees-page.test.tsx 以假的 API 驗證；
+  // 接上 B 線的 API 後，寫進資料庫的結果在 employees-join.spec.ts 的 EMP-AC77
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
   await expect(dialog).toBeHidden();
 });
