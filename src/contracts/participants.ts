@@ -15,7 +15,7 @@ const optionalText = (max: number) =>
     .nullish()
     .transform((v) => (v ? v : null));
 
-/** 一般桌號 1–30；null = 未入座。工作人員桌用 isStaff 指定，不用 tableId */
+/** 一般桌的內部編號 1–30（畫面上的桌號見 src/domain/layout.ts，D-019）；null = 未入座。工作人員桌用 isStaff 指定，不用 tableId */
 export const seatChoiceSchema = z.number().int().min(1).max(TABLE_COUNT).nullable();
 
 const common = {

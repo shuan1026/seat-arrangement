@@ -32,7 +32,7 @@ export interface BadgeProps extends ComponentProps<'span'> {
   rounded?: boolean;
   /** 文字前的 12px 圖示；positive／pending 預設 check／clock，傳 null 可拿掉 */
   icon?: ReactNode;
-  /** 包住 button 或 a，成為可按的徽章（例如「第 3 桌」、已套用的篩選） */
+  /** 包住 button 或 a，成為可按的徽章（例如桌號「B4」、已套用的篩選） */
   asChild?: boolean;
 }
 

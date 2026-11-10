@@ -58,7 +58,7 @@ export type SeatingOperation = z.infer<typeof seatingOperationSchema>;
 export const autoArrangeSummarySchema = z.object({
   /** 排進桌次的人數 */
   placed: z.number().int(),
-  /** 有排進人的桌號，由小到大 */
+  /** 有排進人的桌次內部編號（1–30），由小到大；畫面上的桌號見 src/domain/layout.ts（D-019） */
   tableIds: z.array(z.number().int()),
   /** 空位不夠、留在未入座的人數 */
   left: z.number().int(),

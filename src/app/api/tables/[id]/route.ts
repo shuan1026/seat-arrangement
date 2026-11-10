@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export const PATCH = route<{ id: string }>(async ({ req, params }) => {
   const id = parseId(params.id);
-  // 只有第 1–30 桌有備註名稱；工作人員桌（0）與不存在的桌號都當作找不到（SEAT-R01、SEAT-R48）
+  // 只有第 1–30 桌有備註名稱；工作人員桌（0）與不存在的內部編號都當作找不到（SEAT-R01、SEAT-R48）
   if (id < 1 || id > TABLE_COUNT) throw new AppError('NOT_FOUND', 'table not found');
   const { noteName } = await parseJson(req, tableUpdateSchema);
   return Response.json({ table: await updateTableNoteName(id, noteName) });

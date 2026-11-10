@@ -90,12 +90,12 @@ const BUTTON_VARIANTS = [
 
 const TABLE_OPTIONS: SelectOption[] = [
   { value: 'none', label: '未入座' },
-  { value: '1', label: '第 1 桌', description: '剩 2 位・業務部' },
-  { value: '2', label: '第 2 桌', description: '剩 0 位', disabled: true, disabledReason: '已滿' },
-  { value: '3', label: '第 3 桌', description: '剩 5 位' },
-  { value: '4', label: '第 4 桌（貴賓桌）', description: '剩 1 位・備註：董事長與來賓' },
-  { value: '5', label: '第 5 桌', description: '剩 0 位', disabled: true, disabledReason: '已滿' },
-  { value: '6', label: '第 6 桌', description: '剩 10 位' },
+  { value: '2', label: 'A1 桌', description: '剩 2 位・業務部' },
+  { value: '22', label: 'A2 桌', description: '剩 0 位', disabled: true, disabledReason: '已滿' },
+  { value: '17', label: 'A3 桌', description: '剩 5 位' },
+  { value: '27', label: 'A4 桌（貴賓桌）', description: '剩 1 位・備註：董事長與來賓' },
+  { value: '23', label: 'A5 桌', description: '剩 0 位', disabled: true, disabledReason: '已滿' },
+  { value: '18', label: 'A6 桌', description: '剩 10 位' },
 ];
 
 const EMPLOYEE_OPTIONS: SelectOption[] = [
@@ -331,12 +331,12 @@ function Gallery() {
           <Row label="不代表狀態的標示">
             <Badge variant="outline">貴賓</Badge>
             <Badge variant="outline" asChild>
-              <button type="button" aria-label="在座位圖標示第 3 桌" onClick={() => notify('已標示第 3 桌。', { type: 'info' })}>
-                第 3 桌
+              <button type="button" aria-label="在座位圖標示 B4 桌" onClick={() => notify('已標示 B4 桌。', { type: 'info' })}>
+                B4
               </button>
             </Badge>
             <Badge variant="outline" asChild>
-              <a href="#table">第 12 桌</a>
+              <a href="#table">B3</a>
             </Badge>
             <Badge variant="outline" asChild>
               <button type="button" disabled>
@@ -489,9 +489,9 @@ function Gallery() {
             </Dialog>
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="outline">第 3 桌（wide）</Button>
+                <Button variant="outline">B4 桌（wide）</Button>
               </DialogTrigger>
-              <DialogContent size="wide" title="第 3 桌" description="8/10 人">
+              <DialogContent size="wide" title="B4 桌" description="8/10 人">
                 <DialogBody>
                   <Alert title="這桌還有 2 個空位。" />
                   {PEOPLE.map((p) => (
@@ -539,7 +539,7 @@ function Gallery() {
               </AlertDialogTrigger>
               <AlertDialogContent
                 title="要一次加入 3 位嗎？"
-                description="以下人員會加入第 3 桌："
+                description="以下人員會加入 B4 桌："
                 confirmLabel="加入 3 位"
                 onConfirm={() => notify('已加入 3 位。')}
               >
@@ -557,7 +557,7 @@ function Gallery() {
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent
-                title="要清空第 3 桌嗎？"
+                title="要清空 B4 桌嗎？"
                 description="桌上 8 位會移到未入座。"
                 confirmLabel="清空桌次"
                 destructive
@@ -568,7 +568,7 @@ function Gallery() {
                   setTimeout(() => {
                     setAsyncLoading(false);
                     setAsyncOpen(false);
-                    notify('已清空第 3 桌。', { action: { label: '復原', onClick: () => notify('已復原。') } });
+                    notify('已清空 B4 桌。', { action: { label: '復原', onClick: () => notify('已復原。') } });
                   }, 1200);
                 }}
               />
@@ -601,7 +601,7 @@ function Gallery() {
             <Button variant="outline" data-demo="toast-success" onClick={() => notify('已儲存')}>
               success
             </Button>
-            <Button variant="outline" data-demo="toast-warning" onClick={() => notify('第 3 桌已滿，請先移出一位。', { type: 'warning' })}>
+            <Button variant="outline" data-demo="toast-warning" onClick={() => notify('B4 桌已滿，請先移出一位。', { type: 'warning' })}>
               warning
             </Button>
             <Button
@@ -611,13 +611,13 @@ function Gallery() {
             >
               destructive
             </Button>
-            <Button variant="outline" data-demo="toast-info" onClick={() => notify('第 4 桌只剩 1 位，眷屬先留在未入座。', { type: 'info' })}>
+            <Button variant="outline" data-demo="toast-info" onClick={() => notify('B7 桌只剩 1 位，眷屬先留在未入座。', { type: 'info' })}>
               info
             </Button>
             <Button
               variant="outline"
               data-demo="toast-action"
-              onClick={() => notify('已把王小明移到第 3 桌。', { action: { label: '復原', onClick: () => notify('已復原。') } })}
+              onClick={() => notify('已把王小明移到 B4 桌。', { action: { label: '復原', onClick: () => notify('已復原。') } })}
             >
               含「復原」
             </Button>

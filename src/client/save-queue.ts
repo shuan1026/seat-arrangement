@@ -20,7 +20,7 @@ export type Job<T = unknown> = {
   send: () => Promise<T>;
   /** 成功後用回應校正畫面 */
   onSuccess?: (result: T) => void;
-  /** 別人剛改過資料、這次不能完成時的既有提示（例如「第 {n} 桌已滿，請先移出一位。」）；沒有時用共用文案 */
+  /** 別人剛改過資料、這次不能完成時的既有提示（例如「{桌號} 桌已滿，請先移出一位。」）；沒有時用共用文案 */
   conflictMessage?: (code: ErrorCode) => string | undefined;
 };
 
