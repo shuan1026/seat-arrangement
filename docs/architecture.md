@@ -304,7 +304,8 @@ model SeatTable {
 - 正式環境啟動時執行 `prisma migrate deploy` 與 `seed`（第 14 節）。
 - 1–30 桌與工作人員桌寫在第一個 migration 的 INSERT，不靠 seed。
 - seed 在 `prisma migrate deploy` 之後、伺服器接受請求之前執行：Next.js 啟動時由 `src/instrumentation.ts` 呼叫 `src/server/seed.ts`，失敗就結束程序。正式映像沒有 TypeScript 執行工具，借用 Next.js 已打包好的程式與 Prisma Client，不另外建置。只在 `SEED_IMPORT=1`（Dockerfile 設定）時執行，本機開發與測試不會匯入真實資料。員工表是空的、而且 `prisma/seed-data/roster.csv` 與 `registrations.csv` 都存在時，匯入員工名單，再匯入報名表成為參與人員（D-007）。接著有 `staff.csv`（姓名、部門）時，把這些人設為工作人員、依檔案順序放進工作人員桌；有 `tables.csv`（桌號、備註名稱）時寫入備註名稱（D-015）。對不到、沒有報名、超過工作人員桌人數或格式不符的列略過並記 Log。seed 不自動排座。
-  - 這幾步在同一個交易內完成，前面先取得 MySQL `GET_LOCK('seed-import')`，避免多個執行個體同時啟動時重複匯入；任何一列以外的錯誤就整批不寫入。
+  - 這幾步在同一個 `READ COMMITTED` 交易內完成，交易一開始 `SELECT … FOR UPDATE` 鎖住工作人員桌那一列（第一個 migration 就有，一定存在），鎖到 commit 或 rollback 才放開；多個執行個體同時啟動時，後面的會等前面的 commit 後才檢查員工表，看到已有資料就跳過。任何一列以外的錯誤就整批不寫入。
+  - Log 只記筆數（匯入、對不到、略過），不記姓名（第 15.2 節）；對不到與略過的人名在部署前用本機試跑確認（D-007）。
   - 員工表已有資料、或資料檔不存在時跳過，並記一筆 Log；所以重新部署與冷啟動都不會蓋掉上線後的修改。
   - 匯入摘要（員工、參與人員、眷屬的筆數，以及對不到員工名單的報名者）寫進 Log，不印電子郵件。
 - 資料表變更只能新增 migration，不改已部署過的 migration。
@@ -548,7 +549,7 @@ type SeatingOperationResult = {
 4. 部署方式：
    - 手動：打包 ZIP（排除 `node_modules`、`.next`、`.env*`、`.git`）上傳；或
    - 自動：在 GitLab 設定平台產生的 CI job（推送到預設分支就部署），把部署權杖存成 masked、protected 的 CI 變數 `AIBORN_DEPLOY_TOKEN`。CI 以 `git archive` 打包已提交的檔案，未提交的 `.env`、`docs/glossary/` 與 `prisma/seed-data/` 不會被帶走。
-   - 匯入真實名單（D-007）：在第 2 步的第一次部署前，把通訊錄（最後加「組別」欄）存成 `prisma/seed-data/roster.csv`，把 Google 表單匯出的報名表存成 `prisma/seed-data/registrations.csv`；工作人員名單與前方七桌的備註名稱是 `staff.csv`、`tables.csv`（D-015，已建立在本機）。用手動 ZIP 部署。到「網站監控」的 Log 看匯入摘要，確認筆數和對不到員工名單的人。匯入成功後刪掉本機的 `prisma/seed-data/`，之後的 ZIP 不再帶資料檔。
+   - 匯入真實名單（D-007）：在第 2 步的第一次部署前，把通訊錄（最後加「組別」欄）存成 `prisma/seed-data/roster.csv`，把 Google 表單匯出的報名表存成 `prisma/seed-data/registrations.csv`；工作人員名單與前方七桌的備註名稱是 `staff.csv`、`tables.csv`（D-015，已建立在本機）。用手動 ZIP 部署。部署前先在本機用這幾個檔試跑 seed，確認筆數與對不到、會被略過的人名（D-007）；部署後到「網站監控」的 Log 看匯入摘要，確認筆數和試跑一致。匯入成功後刪掉本機的 `prisma/seed-data/`，之後的 ZIP 不再帶資料檔。
 5. 到平台的部署中心看建置進度。完成後用公司帳號登入，確認 `/api/health` 與座位安排頁正常，再用非公司帳號確認會被擋。
 
 ### 14.4 環境
