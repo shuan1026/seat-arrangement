@@ -4,9 +4,17 @@
 // 「・已有眷屬」）、PPL-Q11（「找不到？請先到員工名單新增。」一直顯示）依原型做法（D-008）；
 // docs/spec/README.md 第 9 節（欄位錯誤：離開欄位時驗證，送出時顯示全部錯誤並聚焦第一個）、COM-R07（別人剛改過資料）。
 // 從員工名單開啟的「加入尾牙」（join 模式）在 tests/unit/components/people-person-dialog.test.tsx 與階段 3 測。
+// 員工名單上標記為不參加的員工（D-014）：選項照常可選、後面標示「不參加」，加入後標記清掉（PPL-R42、PPL-AC84）。
 // 資料直接寫進測試資料庫（tests/e2e/helpers/participants-db.ts），都是虛構資料。
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
+import {
+  cellOf as employeeCell,
+  gotoEmployees,
+  rowOf as employeeRow,
+  tabCount as employeeTabCount,
+  tabOf as employeeTab,
+} from './helpers/employees-page';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
 import { demoEmployees, STAFF_TABLE, withDb } from './helpers/participants-db';
 import {
@@ -170,6 +178,67 @@ test.describe('新增人員：員工', () => {
     const row = personRow(page, '王小明').filter({ hasText: '9999' });
     await expect(cellOf(row, '部門或單位')).toHaveText('業務部');
     await expect(cellOf(row, '分機')).toHaveText('9999');
+  });
+
+  test('PPL-AC84：陳大文在員工名單標記為不參加 → 員工欄位搜尋「陳大文」，選項可以選、後面標示「不參加」；選他並按「新增人員」→ 新增為參與人員；員工名單上是已報名，「不參加」分頁沒有他（PPL-R42、EMP-R64、D-014）', async ({
+    page,
+  }) => {
+    const { chen } = await withDb(async (db) => {
+      const wang = await db.employee({ name: '王小明', department: '研發一部', extension: '1234' });
+      const lee = await db.employee({ name: '李美華', department: '業務部', extension: '5678' });
+      const chen = await db.employee({ name: '陳大文', department: '研發一部', declined: true });
+      await db.register(wang);
+      await db.register(lee);
+      return { chen };
+    });
+    await gotoPeople(page);
+    const dialog = await openNewPersonDialog(page);
+
+    const listbox = await openOptions(page, selectField(dialog, '員工'), '陳大文');
+    const option = optionIn(listbox, /^陳大文（研發一部）/);
+    await expect(option).toBeEnabled();
+    await expect(option).toHaveText(/陳大文（研發一部）.*不參加/);
+    await expect(option).not.toContainText('已報名');
+    await option.click();
+    await expect(listbox).toBeHidden();
+    await save(dialog);
+
+    await expect(dialog).toBeHidden();
+    await expectToast(page, '已新增 陳大文。');
+    await expect(personRow(page, '陳大文')).toHaveCount(1);
+    await expect.poll(() => countNamed('陳大文')).toBe(1);
+    await expect.poll(() => withDb((db) => db.declinedOf(chen))).toBe(false);
+
+    // 員工名單：陳大文是已報名，「不參加」分頁沒有他（EMP-R64）
+    await gotoEmployees(page);
+    await expect(employeeCell(employeeRow(page, '陳大文'), 'status')).toHaveText('已報名');
+    await expect(employeeTab(page, '不參加')).toHaveText(employeeTabCount('不參加', 0));
+    await employeeTab(page, '不參加').click();
+    await expect(employeeRow(page, '陳大文')).toHaveCount(0);
+    await expect(page.getByText('沒有標記為不參加的員工。')).toBeVisible();
+  });
+
+  test('不參加的員工和其他員工一樣可用分機或部門搜尋到；已報名的同事仍是停用並標示「・已報名」（PPL-R42、PPL-R43、D-014）', async ({ page }) => {
+    await withDb(async (db) => {
+      const wang = await db.employee({ name: '王小明', department: '研發一部', extension: '1234' });
+      await db.employee({ name: '張三', department: '業務部', extension: '2468', declined: true });
+      await db.register(wang);
+    });
+    await gotoPeople(page);
+    const dialog = await openNewPersonDialog(page);
+
+    let listbox = await openOptions(page, selectField(dialog, '員工'), '2468');
+    const zhang = optionIn(listbox, /^張三（業務部・分機 2468）/);
+    await expect(zhang).toBeEnabled();
+    await expect(zhang).toContainText('不參加');
+    await page.keyboard.press('Escape');
+    await expect(listbox).toBeHidden();
+
+    listbox = await openOptions(page, selectField(dialog, '員工'), '王小明');
+    const wang = optionIn(listbox, /^王小明（研發一部・分機 1234）/);
+    await expect(wang).toBeDisabled();
+    await expect(wang).toContainText('・已報名');
+    await expect(wang).not.toContainText('不參加');
   });
 
   test('勾「同時加一位眷屬」才展開眷屬欄位；稱謂選「子女」、勾「眷屬需要兒童椅」：新增陳大文與陳大文_眷屬（PPL-AC40、PPL-R46、PPL-R50）', async ({ page }) => {

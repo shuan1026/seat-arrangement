@@ -1,13 +1,17 @@
 // 員工名單的手機版（767 px 以下）：docs/spec/employees.md 第 2.1～2.7 節的「手機」列、EMP-R26，
-// 驗收條件 EMP-AC76～AC79；README 第 9 節（對話框寬度隨視窗縮小、按鈕滿版堆疊、主要按鈕在上；不可整頁水平捲動）、COM-AC11。
+// 驗收條件 EMP-AC76～AC79、AC88（不參加，D-014：四個分頁在分頁列內水平捲動、不參加的卡片勾選框停用）；
+// README 第 9 節（對話框寬度隨視窗縮小、按鈕滿版堆疊、主要按鈕在上；不可整頁水平捲動）、COM-AC11。
 // 只在 mobile-320 project 跑；EMP-AC76、AC77、AC79 指定 375 px，測試內改視窗寬度。
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { closeDb, insertEmployees, registerEmployee, resetData } from './helpers/employees-db';
 import {
   HEADER_CHECKBOX,
+  TAB_LABELS,
   boxOf,
   bulkButton,
+  dataRows,
+  declinedBox,
   filterTrigger,
   gotoEmployees,
   openRowMenu,
@@ -15,6 +19,8 @@ import {
   pickBox,
   rowOf,
   searchBox,
+  tabCount,
+  tabOf,
   takenBox,
 } from './helpers/employees-page';
 import { expectNoHorizontalScroll, isMobileWidth, requireBaseURL } from './helpers/page-checks';
@@ -203,6 +209,62 @@ test('320 px 開著新增員工、編輯員工、刪除確認與匯入對話框�
 
   await pageButton(page, '匯入員工名單').click();
   await expect(page.getByRole('dialog', { name: '匯入員工名單' })).toBeVisible();
+  await expectNoHorizontalScroll(page);
+});
+
+test('EMP-AC88：320 px、有不參加的員工 → 四個分頁都在，放不下的部分在分頁列內水平捲動；不參加的卡片顯示「不參加」、勾選框停用；沒有整頁水平捲動（EMP-R08、EMP-R26、2.2）', async ({
+  page,
+}) => {
+  await seed();
+  await insertEmployees([{ name: '趙六', department: '業務部', extension: '3001', declined: true }]);
+  await gotoEmployees(page);
+  expect(page.viewportSize()?.width).toBe(320);
+
+  // 四個分頁都在，依序是全部、未報名、已報名、不參加
+  const tabs = page.getByRole('tab');
+  await expect(tabs).toHaveCount(4);
+  for (const [i, label] of TAB_LABELS.entries()) await expect(tabs.nth(i)).toHaveText(new RegExp(`^${label}\\s*\\d+$`));
+  await expect(tabOf(page, '不參加')).toHaveText(tabCount('不參加', 1));
+
+  // 分頁列放不下時，是分頁列自己的容器在水平捲動（不是整頁）；容器不超出視窗
+  const strip = await tabOf(page, '不參加').evaluate((el) => {
+    const right = (n: Element) => n.getBoundingClientRect().right;
+    for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
+      const ox = getComputedStyle(n).overflowX;
+      if ((ox === 'auto' || ox === 'scroll') && n.scrollWidth > n.clientWidth) {
+        return { scrolls: true, left: n.getBoundingClientRect().left, right: right(n) };
+      }
+    }
+    return { scrolls: false, left: 0, right: right(el) };
+  });
+  expect(strip.left).toBeGreaterThanOrEqual(0);
+  expect(strip.right, strip.scrolls ? '分頁列的捲動容器在視窗內' : '放得下時四個分頁都在視窗內').toBeLessThanOrEqual(320 + 1);
+  await expectNoHorizontalScroll(page);
+
+  // 捲到「不參加」並按下：只列不參加的卡片
+  await tabOf(page, '不參加').click();
+  await expect(tabOf(page, '不參加')).toHaveAttribute('aria-selected', 'true');
+  const tabBox = await boxOf(tabOf(page, '不參加'));
+  expect(tabBox.x).toBeGreaterThanOrEqual(0);
+  expect(tabBox.x + tabBox.width).toBeLessThanOrEqual(320 + 1);
+  await expect(dataRows(page)).toHaveCount(1);
+  await expectNoHorizontalScroll(page);
+
+  // 不參加的卡片：顯示「不參加」，勾選框停用，無障礙名稱「趙六 不參加」（EMP-R25、EMP-R26）
+  const card = rowOf(page, '趙六');
+  await expect(card.getByText('不參加', { exact: true })).toBeVisible();
+  await expect(declinedBox(page, '趙六')).toBeVisible();
+  await expect(declinedBox(page, '趙六')).toBeDisabled();
+  await expect(pickBox(page, '趙六')).toHaveCount(0);
+
+  // 「全部」分頁也一樣；不參加的列操作選單不被裁切
+  await tabOf(page, '全部').click();
+  await expect(declinedBox(page, '趙六')).toBeDisabled();
+  const menu = await openRowMenu(page, rowOf(page, '趙六'));
+  await expect(menu.getByRole('menuitem')).toHaveText(['加入尾牙', '改回未報名', '編輯', '刪除']);
+  const menuBox = await boxOf(menu);
+  expect(menuBox.x).toBeGreaterThanOrEqual(0);
+  expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(320);
   await expectNoHorizontalScroll(page);
 });
 

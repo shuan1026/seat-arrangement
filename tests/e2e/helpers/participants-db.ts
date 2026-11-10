@@ -16,6 +16,8 @@ export type EmployeeSeed = {
   team?: string | null;
   /** 員工名單順序；省略時排在最後 */
   sortOrder?: number;
+  /** 承辦人標記為不參加（D-014）；省略時是 false */
+  declined?: boolean;
 };
 
 export type ParticipantSeed = {
@@ -64,10 +66,16 @@ export class PeopleDb {
       sortOrder = num(row?.next) ?? 1;
     }
     const res = await this.conn.query<{ insertId: number | bigint }>(
-      'INSERT INTO Employee (name, department, team, extension, sortOrder, updatedAt) VALUES (?, ?, ?, ?, ?, NOW(3))',
-      [e.name, e.department, e.team ?? null, e.extension ?? null, sortOrder],
+      'INSERT INTO Employee (name, department, team, extension, declined, sortOrder, updatedAt) VALUES (?, ?, ?, ?, ?, ?, NOW(3))',
+      [e.name, e.department, e.team ?? null, e.extension ?? null, e.declined ?? false, sortOrder],
     );
     return Number(res.insertId);
+  }
+
+  /** 員工名單上這位員工的不參加標記（D-014）；員工不存在時是 null */
+  async declinedOf(employeeId: number): Promise<boolean | null> {
+    const [row] = await this.conn.query<Row[]>('SELECT declined FROM Employee WHERE id = ?', [employeeId]);
+    return row === undefined ? null : Boolean(Number(row.declined));
   }
 
   async countAt(tableId: number): Promise<number> {

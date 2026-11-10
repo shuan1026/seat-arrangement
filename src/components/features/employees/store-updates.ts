@@ -1,6 +1,7 @@
 // 員工名單頁對前端 store 的改動（樂觀更新與用伺服器回應校正）。純函式：輸入目前的全部資料，回傳新的資料。
 // 刪除員工、取消報名後，同桌的人重排成連續的 0..n-1，和伺服器的做法相同（docs/architecture.md 第 7.2 節）。
 import type { AppState, Employee, Participant } from '@/contracts/entities';
+import { clearDeclinedOfRegistered } from '@/domain/employees';
 
 // ---- 暫時 id：新增的員工或參與人員在伺服器回應前先用負數 id 顯示；
 // 儲存佇列依序送出，後面的請求送出時（resolveId）已經拿得到伺服器給的 id。
@@ -53,6 +54,18 @@ export function upsertParticipants(data: AppState, list: readonly Participant[])
 }
 
 export const addEmployee = (data: AppState, e: Employee): AppState => ({ ...data, employees: [...data.employees, e] });
+
+/** 標記為不參加或改回未報名（EMP-R63）：只改這位員工的標記 */
+export const setEmployeeDeclined = (data: AppState, id: number, declined: boolean): AppState => ({
+  ...data,
+  employees: data.employees.map((x) => (x.id === id ? { ...x, declined } : x)),
+});
+
+/** 員工加入尾牙後清掉不參加的標記（EMP-R64），和伺服器的做法一致 */
+export const clearJoinedDeclined = (data: AppState): AppState => {
+  const employees = clearDeclinedOfRegistered(data.employees, data.participants);
+  return employees === data.employees ? data : { ...data, employees };
+};
 
 /** 換掉一位員工（暫時 id 換成伺服器的資料，或編輯後校正） */
 export const replaceEmployee = (data: AppState, id: number, e: Employee): AppState => ({

@@ -4,6 +4,7 @@
 // D-012（英文名空白略過、合併列取第一列、已有兩位同名同部門時列為需要處理、欄位一致的判斷）；
 // 待確認 EMP-Q02（非 CSV 檔）、Q03（{n} 含更新的員工，依 contracts/imports.ts 的 imported）、Q04、Q06、Q09 依 D-008 照目前做法。
 // 列的解析規則逐條在 tests/unit/domain/roster-import.test.ts；這裡驗證寫進資料庫的結果與 API 回應。
+// 不參加的標記（D-014）：更新既有員工時維持不變、新增的員工是未報名（EMP-R66、EMP-AC87）。
 // 錯誤清單的列號（errors[].row）是這一列在檔案中的列號，和用 Excel 開啟時一致：表頭是第 1 列，空白列也算一列，
 // 儲存格內的換行不另算一列（階段 3 決定；見本檔最後一個 describe 與 tests/unit/server/csv.test.ts）。
 import iconv from 'iconv-lite';
@@ -298,6 +299,33 @@ describe('對應既有員工：姓名加部門（EMP-R55～R57、EMP-R61）', ()
       seatOrder: 0,
     });
     expect(await prisma.participant.findUniqueOrThrow({ where: { id: dependent.id } })).toMatchObject({ tableId: 3 });
+  });
+
+  it('EMP-AC87：甲不參加 → 匯入含甲（分機改為 1235）與新員工丁的通訊錄 → 甲的分機更新、仍是不參加；丁是未報名（EMP-R66、D-014）', async () => {
+    const jia = await createEmployee({ name: '甲', department: '研發部', extension: '1234', declined: true });
+
+    const result = await imported([rosterPerson('甲', '研發部', { 分機: '1235' }), rosterPerson('丁', '業務部', { 分機: '2001' })]);
+
+    expect(result).toMatchObject({ imported: 2, created: 1, updated: 1, errors: [] });
+    expect(await prisma.employee.findUniqueOrThrow({ where: { id: jia.id } })).toMatchObject({ extension: '1235', declined: true });
+    const [ding] = await employeesNamed('丁');
+    expect(ding).toMatchObject({ extension: '2001', declined: false });
+    expect(await prisma.participant.count()).toBe(0);
+  });
+
+  it('未報名的員工經匯入更新後仍是未報名，不會變成不參加；檔案裡沒有的不參加員工維持不參加（EMP-R66、EMP-R61）', async () => {
+    const wang = await createEmployee({ name: '王小明', department: '業務部', extension: '1234' });
+    const left = await createEmployee({ name: '已離職', department: '研發部', declined: true });
+    await imported([rosterPerson('王小明', '業務部', { 分機: '1300' })]);
+    expect(await prisma.employee.findUniqueOrThrow({ where: { id: wang.id } })).toMatchObject({ extension: '1300', declined: false });
+    expect(await prisma.employee.findUniqueOrThrow({ where: { id: left.id } })).toMatchObject({ declined: true });
+  });
+
+  it('已報名的員工經匯入更新後仍是已報名，不會帶上不參加的標記（EMP-R66、EMP-R57）', async () => {
+    const wang = await createRegisteredEmployee({ name: '王小明', department: '業務部', extension: '1234' }, { tableId: 5, seatOrder: 0 });
+    await imported([rosterPerson('王小明', '業務部', { 分機: '1300' })]);
+    expect(await prisma.employee.findUniqueOrThrow({ where: { id: wang.employee.id } })).toMatchObject({ declined: false });
+    expect(await prisma.participant.findUniqueOrThrow({ where: { id: wang.participant.id } })).toMatchObject({ tableId: 5 });
   });
 
   it('檔案中合併的多列對應到既有員工：更新成合併後的分機', async () => {

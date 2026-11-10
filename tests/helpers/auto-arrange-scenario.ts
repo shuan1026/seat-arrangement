@@ -81,6 +81,7 @@ export class Scenario {
       region: null,
       office: null,
       note: null,
+      declined: false,
       sortOrder: employeeId * 10,
     });
     if (opts.registered === false) return this;

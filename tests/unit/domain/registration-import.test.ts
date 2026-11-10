@@ -69,6 +69,7 @@ const employee = (id: number, name: string, department: string, extension: strin
   region: null,
   office: null,
   note: null,
+  declined: false,
   sortOrder: id,
 });
 
@@ -438,6 +439,43 @@ describe('新增還沒報名的員工（PPL-R72、PPL-R73、PPL-Q23、PPL-Q25）
       plan([answer('陳大文／研發一部／是／否／否／／／  需要靠走道  '), answer('李美華／業務部／是／否／否／／／   ')]),
     );
     expect(result.create).toEqual([created(2, CHEN.id, { note: '需要靠走道' }), created(3, LEE.id)]);
+  });
+});
+
+describe('員工名單上標記為不參加的員工（PPL-R72、D-014）', () => {
+  const CHEN_DECLINED: Employee = { ...CHEN, declined: true };
+  const DECLINED_ROSTER = [WANG, LEE, CHEN_DECLINED];
+
+  it('填「是」：照一般報名者新增，不列為需要處理（PPL-R72）', () => {
+    const result = ok(plan([answer('陳大文／研發一部／是')], { employees: DECLINED_ROSTER }));
+    expect(result.create).toEqual([created(2, CHEN.id)]);
+    expect(result.update).toEqual([]);
+    expect(result.issues).toEqual([]);
+  });
+
+  it('填「是」並攜帶眷屬、素食、備註：和還沒報名的員工完全相同（PPL-R72、PPL-R73）', () => {
+    const answers = [answer('陳大文／研發一部／是／是／是／素食／蛋奶素／需要靠走道')];
+    expect(ok(plan(answers, { employees: DECLINED_ROSTER }))).toEqual(ok(plan(answers)));
+  });
+
+  it('最後一次填「否」：不新增，也不算需要處理（PPL-R70）', () => {
+    const result = ok(plan([answer('陳大文／研發一部／是'), answer('陳大文／研發一部／否')], { employees: DECLINED_ROSTER }));
+    expect(result).toEqual({ ok: true, create: [], update: [], issues: [] });
+  });
+
+  it('還沒報名的員工填「否」：計畫裡只有新增、更新與需要處理，沒有把任何人標記為不參加（PPL-R72：不因匯入被標記）', () => {
+    const result = ok(plan([answer('陳大文／研發一部／否'), answer('李美華／業務部／否')]));
+    expect(result).toEqual({ ok: true, create: [], update: [], issues: [] });
+  });
+
+  it('不參加的員工和其他人混在一起：各自照規則處理', () => {
+    const result = ok(
+      plan([answer('陳大文／研發一部／是'), answer('李美華／業務部／是'), answer('趙六／行政部／是')], {
+        employees: DECLINED_ROSTER,
+      }),
+    );
+    expect(result.create).toEqual([created(2, CHEN.id), created(3, LEE.id)]);
+    expect(result.issues).toEqual([expect.objectContaining({ row: 4, reason: ISSUE_REASON.notFound('趙六') })]);
   });
 });
 

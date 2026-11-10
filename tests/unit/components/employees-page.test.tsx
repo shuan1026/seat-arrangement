@@ -4,13 +4,18 @@
 // - 單筆加入完成後（B 線的新增人員對話框）store 多了這位員工：勾選與 {n} 跟著變（EMP-R23，EMP-AC33）
 // - 取消報名：DELETE /api/participants/{id}（EMP-R30、R31，EMP-AC36、AC37）
 // - A 線自己的 API 成功後 store 跟著更新，參與人員與座位圖立即看到新資料（EMP-R02、R39、R43，EMP-AC49、AC53 的前端部分）
+// - 「不參加」（D-014）：PUT /api/employees/{id}/declined 的送出內容、畫面與衝突處理（EMP-R03、R08、R17～R19、R25、R27、R31、
+//   R63、R65，EMP-AC80～AC83、AC85、AC86 的前端部分）；走真的伺服器的完整情境在 tests/e2e/employees-declined.spec.ts。
 //
 // 假設：
+// - PUT /api/employees/{id}/declined 的本體是 { declined: boolean }，成功回 { employee }（src/contracts/employees.ts 的 employeeResultSchema）；
+//   這位員工已報名時回 409、已被刪除時回 404，前端依 COM-R07、COM-R08 重新載入（docs/architecture.md 第 8 節）。
 // - src/app/(main)/employees/page.tsx 的預設匯出是同步元件，資料從 useAppStore 讀，放在 AppProvider 裡就能渲染。
 // - 呼叫 API 經過 src/client/api.ts（全域 fetch），存檔經過 useMutation（衝突時由 AppProvider 重新載入並用 notify 顯示提示）。
 // - 成功訊息用 Sonner（@/components/ui/toaster），這裡一起渲染 <Toaster />，用畫面上的文字確認。
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { PointerEventsCheckLevel } from '@testing-library/user-event';
+import { toast } from 'sonner';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import EmployeesPage from '@/app/(main)/employees/page';
 import { AppProvider, useAppStore } from '@/client/app-provider';
@@ -62,6 +67,8 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  // Sonner 的提示存在模組層級：不清掉的話，下一個測試掛上 Toaster 時會重放，畫面上出現兩則同樣的文字
+  toast.dismiss();
   vi.unstubAllGlobals();
   router.push.mockReset();
 });
@@ -78,6 +85,7 @@ const emp = (id: number, name: string, department: string, data: Partial<Employe
   region: null,
   office: null,
   note: null,
+  declined: false,
   sortOrder: id,
   ...data,
 });
@@ -195,6 +203,7 @@ const table = () => screen.getByRole('table');
 const rowOf = (name: string) => within(table()).getByRole('row', { name: new RegExp(name) });
 const pickBox = (name: string) => within(table()).getByRole('checkbox', { name: `勾選 ${name}` });
 const takenBox = (name: string) => within(table()).getByRole('checkbox', { name: `${name} 已報名` });
+const declinedBox = (name: string) => within(table()).getByRole('checkbox', { name: `${name} 不參加` });
 const bulkButton = () => screen.queryByRole('button', { name: /^加入尾牙（\d+ 位）$/ });
 const isDisabled = (el: HTMLElement) => (el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true';
 const probeNames = () => screen.getByLabelText('參與人員顯示名稱（測試）').textContent;
@@ -407,5 +416,227 @@ describe('員工名單的改動立即反映到參與人員與座位圖（EMP-R02
     await screen.findByText('已刪除 李小華。');
     expectNoUndo();
     expect(screen.getByRole('tab', { name: /^全部\s*4$/ })).toBeTruthy();
+  });
+});
+
+describe('不參加（D-014）', () => {
+  /** 林五已被標記為不參加；其餘同 INITIAL（李小華已報名，王小明、張三、陳四未報名） */
+  const WITH_DECLINED: AppState = {
+    ...INITIAL,
+    employees: INITIAL.employees.map((e) => (e.id === LIN.id ? { ...e, declined: true } : e)),
+  };
+  const declinedUrl = (id: number) => `/api/employees/${id}/declined`;
+  const declinedCalls = (calls: Call[]) => calls.filter((c) => c.url.endsWith('/declined'));
+  /** 假的 PUT /api/employees/{id}/declined：照送出的值回傳這位員工 */
+  const acceptDeclined = (state: AppState) => (c: Call) => {
+    const m = /^\/api\/employees\/(\d+)\/declined$/.exec(c.url);
+    if (c.method !== 'PUT' || !m) return undefined;
+    const e = state.employees.find((x) => x.id === Number(m[1]))!;
+    return { status: 200, body: { employee: { ...e, declined: (c.body as { declined: boolean }).declined } } };
+  };
+
+  it('EMP-AC80：按王小明的「標記為不參加」→ 不開確認對話框，送出 PUT /api/employees/1/declined { declined: true }；狀態「不參加」、勾選框停用；Tabs 更新；Sonner「已把 王小明 標記為不參加。」沒有「復原」（EMP-R63、EMP-R31）', async () => {
+    const calls = mockApi(acceptDeclined(INITIAL));
+    const { user } = renderPage();
+
+    await chooseMenuItem(user, '王小明', '標記為不參加');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+
+    await waitFor(() => expect(declinedCalls(calls)).toHaveLength(1));
+    expect(declinedCalls(calls)[0]).toMatchObject({ method: 'PUT', url: declinedUrl(WANG.id), body: { declined: true } });
+    expect(Object.keys(declinedCalls(calls)[0]!.body as object)).toEqual(['declined']);
+
+    await screen.findByText('已把 王小明 標記為不參加。');
+    expectNoUndo();
+    await waitFor(() => expect(within(rowOf('王小明')).getByText('不參加')).toBeTruthy());
+    expect(isDisabled(declinedBox('王小明'))).toBe(true);
+    expect(screen.getByRole('tab', { name: /^全部\s*5$/ })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /^未報名\s*3$/ })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /^已報名\s*1$/ })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /^不參加\s*1$/ })).toBeTruthy();
+    // 不參加不影響參與人員
+    expect(probeNames()).toBe('李小華、李小華_眷屬');
+  });
+
+  it('EMP-AC81：林五不參加 → 選單是「加入尾牙」「改回未報名」「編輯」「刪除」；按「改回未報名」→ 送出 { declined: false }，變回未報名、可以勾；Sonner「已把 林五 改回未報名。」沒有「復原」（EMP-R27、EMP-R63）', async () => {
+    const calls = mockApi(acceptDeclined(WITH_DECLINED));
+    const { user } = renderPage(WITH_DECLINED);
+
+    const menu = await openRowMenu(user, '林五');
+    expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent?.trim())).toEqual([
+      '加入尾牙',
+      '改回未報名',
+      '編輯',
+      '刪除',
+    ]);
+    await user.click(within(menu).getByRole('menuitem', { name: '改回未報名' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+
+    await waitFor(() => expect(declinedCalls(calls)).toHaveLength(1));
+    expect(declinedCalls(calls)[0]).toMatchObject({ method: 'PUT', url: declinedUrl(LIN.id), body: { declined: false } });
+    await screen.findByText('已把 林五 改回未報名。');
+    expectNoUndo();
+    await waitFor(() => expect(isDisabled(pickBox('林五'))).toBe(false));
+    expect(within(rowOf('林五')).getByText('未報名')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /^不參加\s*0$/ })).toBeTruthy();
+  });
+
+  it('未報名與已報名的選單：未報名有「標記為不參加」、沒有「改回未報名」；已報名兩者都沒有（EMP-R27、EMP-AC34、EMP-AC82）', async () => {
+    mockApi(() => undefined);
+    const { user } = renderPage();
+
+    let menu = await openRowMenu(user, '王小明');
+    expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent?.trim())).toEqual([
+      '加入尾牙',
+      '標記為不參加',
+      '編輯',
+      '刪除',
+    ]);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+
+    menu = await openRowMenu(user, '李小華');
+    expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent?.trim())).toEqual([
+      '查看參與資料',
+      '取消報名',
+      '編輯',
+      '刪除',
+    ]);
+  });
+
+  it('EMP-AC83：林五不參加 → 勾選框停用、無障礙名稱「林五 不參加」；按表頭全選只勾未報名的 3 位，批次按鈕「加入尾牙（3 位）」（EMP-R18、R19、R25）', async () => {
+    mockApi(() => undefined);
+    const { user } = renderPage(WITH_DECLINED);
+
+    expect(isDisabled(declinedBox('林五'))).toBe(true);
+    expect(declinedBox('林五').getAttribute('aria-checked')).not.toBe('true');
+    expect(within(table()).queryByRole('checkbox', { name: '勾選 林五' })).toBeNull();
+    expect(within(rowOf('林五')).getByText('不參加')).toBeTruthy();
+
+    await user.click(within(table()).getByRole('checkbox', { name: '全選這一頁未報名的員工' }));
+    expect(screen.getByRole('button', { name: '加入尾牙（3 位）' })).toBeTruthy();
+    for (const name of ['王小明', '張三', '陳四']) expect(pickBox(name).getAttribute('aria-checked')).toBe('true');
+    expect(declinedBox('林五').getAttribute('aria-checked')).not.toBe('true');
+  });
+
+  it('勾選王小明與張三後把王小明標記為不參加 → 他的勾選框停用，批次按鈕變成「加入尾牙（1 位）」，送出時不含王小明（EMP-R18、D-014）', async () => {
+    const calls = mockApi((c) => {
+      const declined = acceptDeclined(INITIAL)(c);
+      if (declined) return declined;
+      if (c.method === 'POST' && c.url === '/api/participants/bulk-join') {
+        const ids = (c.body as { employeeIds: number[] }).employeeIds;
+        return { status: 200, body: { participants: ids.map((employeeId, i) => participant(400 + i, { kind: 'EMPLOYEE', employeeId })) } };
+      }
+      return undefined;
+    });
+    const { user } = renderPage();
+
+    await user.click(pickBox('王小明'));
+    await user.click(pickBox('張三'));
+    expect(screen.getByRole('button', { name: '加入尾牙（2 位）' })).toBeTruthy();
+    // 標記為不參加只能單筆操作，勾選後的工具列沒有批次標記（EMP-R63）
+    expect(screen.queryByRole('button', { name: /不參加/ })).toBeNull();
+
+    await chooseMenuItem(user, '王小明', '標記為不參加');
+    await screen.findByText('已把 王小明 標記為不參加。');
+    await waitFor(() => expect(isDisabled(declinedBox('王小明'))).toBe(true));
+    expect(screen.getByRole('button', { name: '加入尾牙（1 位）' })).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: '加入尾牙（1 位）' }));
+    const dialog = await screen.findByRole('alertdialog', { name: '要把 1 位員工加入尾牙嗎？' });
+    await user.click(within(dialog).getByRole('button', { name: '加入尾牙' }));
+    await waitFor(() => expect(calls.filter((c) => c.url === '/api/participants/bulk-join')).toHaveLength(1));
+    expect(calls.find((c) => c.url === '/api/participants/bulk-join')!.body).toEqual({ employeeIds: [ZHANG.id] });
+  });
+
+  it('EMP-AC86：標記為不參加時伺服器回 409（王小明剛被別人加入尾牙）→ 不儲存，重新載入並提示「資料已被其他人更新，已重新載入。」；王小明是已報名（EMP-R65、COM-R07、COM-R08）', async () => {
+    const latest: AppState = {
+      ...INITIAL,
+      participants: [...INITIAL.participants, participant(260, { kind: 'EMPLOYEE', employeeId: WANG.id })],
+    };
+    const calls = mockApi((c) => {
+      if (c.url === declinedUrl(WANG.id)) return { status: 409, body: { error: { code: 'CONFLICT', message: 'registered' } } };
+      if (c.method === 'GET' && c.url === '/api/state') return { status: 200, body: latest };
+      return undefined;
+    });
+    const { user } = renderPage();
+
+    await chooseMenuItem(user, '王小明', '標記為不參加');
+
+    await screen.findByText('資料已被其他人更新，已重新載入。');
+    expect(calls.some((c) => c.method === 'GET' && c.url === '/api/state')).toBe(true);
+    await waitFor(() => expect(isDisabled(takenBox('王小明'))).toBe(true));
+    expect(within(rowOf('王小明')).getByText('已報名')).toBeTruthy();
+    expect(screen.queryByText('已把 王小明 標記為不參加。')).toBeNull();
+    expect(screen.getByRole('tab', { name: /^不參加\s*0$/ })).toBeTruthy();
+  });
+
+  it('按「改回未報名」時林五剛被別人刪除（404）→ 不儲存，重新載入並提示；名單上沒有林五（EMP-R65、COM-R07）', async () => {
+    const latest: AppState = { ...WITH_DECLINED, employees: WITH_DECLINED.employees.filter((e) => e.id !== LIN.id) };
+    mockApi((c) => {
+      if (c.url === declinedUrl(LIN.id)) return { status: 404, body: { error: { code: 'NOT_FOUND', message: 'gone' } } };
+      if (c.method === 'GET' && c.url === '/api/state') return { status: 200, body: latest };
+      return undefined;
+    });
+    const { user } = renderPage(WITH_DECLINED);
+
+    await chooseMenuItem(user, '林五', '改回未報名');
+
+    await screen.findByText('資料已被其他人更新，已重新載入。');
+    await waitFor(() => expect(within(table()).queryByRole('row', { name: /林五/ })).toBeNull());
+    expect(screen.queryByText('已把 林五 改回未報名。')).toBeNull();
+  });
+
+  it('刪除不參加的林五：確認內文是「刪除後無法復原。」（第 4.1 節「刪除確認：未報名或不參加」、EMP-R41）', async () => {
+    const calls = mockApi((c) =>
+      c.method === 'DELETE' && c.url === `/api/employees/${LIN.id}`
+        ? { status: 200, body: { deletedEmployeeId: LIN.id, removedParticipantIds: [], participants: [] } }
+        : undefined,
+    );
+    const { user } = renderPage(WITH_DECLINED);
+
+    await chooseMenuItem(user, '林五', '刪除');
+    const dialog = await screen.findByRole('alertdialog', { name: '要刪除 林五 嗎？' });
+    expect(within(dialog).getByText('刪除後無法復原。')).toBeTruthy();
+    expect(within(dialog).queryByText(/已報名尾牙/)).toBeNull();
+    await user.click(within(dialog).getByRole('button', { name: '刪除員工' }));
+
+    await waitFor(() => expect(calls.filter((c) => c.method === 'DELETE')).toHaveLength(1));
+    await screen.findByText('已刪除 林五。');
+    expect(screen.getByRole('tab', { name: /^不參加\s*0$/ })).toBeTruthy();
+  });
+
+  it('Tabs 依序是「全部」「未報名」「已報名」「不參加」，「全部」是三者相加（EMP-R08、第 4.1 節）', () => {
+    mockApi(() => undefined);
+    renderPage(WITH_DECLINED);
+    const tabs = screen.getAllByRole('tab').map((t) => t.textContent?.replace(/\s+/g, ' ').trim());
+    expect(tabs).toEqual([
+      expect.stringMatching(/^全部\s*5$/),
+      expect.stringMatching(/^未報名\s*3$/),
+      expect.stringMatching(/^已報名\s*1$/),
+      expect.stringMatching(/^不參加\s*1$/),
+    ]);
+  });
+
+  it('EMP-AC85：沒有人不參加、沒有搜尋與篩選 → 按「不參加」顯示「沒有標記為不參加的員工。」，Tabs「不參加 0」（EMP-R17）', async () => {
+    mockApi(() => undefined);
+    const { user } = renderPage();
+    await user.click(screen.getByRole('tab', { name: /^不參加/ }));
+    expect(await screen.findByText('沒有標記為不參加的員工。')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /^不參加\s*0$/ })).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('EMP-AC85：所有人都是已報名或不參加 → 按「未報名」顯示「沒有未報名的員工。」，Tabs「未報名 0」（EMP-R17、EMP-AC24）', async () => {
+    mockApi(() => undefined);
+    const state: AppState = {
+      ...INITIAL,
+      employees: INITIAL.employees.map((e) => (e.id === LI.id ? e : { ...e, declined: true })),
+    };
+    const { user } = renderPage(state);
+    await user.click(screen.getByRole('tab', { name: /^未報名/ }));
+    expect(await screen.findByText('沒有未報名的員工。')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /^未報名\s*0$/ })).toBeTruthy();
+    expect(screen.queryByText('所有員工都已報名。')).toBeNull();
   });
 });

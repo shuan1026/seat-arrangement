@@ -2,6 +2,7 @@
 //   POST   /api/employees            新增員工          → EmployeeResult
 //   PATCH  /api/employees/{id}       編輯員工          → EmployeeResult
 //   DELETE /api/employees/{id}       刪除員工（已報名者連動取消報名）→ EmployeeDeleteResult
+//   PUT    /api/employees/{id}/declined  標記為不參加或改回未報名（D-014）→ EmployeeResult；已報名時 409 CONFLICT
 //   POST   /api/employees/import     匯入通訊錄 CSV    → ImportResult（contracts/imports.ts）
 import { z } from 'zod';
 import { employeeSchema, participantSchema } from './entities';
@@ -25,6 +26,10 @@ export const employeeInputSchema = z.object({
   note: optionalText(500),
 });
 export type EmployeeInput = z.input<typeof employeeInputSchema>;
+
+/** PUT /api/employees/{id}/declined 的本體：true 是標記為不參加，false 是改回未報名（EMP-R63） */
+export const employeeDeclinedInputSchema = z.object({ declined: z.boolean() });
+export type EmployeeDeclinedInput = z.infer<typeof employeeDeclinedInputSchema>;
 
 export const employeeResultSchema = z.object({ employee: employeeSchema });
 export type EmployeeResult = z.infer<typeof employeeResultSchema>;

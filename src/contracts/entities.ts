@@ -19,6 +19,8 @@ export const employeeSchema = z.object({
   region: z.string().nullable(),
   office: z.string().nullable(),
   note: z.string().nullable(),
+  /** 承辦人標記為不參加（D-014）；有參與人員時一律視為已報名（domain/employees.ts registrationStatusOf） */
+  declined: z.boolean(),
   sortOrder: z.number().int(),
 });
 export type Employee = z.infer<typeof employeeSchema>;

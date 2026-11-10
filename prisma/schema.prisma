@@ -20,6 +20,7 @@ model Employee {
   region      String?      @db.VarChar(20)
   office      String?      @db.VarChar(50)
   note        String?      @db.VarChar(500)
+  declined    Boolean      @default(false) // 承辦人標記為不參加（D-014）；有參與人員時一律視為已報名，加入尾牙時清掉
   sortOrder   Int // 員工名單順序，決定部門與組別的排序
   participant Participant? @relation("EmployeeParticipant")
   createdAt   DateTime     @default(now())

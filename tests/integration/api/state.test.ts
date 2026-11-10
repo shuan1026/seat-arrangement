@@ -1,6 +1,6 @@
 // GET /api/state：docs/architecture.md 第 8 節（全部員工、參與人員與桌次）、第 9.2 節（未登入回 401）；
 // docs/spec/README.md AUTH-R08、AUTH-AC08（沒登入時被拒絕、不回傳任何資料）、COM-R05、COM-R06、COM-AC07（重新整理看到最後儲存的結果）；
-// SEAT-R05（工作人員桌）；COM-R15（多個分機）。
+// SEAT-R05（工作人員桌）；COM-R15（多個分機）；員工的 declined（docs/architecture.md 第 7.1 節、D-014）。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET } from '@/app/api/state/route';
 import { appStateSchema, STAFF_TABLE_ID, type AppState } from '@/contracts/entities';
@@ -128,6 +128,19 @@ describe('已登入', () => {
     });
     expect(state.participants.find((p) => p.id === staff.participant.id)).toMatchObject({ tableId: STAFF_TABLE_ID });
     expect(state.tables.find((t) => t.id === 3)?.noteName).toBe('主桌');
+  });
+
+  it('每位員工帶 declined：標記為不參加的是 true，其他是 false（docs/architecture.md 第 7.1 節、D-014、EMP-R03）', async () => {
+    const declined = await createEmployee({ name: '不參加同事', department: '研發一部', declined: true });
+    const plain = await createEmployee({ name: '未報名同事', department: '研發一部' });
+    const joined = await createRegisteredEmployee({ name: '已報名同事', department: '業務部' });
+
+    const { employees } = await loadState();
+
+    expect(employees.find((e) => e.id === declined.id)?.declined).toBe(true);
+    expect(employees.find((e) => e.id === plain.id)?.declined).toBe(false);
+    expect(employees.find((e) => e.id === joined.employee.id)?.declined).toBe(false);
+    for (const e of employees) expect(typeof e.declined).toBe('boolean');
   });
 
   it('有兩個分機的員工原樣回傳「1234／1235」（COM-R15）', async () => {

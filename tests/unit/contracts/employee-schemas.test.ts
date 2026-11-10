@@ -1,7 +1,12 @@
 // 員工的輸入格式：docs/spec/employees.md EMP-R33（必填與錯誤文案）、EMP-R54（組別留空）、EMP-AC40、EMP-AC41；
 // README.md COM-R15（多個分機）；docs/architecture.md 第 7.1 節（欄位長度）。
+// 「不參加」（D-014）：docs/architecture.md 第 7.1 節 Employee.declined、第 8 節 PUT /api/employees/{id}/declined（{ declined: boolean }）。
+// 假設的介面（src/contracts/employees.ts）：
+//   employeeDeclinedInputSchema = z.object({ declined: z.boolean() })   // PUT /api/employees/{id}/declined 的本體
+//   回應沿用 employeeResultSchema（{ employee }）；src/contracts/entities.ts 的 employeeSchema 多 declined: boolean
 import { describe, expect, it } from 'vitest';
-import { employeeInputSchema, ROSTER_TEMPLATE_HEADER } from '@/contracts/employees';
+import { employeeDeclinedInputSchema, employeeInputSchema, employeeResultSchema, ROSTER_TEMPLATE_HEADER } from '@/contracts/employees';
+import { employeeSchema } from '@/contracts/entities';
 import { accepts, fieldErrors } from '../../helpers/schema';
 
 describe('employeeInputSchema', () => {
@@ -66,6 +71,52 @@ describe('employeeInputSchema', () => {
     expect(accepts(employeeInputSchema, { name: '甲'.repeat(50), department: '乙'.repeat(50) })).toBe(true);
     expect(accepts(employeeInputSchema, { name: '甲'.repeat(51), department: '研發一部' })).toBe(false);
     expect(accepts(employeeInputSchema, { name: '王小明', department: '乙'.repeat(51) })).toBe(false);
+  });
+});
+
+describe('employeeDeclinedInputSchema：標記為不參加或改回未報名（D-014、EMP-R63）', () => {
+  it('declined 是 true（標記為不參加）或 false（改回未報名）', () => {
+    expect(employeeDeclinedInputSchema.parse({ declined: true })).toEqual({ declined: true });
+    expect(employeeDeclinedInputSchema.parse({ declined: false })).toEqual({ declined: false });
+  });
+
+  it.each([
+    ['沒有 declined', {}],
+    ['declined 是 null', { declined: null }],
+    ['declined 是字串', { declined: 'true' }],
+    ['declined 是數字', { declined: 1 }],
+    ['本體不是物件', null],
+  ])('%s：不接受', (_label, input) => {
+    expect(accepts(employeeDeclinedInputSchema, input)).toBe(false);
+  });
+});
+
+describe('employeeSchema：員工資料帶 declined（docs/architecture.md 第 7.1 節、D-014）', () => {
+  const base = {
+    id: 1,
+    name: '王小明',
+    englishName: null,
+    department: '研發一部',
+    team: null,
+    extension: null,
+    region: null,
+    office: null,
+    note: null,
+    sortOrder: 1,
+  };
+
+  it('declined 是布林值，原樣保留', () => {
+    expect(employeeSchema.parse({ ...base, declined: true }).declined).toBe(true);
+    expect(employeeSchema.parse({ ...base, declined: false }).declined).toBe(false);
+  });
+
+  it('沒有 declined 或不是布林值：不接受（前端要拿到這個欄位才能分出「不參加」）', () => {
+    expect(accepts(employeeSchema, base)).toBe(false);
+    expect(accepts(employeeSchema, { ...base, declined: 'false' })).toBe(false);
+  });
+
+  it('PUT /api/employees/{id}/declined 的回應 { employee } 帶著 declined', () => {
+    expect(employeeResultSchema.parse({ employee: { ...base, declined: true } }).employee.declined).toBe(true);
   });
 });
 

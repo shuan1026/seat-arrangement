@@ -56,6 +56,7 @@ export class SheetData {
       region: null,
       office: null,
       note: null,
+      declined: false,
       sortOrder: this.employeeSeq * 10,
     });
     if (opts.registered !== false) {

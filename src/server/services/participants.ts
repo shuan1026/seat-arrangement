@@ -21,6 +21,8 @@ import { toEmployee, toParticipant } from './state';
 // - 先依桌號由小到大鎖住涉及的桌次列，再鎖員工或參與人員列（和座位異動同一個順序，避免死結），鎖住後才計算人數（第 7.2 節）。
 // - 交易用 READ COMMITTED：拿到鎖之後的讀取都看得到別人剛提交的資料（REPEATABLE READ 會停在第一次讀取的快照）。
 // - 每次異動後把涉及的桌次重排為 0..n-1，回傳這次新增或改變的人讓前端校正。
+// - 員工加入尾牙（新增、一次加入多位、改成員工、匯入報名表）時清掉不參加的標記（EMP-R64、D-014）。
+//   員工列在加入前就鎖住，和標記為不參加（services/employees.ts setEmployeeDeclined）互斥。
 
 type Db = Prisma.TransactionClient;
 type CreateInput = z.output<typeof participantCreateSchema>;
@@ -83,9 +85,20 @@ async function lockParticipants(tx: Db, ids: readonly number[]): Promise<{ id: n
 /** 鎖住員工列；員工已被刪除時 NOT_FOUND */
 async function lockEmployees(tx: Db, ids: readonly number[]): Promise<void> {
   const sorted = sortedUnique(ids);
+  if (!sorted.length) return;
   const rows = await tx.$queryRaw<{ id: number }[]>`
     SELECT id FROM Employee WHERE id IN (${Prisma.join(sorted)}) ORDER BY id FOR UPDATE`;
   if (rows.length !== sorted.length) throw new AppError('NOT_FOUND', 'employee not found');
+}
+
+/**
+ * 員工加入尾牙後清掉不參加的標記（EMP-R64、PPL-R42、PPL-R72）。呼叫前要先鎖住這些員工。
+ * 只更新帶著標記的列，其他員工（含沒有標記的這幾位）的資料與 updatedAt 都不動。
+ */
+async function clearDeclined(tx: Db, employeeIds: readonly number[]): Promise<void> {
+  const ids = sortedUnique(employeeIds);
+  if (!ids.length) return;
+  await tx.employee.updateMany({ where: { id: { in: ids }, declined: true }, data: { declined: false } });
 }
 
 /** 這一桌目前的人數（不算 except 這個人） */
@@ -139,6 +152,7 @@ async function createEmployee(input: Extract<CreateInput, { kind: 'EMPLOYEE' }>)
         ...seat,
       },
     });
+    await clearDeclined(tx, [input.employeeId]);
     const created = [host];
     if (input.dependent) {
       // 眷屬和員工同桌、緊接在後；那一桌只剩 1 位時眷屬留在未入座；員工是工作人員時眷屬也先未入座（PPL-R53、PPL-R57）
@@ -234,6 +248,8 @@ export function bulkJoin({ employeeIds }: BulkJoinInput): Promise<ParticipantsRe
     for (const employeeId of ids) {
       created.push(toParticipant(await tx.participant.create({ data: { kind: 'EMPLOYEE', employeeId } })));
     }
+    // 勾選後才被別人標記為不參加的人也照樣加入，標記清掉
+    await clearDeclined(tx, ids);
     return { participants: created };
   });
 }
@@ -299,6 +315,7 @@ export function updateParticipant(id: number, input: UpdateInput): Promise<Parti
       const taken = await tx.participant.findUnique({ where: { employeeId: input.employeeId } });
       if (taken && taken.id !== id) throw new AppError('DUPLICATE_PARTICIPANT', 'employee already registered');
       data.employeeId = input.employeeId;
+      await clearDeclined(tx, [input.employeeId]);
     }
     if (kind === 'DEPENDENT') {
       if (hostId == null) throw required('hostId', '請選擇所屬員工。');
@@ -347,7 +364,8 @@ export function deleteParticipant(id: number): Promise<ParticipantDeleteResult> 
 
 /**
  * 依 registration-import.ts 的計畫新增與更新，不動任何人的座位與工作人員（PPL-R79）。
- * 需要處理的人不匯入，其餘照常匯入（PPL-R85）。db 給 seed 在它自己的交易裡呼叫。
+ * 需要處理的人不匯入，其餘照常匯入（PPL-R85）。新增的員工清掉不參加的標記；填「不參加」的人不會因匯入被標記（PPL-R72）。
+ * db 給 seed 在它自己的交易裡呼叫。
  */
 export async function importRegistrations(rows: string[][], db?: Db): Promise<ImportResult> {
   const run = async (tx: Db): Promise<ImportResult> => {
@@ -356,6 +374,9 @@ export async function importRegistrations(rows: string[][], db?: Db): Promise<Im
     const plan = parseRegistrations(rows, employees, participants);
     if (!plan.ok) throw new AppError('IMPORT_FORMAT_INVALID', 'registration header does not match the form');
 
+    // 先鎖住要加入的員工，和同時進行的標記為不參加互斥；同時被別人加入的人由 employeeId 的唯一索引擋下（整份不匯入）
+    const joining = plan.create.map((c) => c.employeeId);
+    await lockEmployees(tx, joining);
     for (const c of plan.create) {
       const host = await tx.participant.create({
         data: { kind: 'EMPLOYEE', employeeId: c.employeeId, vegetarian: c.vegetarian, note: c.note },
@@ -364,6 +385,7 @@ export async function importRegistrations(rows: string[][], db?: Db): Promise<Im
         await tx.participant.create({ data: { kind: 'DEPENDENT', hostId: host.id, ...c.dependent } });
       }
     }
+    await clearDeclined(tx, joining);
     for (const u of plan.update) {
       await tx.participant.update({ where: { id: u.participantId }, data: { vegetarian: u.vegetarian, note: u.note } });
       const d = u.dependent;

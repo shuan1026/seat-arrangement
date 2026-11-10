@@ -1,4 +1,4 @@
-// 匯入員工名單對話框：docs/spec/employees.md 第 2.7、3.8、4.4 節，EMP-R31、R44～R62，驗收條件 EMP-AC57～AC75；
+// 匯入員工名單對話框：docs/spec/employees.md 第 2.7、3.8、4.4 節，EMP-R31、R44～R62、R66，驗收條件 EMP-AC57～AC75、AC87；
 // D-012（英文名空白的設備列略過、通訊錄匯出檔的欄位格式可以直接匯入）；
 // 待確認 EMP-Q02（不是 CSV 的檔案顯示格式錯誤文案，依原型）、Q03（完成訊息在對話框內，{n} 含更新的員工）依 D-008。
 // 每一種列的規則在 tests/unit/domain/roster-import.test.ts 與 tests/integration/api/employees-import.test.ts 逐條驗證；
@@ -215,6 +215,31 @@ test('EMP-AC69：已有王小明（業務部、1234、北區組、備註素食�
   await expect(cellOf(row, 'team')).toHaveText('—');
   await expect.poll(async () => (await employeeRows()).map((e) => [e.name, e.extension, e.team, e.note])).toEqual([
     ['王小明', '1300', null, '素食'],
+  ]);
+});
+
+test('EMP-AC87：甲不參加 → 匯入含甲（分機改為 1235）與新員工丁的通訊錄 → 甲的分機更新、仍是不參加；丁是未報名（EMP-R66、D-014）', async ({
+  page,
+}) => {
+  await insertEmployee({ name: '甲', department: '研發部', extension: '1234', declined: true });
+  await gotoEmployees(page);
+  const dialog = await importRecords(page, [
+    rosterPerson('甲', '研發部', { 分機: '1235' }),
+    rosterPerson('丁', '業務部', { 分機: '2001' }),
+  ]);
+  await expect(dialog.getByText('已匯入 2 位員工，0 筆需要處理。')).toBeVisible();
+  await closeDialog(page, dialog);
+
+  await expect(dataRows(page)).toHaveCount(2);
+  const jia = rowOf(page, '甲');
+  await expect(cellOf(jia, 'extension')).toHaveText('1235');
+  await expect(jia.getByText('不參加', { exact: true })).toBeVisible();
+  await expect(rowOf(page, '丁').getByText('未報名', { exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: /^不參加\s*1$/ })).toBeVisible();
+  await expect(page.getByRole('tab', { name: /^未報名\s*1$/ })).toBeVisible();
+  await expect.poll(async () => (await employeeRows()).map((e) => [e.name, e.extension, e.declined])).toEqual([
+    ['甲', '1235', true],
+    ['丁', '2001', false],
   ]);
 });
 

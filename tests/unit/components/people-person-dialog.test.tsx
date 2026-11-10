@@ -63,6 +63,7 @@ const employee = (id: number, name: string, department: string, extension: strin
   region: null,
   office: null,
   note: null,
+  declined: false,
   sortOrder: id,
 });
 

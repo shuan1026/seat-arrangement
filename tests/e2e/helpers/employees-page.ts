@@ -65,12 +65,15 @@ export async function chooseNew(page: Page, trigger: Locator, text: string, opti
   await expect(page.getByRole('listbox')).toBeHidden();
 }
 
+/** Tabs 的四個分頁（EMP-R08、D-014） */
+export type TabLabel = '全部' | '未報名' | '已報名' | '不參加';
+export const TAB_LABELS: readonly TabLabel[] = ['全部', '未報名', '已報名', '不參加'];
+
 /** Tabs 的分頁（名稱開頭是分頁名稱，後面是人數） */
-export const tabOf = (page: Page, label: '全部' | '未報名' | '已報名'): Locator =>
-  page.getByRole('tab', { name: new RegExp(`^${label}`) });
+export const tabOf = (page: Page, label: TabLabel): Locator => page.getByRole('tab', { name: new RegExp(`^${label}`) });
 
 /** Tabs 上的人數：「全部 {n}」 */
-export const tabCount = (label: '全部' | '未報名' | '已報名', n: number) => new RegExp(`^${label}\\s*${n}$`);
+export const tabCount = (label: TabLabel, n: number) => new RegExp(`^${label}\\s*${n}$`);
 
 /** 已套用的篩選徽章（按下移除那一項） */
 export const filterBadge = (page: Page, value: string): Locator => page.getByRole('button', { name: new RegExp(value) });
@@ -79,9 +82,11 @@ export const filterBadge = (page: Page, value: string): Locator => page.getByRol
 export const pageButton = (page: Page, name: '新增員工' | '匯入員工名單'): Locator =>
   page.getByRole('button', { name, exact: true }).first();
 
-/** 勾選框：未報名「勾選 {姓名}」，已報名「{姓名} 已報名」（EMP-R25） */
+/** 勾選框：未報名「勾選 {姓名}」，已報名「{姓名} 已報名」，不參加「{姓名} 不參加」（EMP-R25） */
 export const pickBox = (page: Page, name: string): Locator => page.getByRole('checkbox', { name: `勾選 ${name}`, exact: true });
 export const takenBox = (page: Page, name: string): Locator => page.getByRole('checkbox', { name: `${name} 已報名`, exact: true });
+export const declinedBox = (page: Page, name: string): Locator =>
+  page.getByRole('checkbox', { name: `${name} 不參加`, exact: true });
 
 /** 批次按鈕「加入尾牙（{n} 位）」 */
 export const bulkButton = (page: Page, n?: number): Locator =>
