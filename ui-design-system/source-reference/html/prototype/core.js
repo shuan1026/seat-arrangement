@@ -54,6 +54,13 @@
   GH.employee = id => S.employees.find(e => e.id === id);
   GH.attendeeOf = e => (blank() ? null : S.people.find(p => p.cat === '員工' && p.rosterId === e.id) || null);
   GH.isRegistered = e => !!GH.attendeeOf(e);
+  // 報名狀態（第 7.4.1 節）：有對應的參與人員就是已報名（自動判斷）；承辦人手動標記的是不參加；其餘是未報名。
+  // 舊資料沒有 declined 欄位時視為 false
+  GH.regStatus = e => (GH.isRegistered(e) ? '已報名' : e.declined ? '不參加' : '未報名');
+  GH.isDeclined = e => GH.regStatus(e) === '不參加';
+  GH.isUnregistered = e => GH.regStatus(e) === '未報名';
+  // 標記不參加、改回未報名：只有沒報名的員工可以改，已報名的要先取消報名
+  GH.setDeclined = (e, on) => { if (!e || GH.isRegistered(e)) return false; e.declined = !!on; return true; };
   // 員工的第二行：「部門・分機 {分機}」，沒有分機時只顯示部門（第 8.5 節）
   GH.deptExt = e => (e ? (e.ext ? `${e.dept}・分機 ${e.ext}` : e.dept) : '');
   GH.depts = () => { const out = []; S.employees.forEach(e => { if (e.dept && !out.includes(e.dept)) out.push(e.dept); }); return out; };
@@ -70,9 +77,11 @@
   };
   const cmpKeys = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; };
   GH.sortedEmployees = () => { const rank = empRank(); return GH.employees().map(e => [rank(e), e]).sort((a, b) => cmpKeys(a[0], b[0])).map(x => x[1]); };
-  GH.rosterStats = () => { const total = GH.employees().length, registered = GH.employees().filter(GH.isRegistered).length; return { total, registered, unregistered: total - registered }; };
+  // 全部 = 未報名 + 已報名 + 不參加
+  GH.rosterStats = () => { const list = GH.employees(), registered = list.filter(GH.isRegistered).length, declined = list.filter(GH.isDeclined).length; return { total: list.length, registered, declined, unregistered: list.length - registered - declined }; };
   const empFields = v => ({ name: (v.name || '').trim(), en: (v.en || '').trim(), dept: (v.dept || '').trim(), group: (v.group || '').trim(), ext: (v.ext || '').trim(), area: (v.area || '').trim(), note: (v.note || '').trim() });
-  GH.addEmployee = v => { const e = { id: `e${++S.rseq}`, office: '', ...empFields(v) }; S.employees.push(e); return e; };
+  // 新增的員工是未報名；編輯與匯入更新既有員工時不改不參加的標記（第 7.4.4 節）
+  GH.addEmployee = v => { const e = { id: `e${++S.rseq}`, office: '', declined: false, ...empFields(v) }; S.employees.push(e); return e; };
   GH.updateEmployee = (e, v) => Object.assign(e, empFields(v));
   // 刪除員工：已報名者一併取消報名（第 8.4 節，見 Q19）
   GH.removeEmployee = e => {
@@ -123,8 +132,11 @@
   GH.table = no => S.tables.find(t => t.no === +no);
   GH.seats = t => (blank() ? [] : t.seats.map(GH.person).filter(Boolean));
   GH.tableOf = pid => (blank() ? null : S.tables.find(t => t.seats.includes(pid)) || null);
-  GH.remaining = t => C.CAPACITY - GH.seats(t).length;
-  GH.isFull = t => GH.remaining(t) <= 0;
+  // 每桌標準 10 位、最多 12 位（第 8.3 節）：剩餘的空位只算到 10 位為止；10 位以上是已滿，11、12 位是超過，12 位是上限
+  GH.remaining = t => Math.max(0, C.CAPACITY - GH.seats(t).length);
+  GH.isFull = t => GH.seats(t).length >= C.CAPACITY;
+  GH.isOver = t => GH.seats(t).length > C.CAPACITY;
+  GH.isMax = t => GH.seats(t).length >= C.MAX_SEATS;
   // 部門由名單自動產生：依人數多到少；有貴賓時加「貴賓」
   GH.labelsOf = list => {
     const count = {}; let guests = 0;
@@ -140,19 +152,24 @@
   // 工作人員是參與尾牙、活動當天值勤的員工（第 8.1 節）：放在座位圖右上角的工作人員桌，不佔 30 桌的座位，不算未入座
   GH.isStaff = p => p.cat === '員工' && !!p.staff;
   GH.staff = () => GH.sortedPeople().filter(GH.isStaff);
+  // 工作人員桌的位數和一般桌相同：人員對話框的勾選只到 10 位（staffFull），拖移與「加入人員」可以到 12 位（staffMax）
   GH.staffFull = () => GH.staff().length >= C.CAPACITY;
+  GH.staffMax = () => GH.staff().length >= C.MAX_SEATS;
   GH.unseated = () => GH.people().filter(p => !GH.isStaff(p) && !GH.tableOf(p.id));
   GH.stats = () => {
+    // 空位每桌只算到 10 位為止（超過的桌算 0）；已滿算 10 位以上的桌（含超過），另外算超過的桌數（第 7.2.1 節）
     const total = GH.people().filter(p => !GH.isStaff(p)).length, seated = total - GH.unseated().length;
-    return { total, seated, unseated: total - seated, empty: S.tables.length * C.CAPACITY - seated, child: GH.people().filter(p => p.childSeat).length, full: S.tables.filter(GH.isFull).length };
+    const empty = S.tables.reduce((n, t) => n + GH.remaining(t), 0);
+    return { total, seated, unseated: total - seated, empty, child: GH.people().filter(p => p.childSeat).length, full: S.tables.filter(GH.isFull).length, over: S.tables.filter(GH.isOver).length };
   };
 
   // ---- 入座操作：每個都回傳復原函式，由畫面負責儲存、提示與重畫
   const snapshot = list => { const s = list.map(t => [t, [...t.seats]]); return () => s.forEach(([t, seats]) => { t.seats = seats; }); };
-  GH.place = (pid, no, index) => {
+  // cap 是這一次最多能放到幾位：選單類的入口（選擇桌次、人員對話框）用預設的 10 位，拖移用 12 位（第 8.3 節）
+  GH.place = (pid, no, index, cap = C.CAPACITY) => {
     const to = GH.table(no), from = GH.tableOf(pid), p = GH.person(pid);
     if (!to || (p && GH.isStaff(p))) return null;
-    if (from !== to && GH.isFull(to)) return null;
+    if (from !== to && GH.seats(to).length >= cap) return null;
     const undo = snapshot([from, to].filter(Boolean));
     let i = index == null ? null : +index;
     if (from) {
@@ -171,10 +188,11 @@
     t.seats = t.seats.filter(x => x !== pid);
     return { undo, from: t };
   };
-  // 放進或移出工作人員桌：只有員工可以放，最多 10 位；放進時離開原本的桌次。回傳復原函式與原本的桌次
-  GH.setStaff = (p, on) => {
+  // 放進或移出工作人員桌：只有員工可以放；放進時離開原本的桌次。回傳復原函式與原本的桌次
+  // cap 同 GH.place：人員對話框只到 10 位，拖移與「加入人員」到 12 位
+  GH.setStaff = (p, on, cap = C.CAPACITY) => {
     if (!p || p.cat !== '員工' || !!p.staff === !!on) return null;
-    if (on && GH.staffFull()) return null;
+    if (on && GH.staff().length >= cap) return null;
     const from = GH.tableOf(p.id), undoSeats = snapshot(S.tables), was = !!p.staff;
     p.staff = !!on;
     if (on) S.tables.forEach(t => { t.seats = t.seats.filter(x => x !== p.id); });
@@ -183,7 +201,8 @@
   GH.clearTable = t => { const undo = snapshot([t]), count = t.seats.length; t.seats = []; return { undo, count }; };
   GH.addToTable = (ids, t) => {
     const undo = snapshot(S.tables);
-    const list = ids.slice(0, GH.remaining(t));
+    // 「加入人員」可以放到 12 位（第 7.2.3 節）
+    const list = ids.slice(0, Math.max(0, C.MAX_SEATS - GH.seats(t).length));
     list.forEach(id => { S.tables.forEach(x => { x.seats = x.seats.filter(y => y !== id); }); t.seats.push(id); });
     return { undo, count: list.length };
   };
@@ -257,6 +276,8 @@
   // 加入尾牙：員工名單的一位變成參與人員，可同時帶一位眷屬
   GH.register = (e, v = {}) => {
     if (GH.attendeeOf(e)) return null;
+    // 不參加的員工加入尾牙後變成已報名，標記清掉（第 7.4.1 節）
+    e.declined = false;
     const p = { id: GH.uid('p'), cat: '員工', name: '', rosterId: e.id, employeeId: null, relation: '', childSeat: !!v.childSeat, veg: !!v.veg, staff: !!v.staff, org: '', note: trim(v.note) };
     S.people.push(p);
     let family = null;
@@ -294,6 +315,7 @@
 
   // ---- 匯出座位表（第 7.3.4 節）：和座位圖相同版面的工作表，畫面再把它轉成 Excel 檔
   // 每桌一個區塊，左格是標題、右邊十格依座位順序放名單；錯開半格的桌放在下一段十列。
+  // 有桌次坐了 11、12 位時，只有那一段改為十二列，下面所有的列往下移兩列
   // 欄號從 1 起算：1 是圖例，A 區外、中、內三列的標題在 2、3、4 欄，B 區內、中、外在 7、8、9 欄，工作人員在 11 欄
   const SHEET_COL = [2, 3, 4, 7, 8, 9];
   GH.seatingFileName = () => `座位表_${GH.today().replaceAll('-', '')}.xlsx`;
@@ -306,9 +328,13 @@
     const title = (r, c, v, height, slots = height) => cells.push({ r, c, v, kind: 'title', height, slots });
     const name = (r, c, p) => cells.push({ r, c, v: text(p), kind: 'name', mark: mark(p) });
     [['貴賓', 'guest'], ['兒童椅', 'child'], ['素食', 'veg']].forEach(([v, m], i) => cells.push({ r: 3 + i, c: 1, v, kind: 'legend', mark: m }));
+    // 段的高度：那一段有桌次超過 10 位時是十二列，否則十列；段的起點是前面各段高度的累加
+    const BANDS = C.ROWS * 2 + 1, band = t => Math.round(t.row * 2);
+    const height = Array.from({ length: BANDS }, (_, b) => (S.tables.some(t => band(t) === b && GH.isOver(t)) ? C.MAX_SEATS : N));
+    const start = height.reduce((acc, h, b) => { acc.push(b ? acc[b - 1] + height[b - 1] : 1); return acc; }, []);
     S.tables.forEach(t => {
-      const seats = GH.seats(t), r = 1 + t.row * 2 * N, c = SHEET_COL[t.col];
-      title(r, c, [`第 ${t.no} 桌`, t.note, GH.tableLabel(t), `(${seats.length})`].filter(Boolean).join('\n'), N);
+      const seats = GH.seats(t), b = band(t), r = start[b], c = SHEET_COL[t.col];
+      title(r, c, [`第 ${t.no} 桌`, t.note, GH.tableLabel(t), `(${seats.length})`].filter(Boolean).join('\n'), height[b]);
       seats.forEach((p, i) => name(r + i, c + 1, p));
     });
     // 工作人員在右上角，沒有人時名單留白
@@ -316,7 +342,7 @@
     title(1, 11, `工作人員\n(${staff.length})`, Math.max(N, staff.length));
     staff.forEach((p, i) => name(1 + i, 12, p));
     // 未入座在座位圖下方空一列，每欄十位、每段十欄；沒有未入座時不放
-    const left = GH.sortedPeople().filter(p => !GH.isStaff(p) && !GH.tableOf(p.id)), top = 2 + (C.ROWS * 2 + 1) * N;
+    const left = GH.sortedPeople().filter(p => !GH.isStaff(p) && !GH.tableOf(p.id)), top = start[BANDS - 1] + height[BANDS - 1] + 1;
     if (left.length) {
       title(top, 2, `未入座\n(${left.length})`, N * Math.ceil(left.length / (N * 10)), 0);
       left.forEach((p, i) => name(top + Math.floor(i / (N * 10)) * N + (i % N), 3 + (Math.floor(i / N) % 10), p));

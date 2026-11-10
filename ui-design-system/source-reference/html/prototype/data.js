@@ -5,7 +5,8 @@
 (function () {
   const pad = n => String(n).padStart(2, '0');
   const iso = dt => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
-  const CAPACITY = 10;
+  // 每桌標準 10 位、最多 12 位（第 8.3 節）：拖移與「加入人員」可以放到 12 位，選單類的入口只到 10 位
+  const CAPACITY = 10, MAX_SEATS = 12;
 
   // 桌次排列（第 8.3 節）：欄 0–5 由左到右（A 外側、A 中間、A 內側、B 內側、B 中間、B 外側），列以半格錯開
   const LAYOUT = [
@@ -20,6 +21,7 @@
 
   const C = {
     CAPACITY,
+    MAX_SEATS,
     CATEGORIES: ['員工', '眷屬', '外部貴賓'],
     RELATIONS: ['配偶', '子女', '父母', '兄弟姊妹'],
     NOTE_SUGGESTIONS: ['主桌', '董事貴賓', '供應商', '客戶貴賓'],
@@ -64,7 +66,8 @@
     let seq = 0, rseq = 0;
     // 員工名單：直接取自公司名單（第 8.1 節）
     // 組別是承辦人提供的分組名單，已寫在 roster.js；名單上沒有的人沒有組別
-    const employees = (window.GH_ROSTER || []).map(r => ({ id: `e${++rseq}`, name: r.name, en: r.en || '', dept: r.dept, group: r.group || '', ext: r.ext || '', area: r.area || '', office: r.office || '', note: '' }));
+    // declined 是承辦人手動標記的「不參加」（第 7.4.1 節）；示範資料不預先標記任何人，舊資料沒有這個欄位時視為 false
+    const employees = (window.GH_ROSTER || []).map(r => ({ id: `e${++rseq}`, name: r.name, en: r.en || '', dept: r.dept, group: r.group || '', ext: r.ext || '', area: r.area || '', office: r.office || '', note: '', declined: false }));
     const people = [];
     const add = p => { const x = { id: `p${++seq}`, name: '', rosterId: null, employeeId: null, relation: '', childSeat: false, veg: false, staff: false, org: '', note: '', ...p }; people.push(x); return x; };
     // 參與人員依 2026 年報名表：會參加、員工名單找得到的員工報名；攜帶的一位眷屬掛在員工上（第 8.1 節）

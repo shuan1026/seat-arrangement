@@ -405,6 +405,8 @@ table.data { width: 100%; border-collapse: collapse; }
 .seat-card .seat-card-head { min-height: 24px; }
 .seat-count { font: var(--text-xs-medium); font-family: var(--font-sans); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .seat-list { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: repeat(5, 24px); grid-auto-flow: column; gap: 2px var(--space-2); list-style: none; margin: 0; padding: 0; }
+/* 超過 10 位的桌名單是 12 列，兩欄各 6 列（第 6.6 節） */
+.seat-list--over { grid-template-rows: repeat(6, 24px); }
 .seat-row { display: flex; align-items: center; gap: var(--space-1); height: 24px; padding: 0 var(--space-1); border-radius: var(--radius-sm); font: var(--text-xs-regular); font-family: var(--font-sans); min-width: 0; }
 .seat-row[draggable="true"] { cursor: grab; }
 .seat-row .seat-idx { width: 14px; flex: 0 0 auto; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
@@ -424,7 +426,8 @@ table.data { width: 100%; border-collapse: collapse; }
 .seat-table:hover .seat-circle, .seat-table:hover .seat-card { border-color: color-mix(in srgb, var(--foreground) 25%, var(--border)); }
 .seat-table.is-selected .seat-circle, .seat-table.is-selected .seat-card { border-color: var(--primary); }
 .seat-table.is-over .seat-circle, .seat-table.is-over .seat-card { border-color: var(--primary); border-style: solid; box-shadow: var(--edge-highlight), var(--shadow-md); }
-.seat-table.is-full.is-over .seat-circle, .seat-table.is-full.is-over .seat-card { border-color: var(--border); cursor: not-allowed; }
+/* 已達 12 位的桌不能再放：拖到上面時邊框不換成主色，游標 not-allowed（第 6.6 節） */
+.seat-table.is-max.is-over .seat-circle, .seat-table.is-max.is-over .seat-card { border-color: var(--border); cursor: not-allowed; }
 .seat-table.is-hit .seat-circle, .seat-table.is-hit .seat-card { border: 2px solid var(--accent); }
 .seat-circle:focus-visible { border-radius: var(--radius-full); }
 .seat-card:focus-visible { border-radius: var(--radius-xl); }

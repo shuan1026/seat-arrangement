@@ -25,7 +25,8 @@
 <script>
 const { $, $$, esc, C } = GH;
 const { node, icon } = UI;
-const TABS = { all: '全部', unregistered: '未報名', registered: '已報名' };
+// 報名狀態有三種（第 7.4.1 節）：全部 = 未報名 + 已報名 + 不參加；「未報名」不含不參加的人
+const TABS = { all: '全部', unregistered: '未報名', registered: '已報名', declined: '不參加' };
 let tab = TABS[GH.qs('view')] ? GH.qs('view') : 'all';
 let q = '';
 let dept = '';
@@ -33,15 +34,23 @@ let group = '';
 let area = '';
 let page = 1;
 const selected = new Set();
-const inTab = e => (tab === 'all' ? true : tab === 'registered' ? GH.isRegistered(e) : !GH.isRegistered(e));
+const inTab = e => tab === 'all' || GH.regStatus(e) === TABS[tab];
 const visible = () => GH.sortedEmployees().filter(e => inTab(e) && (!dept || e.dept === dept) && (!group || e.group === group) && (!area || e.area === area) && GH.rosterMatches(e, q));
 // 組別篩選的選項：選了部門只列那個部門的組別，沒選時依部門順序列出全部組別（第 7.4.1 節）
 const groupOptions = () => (dept ? GH.groups(dept) : GH.depts().flatMap(GH.groups));
 const hasFilters = () => dept || group || area;
+// 標記為不參加／改回未報名：已報名的要先取消報名，所以只出現在沒報名的員工上；勾選中的員工標記後取消勾選
+function setDeclined(e, on) {
+  if (!GH.setDeclined(e, on)) return;
+  selected.delete(e.id);
+  GH.save();
+  UI.toast(on ? `已把 ${e.name} 標記為不參加。` : `已把 ${e.name} 改回未報名。`);
+  GH.refresh();
+}
 
-// 勾選框（第 7.4.1 節）：已報名的列顯示停用的勾選框；表頭全選只勾這一頁未報名的員工
+// 勾選框（第 7.4.1 節）：已報名與不參加的列顯示停用的勾選框；表頭全選只勾這一頁未報名的員工
 const checkbox = (attrs, label, on) => `<label class="checkbox"><input type="checkbox" ${attrs} ${on ? 'checked' : ''} aria-label="${esc(label)}"><span class="box">${icon('check')}</span></label>`;
-const pickable = rows => rows.filter(e => !GH.isRegistered(e));
+const pickable = rows => rows.filter(GH.isUnregistered);
 function toolbar() {
   const bar = node('<div class="toolbar"></div>');
   // 提示文字縮短，320 px 才不會被截斷；搜尋範圍仍包含英文名（第 7.4.1 節）
@@ -58,7 +67,7 @@ function toolbar() {
 function paintBulk(bar = $('.toolbar')) {
   if (!bar) return;
   $('.toolbar-end', bar)?.remove();
-  const picked = [...selected].filter(id => { const e = GH.employee(id); return e && !GH.isRegistered(e); });
+  const picked = [...selected].filter(id => { const e = GH.employee(id); return e && GH.isUnregistered(e); });
   if (picked.length) bar.append(node(`<div class="toolbar-end">${UI.btn(`加入尾牙（${picked.length} 位）`, { v: 'primary', icon: 'user-plus', act: 'bulkRegister' })}</div>`));
 }
 function chips() {
@@ -70,7 +79,8 @@ function emptyHTML() {
   if (!GH.employees().length) return UI.empty({ icon: 'id-card', title: '還沒有員工名單。', body: '匯入公司員工名單，或先新增幾位員工。', btn: UI.btn('匯入員工名單', { v: 'primary', icon: 'upload', act: 'importEmployees' }) + UI.btn('新增員工', { icon: 'plus', act: 'newEmployee' }) });
   if (q) return UI.empty({ icon: 'search', title: `找不到「${q}」。`, btn: UI.btn('清除搜尋', { act: 'clearSearch' }) });
   if (hasFilters()) return UI.empty({ icon: 'search', title: '找不到符合條件的員工。', btn: UI.btn('清除篩選', { act: 'clearFilters' }) });
-  if (tab === 'unregistered') return UI.empty({ icon: 'check', title: '所有員工都已報名。' });
+  if (tab === 'unregistered') return UI.empty({ icon: 'check', title: '沒有未報名的員工。' });
+  if (tab === 'declined') return UI.empty({ icon: 'check', title: '沒有標記為不參加的員工。' });
   return UI.empty({ icon: 'users', title: '還沒有員工報名。', body: '在「全部」分頁把報名的員工加入尾牙。' });
 }
 GH.page({
@@ -81,7 +91,8 @@ GH.page({
     if (!all.length) { v.append(node(emptyHTML())); return; }
     // 人數只放在 Tabs 上，不另外放統計列（第 7.4.1 節）
     const s = GH.rosterStats();
-    v.append(UI.tabsPill([{ value: 'all', label: '全部', count: s.total }, { value: 'unregistered', label: '未報名', count: s.unregistered }, { value: 'registered', label: '已報名', count: s.registered }], tab, x => { tab = x; page = 1; GH.refresh(); }));
+    // 四個分頁放不下時，在分頁列內水平捲動，不造成整頁水平捲動
+    v.append(UI.tabsPill([{ value: 'all', label: '全部', count: s.total }, { value: 'unregistered', label: '未報名', count: s.unregistered }, { value: 'registered', label: '已報名', count: s.registered }, { value: 'declined', label: '不參加', count: s.declined }], tab, x => { tab = x; page = 1; GH.refresh(); }));
     v.append(toolbar());
     const c = chips(); if (c) v.append(c);
     const rows = visible();
@@ -92,14 +103,14 @@ GH.page({
         {
           label: '勾選', check: true,
           header: pageRows => { const list = pickable(pageRows); return checkbox(`data-sel-all ${list.length ? '' : 'disabled'}`, '全選這一頁未報名的員工', list.length && list.every(e => selected.has(e.id))); },
-          render: e => (GH.isRegistered(e) ? checkbox('disabled', `${e.name} 已報名`) : checkbox(`data-sel="${e.id}"`, `勾選 ${e.name}`, selected.has(e.id))),
+          render: e => (GH.isUnregistered(e) ? checkbox(`data-sel="${e.id}"`, `勾選 ${e.name}`, selected.has(e.id)) : checkbox('disabled', `${e.name} ${GH.regStatus(e)}`)),
         },
         { label: '姓名', primary: true, render: e => `<span class="link">${esc(e.name)}</span>${e.en ? `<div class="muted text-xs">${esc(e.en)}</div>` : ''}` },
         { label: '部門', render: e => esc(e.dept) },
         { label: '組別', render: e => esc(e.group || '—') },
         { label: '分機', render: e => (e.ext ? `<span class="num">${esc(e.ext)}</span>` : '<span class="muted">—</span>') },
         { label: '地區', render: e => esc(e.area || '—') },
-        { label: '報名狀態', render: e => UI.status(GH.isRegistered(e) ? '已報名' : '未報名') },
+        { label: '報名狀態', render: e => UI.status(GH.regStatus(e)) },
         { label: '備註', hideMobile: true, render: e => (e.note ? `<span class="wrap-anywhere">${esc(e.note)}</span>` : '<span class="muted">—</span>') },
         { label: '', actions: true, render: e => UI.rowMenu('employeeMenu', e.id) },
       ],
@@ -127,7 +138,7 @@ GH.act({
   clearFilters() { dept = ''; group = ''; area = ''; page = 1; GH.refresh(); },
   removeFilter(el) { const k = el.dataset.key; if (k === 'dept') dept = ''; else if (k === 'group') group = ''; else area = ''; page = 1; GH.refresh(); },
   bulkRegister() {
-    const list = [...selected].map(GH.employee).filter(e => e && !GH.isRegistered(e));
+    const list = [...selected].map(GH.employee).filter(e => e && GH.isUnregistered(e));
     if (!list.length) return;
     UI.alertDialog({
       title: `要把 ${list.length} 位員工加入尾牙嗎？`, body: '只加入員工本人，眷屬請之後在參與人員補上。', confirm: '加入尾牙',
@@ -145,6 +156,10 @@ GH.act({
       { label: '刪除', icon: 'trash', danger: true, onClick: () => UI.deleteEmployee(e) },
     ] : [
       { label: '加入尾牙', icon: 'user-plus', onClick: () => UI.personDialog({ roster: e, onDone: () => { selected.delete(e.id); GH.refresh(); } }) },
+      // 標記不參加、改回未報名（第 7.4.1 節）：只有單筆，立即儲存、不需確認，Sonner 不帶「復原」
+      GH.isDeclined(e)
+        ? { label: '改回未報名', icon: 'undo-2', onClick: () => setDeclined(e, false) }
+        : { label: '標記為不參加', icon: 'ban', onClick: () => setDeclined(e, true) },
       { label: '編輯', icon: 'pencil', onClick: () => UI.employeeDialog({ employee: e }) },
       { sep: 1 },
       { label: '刪除', icon: 'trash', danger: true, onClick: () => UI.deleteEmployee(e) },

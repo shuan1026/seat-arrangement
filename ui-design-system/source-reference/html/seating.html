@@ -25,7 +25,8 @@
 <script>
 const { $, $$, esc, C } = GH;
 const { node, icon } = UI;
-const CAP = C.CAPACITY;
+// 每桌標準 10 位、最多 12 位（第 8.3 節）：拖移與「加入人員」可以放到 12 位
+const CAP = C.CAPACITY, MAX = C.MAX_SEATS;
 const isMobile = () => innerWidth < 768;
 // ---- 畫面狀態
 let peopleTab = GH.qs('view') === 'all' ? 'all' : 'unseated';
@@ -44,8 +45,10 @@ const panelOpen = () => isMobile() || (view().panel ?? innerWidth >= 1024);
 
 // ---- 座位圖的幾何（第 6.6 節）：收合是 88 px 圓形，展開是 280 px 卡片；欄距與列距依模式不同
 const PAD = 24, BAND = 56, GAP = 32;
-// 展開卡片固定 220 px 高（標頭兩行各截成一行），列距 240 px 才不會和同一欄的下一張重疊
-const UNIT = () => (expanded() ? { w: 296, h: 240, item: 280, itemH: 220 } : { w: 112, h: 104, item: 88, itemH: 88 });
+// 展開卡片固定 220 px 高（標頭兩行各截成一行），列距 240 px 才不會和同一欄的下一張重疊。
+// 有桌次超過 10 位時，那一桌的名單是 12 列（兩欄各 6 列），卡片高 246 px，所有卡片的列距加大為 266 px，仍不重疊
+const anyOver = () => GH.tables().some(GH.isOver) || GH.staff().length > CAP;
+const UNIT = () => (expanded() ? (anyOver() ? { w: 296, h: 266, item: 280, itemH: 246 } : { w: 296, h: 240, item: 280, itemH: 220 }) : { w: 112, h: 104, item: 88, itemH: 88 });
 const geometry = () => { const u = UNIT(); return { u, W: PAD * 2 + 5 * u.w + u.item, y0: PAD + BAND + GAP, H: PAD + BAND + GAP + 5 * u.h + u.itemH + GAP + BAND + PAD }; };
 const clampZoom = z => Math.min(2, Math.max(0.25, z));
 // 縮放（第 7.2.1 節）：沒有手動縮放就是「適合視窗」，開啟、改變視窗大小、開關桌次詳情時都重新計算；
@@ -120,13 +123,16 @@ function landmarksHTML(g) {
     return `<div class="landmark" style="left:${left}px;top:${top}px;width:${width}px;height:${BAND}px" aria-hidden="true">${l.label}</div>`;
   }).join('') + staffTableHTML(g);
 }
-// 工作人員桌（第 7.2.5 節）：放工作人員，最多 10 位；可以拖進拖出，點開看名單
+// 人數標示（第 7.2.1 節）：0–9 位顯示 {n}/10，10 位「已滿」，11、12 位「超過」
+const countHTML = n => (n > CAP ? UI.status('超過') : n >= CAP ? UI.status('已滿') : `<span class="seat-count">${n}/${CAP}</span>`);
+// 工作人員桌（第 7.2.5 節）：放工作人員，位數和一般桌相同（標準 10 位、最多 12 位）；可以拖進拖出，點開看名單
 const STAFF_SPOT = { col: 5, row: 0 };
 function staffTableHTML(g) {
-  const staff = GH.staff(), u = g.u, full = staff.length >= CAP, label = GH.labelsOf(staff).join('＋') || '空桌';
+  const staff = GH.staff(), u = g.u, label = GH.labelsOf(staff).join('＋') || '空桌';
   const x = PAD + STAFF_SPOT.col * u.w, y = g.y0 + STAFF_SPOT.row * u.h;
-  const cls = `seat-table seat-table--staff ${staff.length ? '' : 'is-empty'} ${full ? 'is-full' : ''} ${selected === 'staff' ? 'is-selected' : ''}`;
-  const count = full ? UI.status('已滿') : `<span class="seat-count">${staff.length}/${CAP}</span>`;
+  // is-max：已達 12 位，拖到上面時游標顯示不可放置
+  const cls = `seat-table seat-table--staff ${staff.length ? '' : 'is-empty'} ${staff.length >= MAX ? 'is-max' : ''} ${selected === 'staff' ? 'is-selected' : ''}`;
+  const count = countHTML(staff.length);
   if (!expanded()) {
     return `<div class="${cls}" data-staff="1" style="left:${x}px;top:${y}px">
       <button type="button" class="seat-circle" data-act="openStaff" aria-label="工作人員桌，${esc(label)}，${staff.length}/${CAP}" data-tip="工作人員桌・${esc(label)}"><span class="seat-staff">工作人員</span>${count}</button></div>`;
@@ -135,10 +141,12 @@ function staffTableHTML(g) {
     <div class="seat-card" data-act="openStaff" role="button" tabindex="0" aria-label="工作人員桌，${esc(label)}，${staff.length}/${CAP}">
       <div class="seat-card-head"><div><span class="seat-no">工作人員桌</span></div>${count}</div>
       <div class="seat-depts">${esc(label)}</div>
-      <ol class="seat-list">${seatRows(null, staff, 'seat-row')}</ol></div></div>`;
+      <ol class="seat-list ${staff.length > CAP ? 'seat-list--over' : ''}">${seatRows(null, staff, 'seat-row')}</ol></div></div>`;
 }
+// 名單列數：標準 10 列，超過 10 位時 12 列
+const rowCount = n => (n > CAP ? MAX : CAP);
 function seatRows(t, seats, cls) {
-  return Array.from({ length: CAP }, (_, i) => {
+  return Array.from({ length: rowCount(seats.length) }, (_, i) => {
     const p = seats[i];
     if (!p) return `<li class="${cls} is-empty" data-index="${i}"><span class="seat-idx">${i + 1}</span>空位</li>`;
     const draggable = !isMobile();
@@ -146,10 +154,10 @@ function seatRows(t, seats, cls) {
   }).join('');
 }
 function tableHTML(t, g) {
-  const seats = GH.seats(t), full = GH.isFull(t), label = GH.tableLabel(t), u = g.u;
+  const seats = GH.seats(t), label = GH.tableLabel(t), u = g.u;
   const x = PAD + t.col * u.w, y = g.y0 + t.row * u.h;
-  const cls = `seat-table ${seats.length ? '' : 'is-empty'} ${full ? 'is-full' : ''} ${hit === t.no ? 'is-hit' : ''} ${selected === t.no ? 'is-selected' : ''}`;
-  const count = full ? UI.status('已滿') : `<span class="seat-count">${seats.length}/${CAP}</span>`;
+  const cls = `seat-table ${seats.length ? '' : 'is-empty'} ${GH.isMax(t) ? 'is-max' : ''} ${hit === t.no ? 'is-hit' : ''} ${selected === t.no ? 'is-selected' : ''}`;
+  const count = countHTML(seats.length);
   // 拖移把手：只能從這裡拖整桌去對調（第 7.2.1 節）；手機不拖移
   const handle = isMobile() ? '' : UI.iconBtn('grip-vertical', '拖移調換桌次', { xs: true, cls: 'seat-handle', act: 'noop', attrs: { draggable: 'true', 'data-drag-table': t.no } });
   if (!expanded()) {
@@ -161,7 +169,7 @@ function tableHTML(t, g) {
     <div class="seat-card" data-act="openTable" data-no="${t.no}" role="button" tabindex="0" aria-label="第 ${t.no} 桌，${esc(label)}，${seats.length}/${CAP}">
       <div class="seat-card-head"><div><span class="seat-no">第 ${t.no} 桌</span></div>${count}${handle}</div>
       ${t.note ? `<div class="seat-note">${esc(t.note)}</div>` : ''}<div class="seat-depts">${esc(label)}</div>
-      <ol class="seat-list">${seatRows(t, seats, 'seat-row')}</ol></div></div>`;
+      <ol class="seat-list ${GH.isOver(t) ? 'seat-list--over' : ''}">${seatRows(t, seats, 'seat-row')}</ol></div></div>`;
 }
 function mapHTML() {
   const g = geometry();
@@ -179,7 +187,8 @@ function mapHTML() {
 }
 function summaryHTML() {
   const s = GH.stats();
-  return `<div class="seat-summary"><span>已入座 <b>${s.seated}</b>／<b>${s.total}</b></span><span class="sep"></span><span>未入座 <b>${s.unseated}</b></span><span class="sep"></span><span>空位 <b>${s.empty}</b></span><span class="sep"></span><span>已滿 <b>${s.full}</b> 桌</span></div>`;
+  // 空位每桌只算到 10 位；已滿含超過的桌；有桌次超過時最後加「超過 {u} 桌」（第 7.2.1 節）
+  return `<div class="seat-summary"><span>已入座 <b>${s.seated}</b>／<b>${s.total}</b></span><span class="sep"></span><span>未入座 <b>${s.unseated}</b></span><span class="sep"></span><span>空位 <b>${s.empty}</b></span><span class="sep"></span><span>已滿 <b>${s.full}</b> 桌</span>${s.over ? `<span class="sep"></span><span>超過 <b>${s.over}</b> 桌</span>` : ''}</div>`;
 }
 
 // ---- 桌次詳情（第 7.2.3 節）：桌面是浮出面板，手機是 Dialog
@@ -189,7 +198,7 @@ function tableBody(t) {
     <div class="field"><label for="tp-note">備註名稱</label><input id="tp-note" class="input" data-note placeholder="例如主桌、董事貴賓、供應商" value="${esc(t.note)}" maxlength="20"><div class="badges">${C.NOTE_SUGGESTIONS.map(s => `<button type="button" class="badge badge--outline" data-suggest="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>
     <div class="tp-meta"><span>部門：<b>${esc(labels.join('＋') || '—')}</b></span><span>兒童椅 <b>${GH.childSeats(t)}</b> 張</span><span>素食 <b>${GH.vegCount(t)}</b> 位</span></div>
     <div><div class="row-between" style="margin-bottom:var(--space-1)"><h3 style="font:var(--text-sm-medium);font-family:var(--font-sans)">名單</h3></div><p class="muted text-xs" style="margin-bottom:var(--space-2)">拖移可以調整順序，也可以從人員面板直接拖進來。</p>
-    <ol class="tp-list" data-tp-list data-no="${t.no}">${Array.from({ length: CAP }, (_, i) => {
+    <ol class="tp-list" data-tp-list data-no="${t.no}">${Array.from({ length: rowCount(seats.length) }, (_, i) => {
       const p = seats[i];
       if (!p) return `<li class="tp-seat is-empty" data-index="${i}"><span class="seat-idx">${i + 1}</span>空位</li>`;
       const draggable = !isMobile();
@@ -204,7 +213,8 @@ function tableBody(t) {
   const list = $('[data-tp-list]', body);
   list.addEventListener('dragover', e => {
     if (!drag || drag.tableNo) return;
-    if (GH.isFull(t) && drag.fromNo !== t.no) { e.dataTransfer.dropEffect = 'none'; return; }
+    // 拖移可以放到 12 位；已達 12 位時不可放置，放開後提示（第 7.2.1 節）
+    if (GH.isMax(t) && drag.fromNo !== t.no) { e.dataTransfer.dropEffect = 'none'; drag.blocked = t.no; return; }
     e.preventDefault(); e.dataTransfer.dropEffect = 'move';
     list.classList.add('is-over');
     $$('.tp-seat.is-over', list).forEach(n => n.classList.remove('is-over'));
@@ -215,7 +225,8 @@ function tableBody(t) {
   return body;
 }
 const tableActions = t => [
-  { label: '加入人員', v: 'primary', icon: 'user-plus', act: 'addPeople' },
+  // 這一桌已有 12 位時停用（第 7.2.3 節，和工作人員桌一致）
+  { label: '加入人員', v: 'primary', icon: 'user-plus', act: 'addPeople', disabled: GH.isMax(t) },
   { label: '調換桌次…', v: 'outline', icon: 'arrow-right-left', act: 'swapTable' },
   // 觸發鈕用 destructive-outline，不搶主要動作；確認對話框裡的「清空桌次」才用 destructive-primary（第 6.5 節）
   { label: '清空桌次', v: 'danger-outline', icon: 'eraser', act: 'clearTable', disabled: !GH.seats(t).length },
@@ -285,14 +296,18 @@ function staffBody() {
     <p class="muted text-xs">活動當天值勤的員工，不算入座統計；匯出時列在座位表右上角。</p>
     <div class="tp-meta"><span>部門：<b>${esc(GH.labelsOf(staff).join('＋') || '—')}</b></span></div>
     <div><div class="row-between" style="margin-bottom:var(--space-1)"><h3 style="font:var(--text-sm-medium);font-family:var(--font-sans)">名單</h3></div><p class="muted text-xs" style="margin-bottom:var(--space-2)">從人員面板或其他桌次拖進來，或按「加入人員」。只有員工可以放進來。</p>
-    <ol class="tp-list" data-staff-list>${Array.from({ length: CAP }, (_, i) => {
+    <ol class="tp-list" data-staff-list>${Array.from({ length: rowCount(staff.length) }, (_, i) => {
       const p = staff[i];
       if (!p) return `<li class="tp-seat is-empty"><span class="seat-idx">${i + 1}</span>空位</li>`;
       const draggable = !isMobile();
       return `<li class="tp-seat" draggable="${draggable}" ${draggable ? `data-drag-person="${p.id}"` : ''} data-person="${p.id}">${draggable ? `<span class="grip">${icon('grip-vertical')}</span>` : ''}<span class="seat-idx">${i + 1}</span><div class="person-main">${UI.nameLine(p)}<div class="person-meta">${esc(GH.secondary(p) || '—')}</div></div>${UI.rowMenu('staffSeatMenu', p.id)}</li>`;
     }).join('')}</ol></div></div>`);
   const list = $('[data-staff-list]', body);
-  list.addEventListener('dragover', e => { if (!drag || drag.tableNo || drag.fromStaff) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; list.classList.add('is-over'); });
+  list.addEventListener('dragover', e => {
+    if (!drag || drag.tableNo || drag.fromStaff) return;
+    if (GH.staffMax()) { e.dataTransfer.dropEffect = 'none'; drag.blocked = 'staff'; return; }
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move'; list.classList.add('is-over');
+  });
   list.addEventListener('dragleave', e => { if (!list.contains(e.relatedTarget)) list.classList.remove('is-over'); });
   list.addEventListener('drop', e => { if (!drag || drag.tableNo || drag.fromStaff) return; e.preventDefault(); list.classList.remove('is-over'); UI.toStaff(GH.person(drag.pid)); });
   return body;
@@ -302,7 +317,7 @@ function staffPanel() {
   const panel = node(`<section class="table-panel" aria-label="工作人員桌">
     <div class="tp-head"><div><h2>工作人員桌</h2><p class="muted text-xs">${n}/${CAP} 人</p></div>${UI.iconBtn('x', '關閉', { act: 'closeTable', sm: true })}</div>
     <div class="tp-body"></div>
-    <div class="tp-foot">${UI.btn('加入人員', { v: 'primary', icon: 'user-plus', act: 'addStaff', disabled: n >= CAP })}</div></section>`);
+    <div class="tp-foot">${UI.btn('加入人員', { v: 'primary', icon: 'user-plus', act: 'addStaff', disabled: n >= MAX })}</div></section>`);
   $('.tp-body', panel).append(staffBody());
   return panel;
 }
@@ -312,33 +327,36 @@ function openMobileStaff() {
   const n = GH.staff().length;
   const dlg = UI.dialog({
     title: '工作人員桌', desc: `${n}/${CAP} 人`, body: staffBody(), focus: false,
-    actions: [{ label: '關閉' }, { label: '加入人員', v: 'primary', icon: 'user-plus', disabled: n >= CAP, keepOpen: true, onClick: () => { actions.addStaff(); return false; } }],
+    actions: [{ label: '關閉' }, { label: '加入人員', v: 'primary', icon: 'user-plus', disabled: n >= MAX, keepOpen: true, onClick: () => { actions.addStaff(); return false; } }],
     onClose: () => { if (mobileDialog !== dlg) return; mobileDialog = null; selected = null; GH.refresh(); },
   });
   mobileDialog = dlg;
 }
 const actions = {};
 
-// ---- 拖放（第 7.2.1 節）
+// ---- 拖放（第 7.2.1 節）：拖移可以放到 12 位；放進後超過 10 位時，Sonner 後面加「這一桌已超過 10 位。」
+const maxToast = no => UI.toast(no === 'staff' ? '工作人員桌已達 12 位，請先移出一位。' : `第 ${no} 桌已達 12 位，請先移出一位。`, { type: 'warning' });
 function dropPerson(no, index) {
   if (!drag) return;
   const p = GH.person(drag.pid); if (!p) return;
   const name = GH.displayName(p);
   // 從工作人員桌拖到桌次：先移出工作人員桌再入座，一次復原
   if (GH.isStaff(p)) {
-    const r0 = GH.setStaff(p, false), r = GH.place(p.id, no, index);
-    if (!r) { r0.undo(); UI.toast(`第 ${no} 桌已滿，請先移出一位。`, { type: 'warning' }); return; }
+    const r0 = GH.setStaff(p, false), r = GH.place(p.id, no, index, MAX);
+    if (!r) { r0.undo(); maxToast(no); return; }
     GH.save();
-    UI.undoToast(`已把 ${name} 從工作人員桌移到第 ${no} 桌。`, () => { r.undo(); r0.undo(); });
+    UI.undoToast(UI.overText(`已把 ${name} 從工作人員桌移到第 ${no} 桌。`, GH.isOver(r.to)), () => { r.undo(); r0.undo(); });
     GH.refresh();
     return;
   }
   const from = GH.tableOf(p.id);
   if (from && from.no === no && index == null) return;
-  const r = GH.place(p.id, no, index);
-  if (!r) { UI.toast(`第 ${no} 桌已滿，請先移出一位。`, { type: 'warning' }); return; }
+  const r = GH.place(p.id, no, index, MAX);
+  if (!r) { maxToast(no); return; }
   GH.save();
-  UI.undoToast(!from ? `已把 ${name} 安排到第 ${no} 桌。` : from.no === no ? `已調整第 ${no} 桌的座位順序。` : `已把 ${name} 從第 ${from.no} 桌移到第 ${no} 桌。`, r.undo);
+  // 調整同一桌的順序不算放進，不加「已超過」
+  const moved = !from || from.no !== no;
+  UI.undoToast(UI.overText(!from ? `已把 ${name} 安排到第 ${no} 桌。` : from.no === no ? `已調整第 ${no} 桌的座位順序。` : `已把 ${name} 從第 ${from.no} 桌移到第 ${no} 桌。`, moved && GH.isOver(r.to)), r.undo);
   GH.refresh();
 }
 function bindDrag(root) {
@@ -364,8 +382,10 @@ function bindDrag(root) {
     if (tbl.dataset.staff) {
       if (drag.tableNo || drag.fromStaff) return;
       $$('.seat-table.is-over', root).forEach(n => n !== tbl && n.classList.remove('is-over'));
-      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
       tbl.classList.add('is-over');
+      // 工作人員桌已達 12 位：游標顯示不可放置，放開後提示
+      if (GH.staffMax()) { e.dataTransfer.dropEffect = 'none'; drag.blocked = 'staff'; return; }
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
       return;
     }
     const no = +tbl.dataset.no, t = GH.table(no);
@@ -378,7 +398,8 @@ function bindDrag(root) {
     }
     $$('.seat-table.is-over', root).forEach(n => n !== tbl && n.classList.remove('is-over'));
     $$('.seat-row.is-over', root).forEach(n => n.classList.remove('is-over'));
-    if (GH.isFull(t) && drag.fromNo !== no) { tbl.classList.add('is-over'); e.dataTransfer.dropEffect = 'none'; return; }
+    // 已滿或超過、但還不到 12 位的桌和可放置的桌相同；已達 12 位時游標顯示不可放置，放開後提示
+    if (GH.isMax(t) && drag.fromNo !== no) { tbl.classList.add('is-over'); e.dataTransfer.dropEffect = 'none'; drag.blocked = no; return; }
     e.preventDefault(); e.dataTransfer.dropEffect = 'move';
     tbl.classList.add('is-over');
     const row = e.target.closest('.seat-row'); if (row) row.classList.add('is-over');
@@ -393,8 +414,13 @@ function bindDrag(root) {
     dropPerson(+tbl.dataset.no, row ? +row.dataset.index : null);
   });
 }
+// 已達 12 位的桌（第 7.2.1 節）：放開時瀏覽器不會觸發 drop，所以記下最後停在哪一張已達 12 位的桌，在 dragend 提示。
+// 每次 dragover 先清掉（capture 階段，比各區的處理早），停在已達 12 位的桌或名單上時，各區的 dragover 再記上；拖出視窗也清掉
+document.addEventListener('dragover', () => { if (drag) drag.blocked = null; }, true);
+document.addEventListener('dragleave', e => { if (drag && !e.relatedTarget && (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= innerWidth || e.clientY >= innerHeight)) drag.blocked = null; });
 // 拖移結束時清掉狀態；來源列可能已經因為重畫而不在畫面上，所以掛在 document
 document.addEventListener('dragend', () => {
+  if (drag && drag.blocked != null) maxToast(drag.blocked);
   drag = null;
   $$('.is-dragging, .is-dragging-table').forEach(n => n.classList.remove('is-dragging', 'is-dragging-table'));
   $$('.is-over, .is-swap').forEach(n => n.classList.remove('is-over', 'is-swap'));

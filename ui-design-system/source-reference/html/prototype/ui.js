@@ -29,6 +29,8 @@
     'chevrons-left': '<path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/>', 'chevrons-right': '<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>', check: '<path d="M20 6 9 17l-5-5"/>',
     clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+    ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+    'undo-2': '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>',
     'triangle-alert': '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
     info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
     plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
@@ -63,9 +65,13 @@
   });
 
   // ---- 徽章（第 6.3 節）
-  const STATUS = { 已滿: 'pos', 已報名: 'pos', 未入座: 'wait', 未報名: 'wait', 空桌: 'neu', 工作人員: 'neu' };
+  // 「超過」（桌次 11、12 位）用待處理的顏色，圖示換成警示，和「未入座」「未報名」的時鐘區分；「不參加」是中性徽章，沒有圖示
+  const STATUS = { 已滿: 'pos', 已報名: 'pos', 未入座: 'wait', 未報名: 'wait', 超過: 'wait', 空桌: 'neu', 工作人員: 'neu', 不參加: 'neu' };
   const KIND_ICON = { pos: 'check', wait: 'clock' };
-  UI.status = (key, label = key) => { const k = STATUS[key] || 'third'; return `<span class="badge badge--${k}">${KIND_ICON[k] ? icon(KIND_ICON[k]) : ''}${esc(label)}</span>`; };
+  const KEY_ICON = { 超過: 'triangle-alert' };
+  UI.status = (key, label = key) => { const k = STATUS[key] || 'third', ic = KEY_ICON[key] || KIND_ICON[k]; return `<span class="badge badge--${k}">${ic ? icon(ic) : ''}${esc(label)}</span>`; };
+  // 放進後這一桌超過 10 位時，成功的 Sonner 句尾改為「，這一桌已超過 10 位。」（第 7.2.1 節）
+  UI.overText = (text, over) => (over ? text.replace(/。$/, '，這一桌已超過 10 位。') : text);
   UI.badge = (text, v = 'outline') => `<span class="badge badge--${v}">${esc(text)}</span>`;
   // 兒童椅只放圖示的小徽章，滑過顯示 Tooltip，人員列和座位圖名單共用
   UI.childBadge = () => `<span class="badge badge--third seat-mark" data-tip="兒童椅" aria-label="兒童椅">${icon('baby')}</span>`;
@@ -422,6 +428,14 @@
       b.addEventListener('click', () => onChange(it.value));
       root.append(b);
     });
+    // 分頁放不下時在分頁列內水平捲動（03-components Tabs：Responsive / Overflow）；重畫後把選取的分頁捲到看得到的位置
+    requestAnimationFrame(() => {
+      const sel = root.querySelector('[aria-selected="true"]');
+      if (!sel || !root.isConnected || root.scrollWidth <= root.clientWidth) return;
+      const a = sel.getBoundingClientRect(), b = root.getBoundingClientRect();
+      if (a.right > b.right - 4) root.scrollLeft += a.right - b.right + 4;
+      else if (a.left < b.left + 4) root.scrollLeft -= b.left - a.left + 4;
+    });
     return root;
   };
 
@@ -488,7 +502,7 @@
     },
   });
 
-  // ---- 共用：桌次選項（第 7.2.4 節），已滿的停用並標示
+  // ---- 共用：桌次選項（第 7.2.4 節），只排到每桌 10 位：10 位以上（已滿、超過）的停用並標示「已滿」
   UI.tableOptions = (exceptNo) => GH.tables().filter(t => t.no !== exceptNo).map(t => {
     const full = GH.isFull(t);
     const desc = t.note || GH.tableLabels(t).join('＋');
@@ -524,15 +538,15 @@
     UI.undoToast(`已把 ${GH.displayName(p)} 移出工作人員桌。`, r.undo);
     onDone ? onDone() : GH.refresh();
   };
-  // 放進工作人員桌：只有員工可以放，桌滿或類別不對時提示；已入座的人會離開原本的桌次
+  // 拖進工作人員桌：只有員工可以放，可以放到 12 位（第 7.2.5 節）；已達 12 位或類別不對時提示；已入座的人會離開原本的桌次
   UI.toStaff = (p, onDone) => {
     if (!p || GH.isStaff(p)) return false;
     if (p.cat !== '員工') { UI.toast('只有員工可以放進工作人員桌。', { type: 'warning' }); return false; }
-    const r = GH.setStaff(p, true);
-    if (!r) { UI.toast('工作人員桌已滿，請先移出一位。', { type: 'warning' }); return false; }
+    const r = GH.setStaff(p, true, C.MAX_SEATS);
+    if (!r) { UI.toast('工作人員桌已達 12 位，請先移出一位。', { type: 'warning' }); return false; }
     GH.save();
-    const name = GH.displayName(p);
-    UI.undoToast(r.from ? `已把 ${name} 從第 ${r.from.no} 桌移到工作人員桌。` : `已把 ${name} 放進工作人員桌。`, r.undo);
+    const name = GH.displayName(p), over = GH.staff().length > C.CAPACITY;
+    UI.undoToast(UI.overText(r.from ? `已把 ${name} 從第 ${r.from.no} 桌移到工作人員桌。` : `已把 ${name} 放進工作人員桌。`, over), r.undo);
     onDone ? onDone() : GH.refresh();
     return true;
   };
@@ -578,8 +592,8 @@
     const fam = edit && p.cat === '員工' ? GH.familyOf(p.id) : [];
     const cur = p ? GH.tableOf(p.id) : null;
     const otherFamily = emp => GH.familyOf(emp.id).some(f => !p || f.id !== p.id);
-    // 員工只能從員工名單選，已報名者停用（已確認）
-    const rosterOpts = GH.sortedEmployees().map(e => { const taken = GH.isRegistered(e); return { value: e.id, label: `${e.name}（${GH.deptExt(e)}）${taken ? '・已報名' : ''}`, disabled: taken }; });
+    // 員工只能從員工名單選，已報名者停用（已確認）；不參加的員工照常可以選，標示「・不參加」，加入後標記清掉（第 7.3.2 節）
+    const rosterOpts = GH.sortedEmployees().map(e => { const taken = GH.isRegistered(e); return { value: e.id, label: `${e.name}（${GH.deptExt(e)}）${taken ? '・已報名' : GH.isDeclined(e) ? '・不參加' : ''}`, disabled: taken }; });
     // 眷屬的所屬員工只能選已報名的員工，已有眷屬的停用（第 8.1 節）
     const empOpts = GH.sortedPeople().filter(x => x.cat === '員工' && (!p || x.id !== p.id)).map(x => { const taken = otherFamily(x); return { value: x.id, label: `${GH.nameOf(x)}（${GH.secondary(x)}）${taken ? '・已有眷屬' : ''}`, disabled: taken }; });
     const relations = val => [...C.RELATIONS, ...(val && !C.RELATIONS.includes(val) ? [val] : [])];
@@ -708,8 +722,9 @@
     });
   };
 
-  // ---- 勾選人員加入：桌次（第 7.2.3 節）與工作人員桌（第 7.2.5 節）共用；k 是最多能勾的人數
-  const pickPeopleDialog = ({ title, list: all, k, meta, emptyTitle, onConfirm }) => {
+  // ---- 勾選人員加入：桌次（第 7.2.3 節）與工作人員桌（第 7.2.5 節）共用
+  // k 是最多能勾的人數（勾到這一桌 12 位為止）；free 是說明裡的空位數（只算到 10 位為止）
+  const pickPeopleDialog = ({ title, list: all, k, free, meta, emptyTitle, onConfirm }) => {
     if (!all.length) { UI.dialog({ title, body: UI.empty({ title: emptyTitle, inline: true }), actions: [{ label: '關閉' }] }); return; }
     const picked = new Set();
     const body = node(`<div class="stack-sm"><div class="input-icon">${icon('search')}<input class="input input--sm" placeholder="搜尋姓名、分機、部門或單位" aria-label="搜尋姓名、分機、部門或單位"></div><div class="stack-sm" data-list style="gap:0"></div></div>`);
@@ -729,29 +744,30 @@
     });
     input.addEventListener('input', paintList);
     paintList();
-    d = UI.dialog({ title, desc: `還有 ${k} 個空位。`, body, actions: [] });
+    // 說明（第 7.2.3、7.2.5 節）：不到 10 位時寫空位數（只算到 10 位）；已有 10、11 位時寫還能加幾位
+    d = UI.dialog({ title, desc: free > 0 ? `還有 ${free} 個空位。` : `已滿，最多還可以加入 ${k} 位。`, body, actions: [] });
     paintActions();
   };
-  // 加入人員到桌次：從未入座的參與人員中勾選
+  // 加入人員到桌次：從未入座的參與人員中勾選，可以放進第 11、12 位
   UI.addPeopleDialog = (t, onDone) => pickPeopleDialog({
-    title: `加入人員到第 ${t.no} 桌`, k: GH.remaining(t), emptyTitle: '所有人都已入座。', meta: GH.secondary,
+    title: `加入人員到第 ${t.no} 桌`, k: Math.max(0, C.MAX_SEATS - GH.seats(t).length), free: GH.remaining(t), emptyTitle: '所有人都已入座。', meta: GH.secondary,
     list: GH.sortedPeople().filter(p => !GH.isStaff(p) && !GH.tableOf(p.id)),
     onConfirm: ids => {
       const r = GH.addToTable(ids, t);
       GH.save();
-      UI.undoToast(`已把 ${r.count} 位人員加入第 ${t.no} 桌。`, r.undo);
+      UI.undoToast(UI.overText(`已把 ${r.count} 位人員加入第 ${t.no} 桌。`, GH.isOver(t)), r.undo);
       onDone ? onDone() : GH.refresh();
     },
   });
-  // 加入人員到工作人員桌：從已報名的員工中勾選，已入座的人會離開原本的桌次
+  // 加入人員到工作人員桌：從已報名的員工中勾選，可以放到 12 位；已入座的人會離開原本的桌次
   UI.addStaffDialog = onDone => pickPeopleDialog({
-    title: '加入人員到工作人員桌', k: C.CAPACITY - GH.staff().length, emptyTitle: '已報名的員工都在工作人員桌。',
+    title: '加入人員到工作人員桌', k: Math.max(0, C.MAX_SEATS - GH.staff().length), free: Math.max(0, C.CAPACITY - GH.staff().length), emptyTitle: '已報名的員工都在工作人員桌。',
     meta: p => { const t = GH.tableOf(p.id), g = GH.groupOf(p); return `${GH.deptOf(p)}${g ? `・${g}` : ''}${t ? `・第 ${t.no} 桌` : ''}`; },
     list: GH.sortedPeople().filter(p => p.cat === '員工' && !GH.isStaff(p)),
     onConfirm: ids => {
-      const undos = ids.map(id => GH.setStaff(GH.person(id), true)).filter(Boolean);
+      const undos = ids.map(id => GH.setStaff(GH.person(id), true, C.MAX_SEATS)).filter(Boolean);
       GH.save();
-      UI.undoToast(`已把 ${undos.length} 位人員放進工作人員桌。`, () => undos.reverse().forEach(r => r.undo()));
+      UI.undoToast(UI.overText(`已把 ${undos.length} 位人員放進工作人員桌。`, GH.staff().length > C.CAPACITY), () => undos.reverse().forEach(r => r.undo()));
       onDone ? onDone() : GH.refresh();
     },
   });
@@ -844,7 +860,7 @@
         if (x.height > 1) ws.mergeCells(x.r, x.c, x.r + x.height - 1, x.c);
       }
     });
-    // 桌次的十格名單都畫框線，空位也看得出來
+    // 桌次的名單格（十格，那一段超過時十二格）都畫框線，空位也看得出來
     sheet.cells.filter(x => x.kind === 'title').forEach(x => { for (let i = 0; i < x.slots; i++) ws.getCell(x.r + i, x.c + 1).border = box; });
     return wb;
   };
