@@ -1,13 +1,15 @@
 // npm run test:e2e：E2E 分組同時跑，縮短全部測試的時間。
-// 1. 先 next build 一次。
-// 2. 同時開幾組 Playwright，每組用自己的測試資料庫與伺服器埠號，共用同一份 build（webServer 只 next start），彼此不干擾。
+// 1. 先 next build 一次，再準備 standalone 伺服器一次（scripts/prepare-standalone.mjs，和 Docker 映像相同的檔案配置）。
+// 2. 同時開幾組 Playwright，每組用自己的測試資料庫與伺服器埠號，共用同一份 standalone
+//    （webServer 只執行 node .next/standalone/server.js，以 PORT 指定埠號），彼此不干擾。
 //    預設三組：桌面寬度分兩半、手機寬度一組。手機寬度有很多只在桌面跑的測試會跳過，
 //    照測試數平分（--shard）會讓手機那組很快跑完、其他組拖很久，所以先依寬度分。
 //    設 E2E_SHARDS=n 改成不分寬度、用 --shard=1/n…n/n 平分；E2E_SHARDS=1 不分組。
-// 直接執行 `npx playwright test` 時不分組（playwright.config.ts 自己 build 再 start），開發中跑單一檔案用那個。
+// 直接執行 `npx playwright test` 時不分組（playwright.config.ts 自己建置、準備 standalone 再啟動），開發中跑單一檔案用那個。
 // E2E_DEV=1 時不分組，改用 next dev（除錯用）。
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { prepareStandalone } from './prepare-standalone.mjs';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
 
@@ -60,6 +62,12 @@ const buildCode = await run('npx', ['next', 'build'], { env: { APP_ENV: 'test' }
 if (buildCode !== 0) {
   console.error(`next build 失敗（exit ${buildCode}），E2E 沒有執行`);
   process.exit(buildCode);
+}
+try {
+  prepareStandalone();
+} catch (error) {
+  console.error(`準備 standalone 伺服器失敗，E2E 沒有執行：${error instanceof Error ? error.message : error}`);
+  process.exit(1);
 }
 
 const single = groups.length === 1;
