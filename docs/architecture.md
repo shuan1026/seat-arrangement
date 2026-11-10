@@ -651,7 +651,7 @@ aiborn 用舊版 Docker 建置器（不是 BuildKit），Dockerfile 不能用 `C
 | 登入 | Vitest + Playwright | 網域檢查（公司網域、其他網域、email 未驗證）；每個 API 未登入回 401、頁面導向登入頁；`/api/health` 不需登入 |
 | 權限與發布 | Vitest + Playwright | 每個寫入 API 在只能檢視時回 403 `NOT_EDITOR` 且資料不變，讀取 API 與匯出照常；移除權限後不必重新登入，下一個請求就被拒；初始編輯者只在名單是空的時寫入；最後一位不能移除（含兩人同時移除）；`GET /api/seats` 的回應不含分機、素食、兒童椅、備註、單位頭銜與未入座的人，未發布時不含座位；三頁只能檢視時隱藏的操作 |
 
-E2E 測試不經過 Google：測試環境用測試專用的 `NEXTAUTH_SECRET` 直接產生 session cookie。正式程式不提供任何測試用的登入方式。登入的測試帳號預設只能檢視（D-021）；要編輯的測試先由測試工具把這個帳號寫進 `Editor`，只能檢視的情境用另一個帳號。
+E2E 測試不經過 Google：測試環境用測試專用的 `NEXTAUTH_SECRET` 直接產生 session cookie。正式程式不提供任何測試用的登入方式。測試工具登入的預設測試帳號是編輯者（測試工具把它寫進 `Editor`），既有會修改資料的測試不必改；只能檢視的情境用另一個不在 `Editor` 的測試帳號（D-021）。正式環境照 D-021，登入後預設只能檢視。
 
 建立專案後，把「執行全部測試」的指令（預計 `npm test`，依序跑 Vitest 與 Playwright）補進 `AGENTS.md` 的測試指令表。
 

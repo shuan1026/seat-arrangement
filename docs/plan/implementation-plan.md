@@ -144,7 +144,7 @@
 9. 深色主題（D-020）：Header 的介面配色鈕與選單、localStorage 記住選擇、繪製前套用、深色時 Logo 用白色版；匯出不受影響。和桌號（第 8 項）改的檔案幾乎不重疊，可以同時做。
 10. 權限與座位發布（D-021）：等桌號（第 8 項，D-019）與深色主題（第 9 項，D-020）兩條線都合併回主分支後再做，因為會改到同樣的 App Shell、Header、座位圖與三頁的按鈕。
     - 內容：Prisma migration 加 `Editor`、`Setting`（含 `Setting` 那一列的 INSERT）；啟動時依 `INITIAL_EDITOR_EMAILS` 寫入初始編輯者；`route()` 對寫入方法檢查編輯者、回 403 `NOT_EDITOR`；`/api/state` 回傳 `me.isEditor` 與 `seatsPublished`；`/api/editors`、`/api/publish`、`/api/seats`；權限頁、導覽第 4 項、Header 的「只能檢視」徽章、三頁只能檢視時隱藏的操作、儲存佇列處理 403；座位安排頁的「發布」對話框；發布頁 `/seats`（重用座位圖元件，不能拖移與修改）。做法見 `docs/architecture.md` 第 7.1、7.3、8、9.3、10.3、11.5 節。
-    - 照流程先由 test-writer 依 `docs/spec/permissions.md`、`README.md` 的 COM-R19、COM-R20、AUTH-R11～R15，以及 SEAT-R90、PPL-R86、EMP-R67 補測試。登入後預設只能檢視，所以 E2E 的測試登入工具要能把測試帳號設為編輯者，既有會修改資料的測試改用編輯者帳號，不然會全部失敗。
+    - 照流程先由 test-writer 依 `docs/spec/permissions.md`、`README.md` 的 COM-R19、COM-R20、AUTH-R11～R15，以及 SEAT-R90、PPL-R86、EMP-R67 補測試。正式環境登入後預設只能檢視；測試工具登入的預設帳號是編輯者（寫進 `Editor`），既有會修改資料的測試不必改，只能檢視的情境另用一個帳號。
     - **部署這一版前，使用者要先在 aiborn 的環境變數設定 `INITIAL_EDITOR_EMAILS`**（承辦人的公司帳號，逗號分隔），否則上線後沒有人能修改資料。
 11. 全部測試通過。
 
