@@ -1,0 +1,175 @@
+// 座位安排畫面用的推導資料：桌次名單、部門標示、人員的第二行、預設排序與文案（docs/spec/seating.md 第 2、4 節）。
+// 只讀 store 的資料，不改資料；改座位一律走 src/domain/seating-rules.ts。
+import {
+  STAFF_TABLE_CAPACITY,
+  STAFF_TABLE_ID,
+  TABLE_CAPACITY,
+  TABLE_COUNT,
+  type AppState,
+  type Employee,
+  type Participant,
+} from '@/contracts/entities';
+import {
+  departmentOf,
+  displayName,
+  employeeOf,
+  employeeSecondLine,
+  matchesSearch,
+  tableDepartmentLabels,
+  teamOf,
+  type Directory,
+} from '@/domain/display';
+
+export const CAPACITY = TABLE_CAPACITY;
+export const NOTE_SUGGESTIONS = ['主桌', '董事貴賓', '供應商', '客戶貴賓'] as const;
+export const CATEGORY_LABEL: Record<Participant['kind'], string> = { EMPLOYEE: '員工', DEPENDENT: '眷屬', GUEST: '外部貴賓' };
+
+export type TableInfo = {
+  id: number;
+  isStaff: boolean;
+  noteName: string | null;
+  /** 依座號（工作人員桌依參與人員的預設排序，SEAT-R34） */
+  roster: Participant[];
+  /** 部門標示，例如「研發一部＋業務部」；沒有人時「空桌」（SEAT-R07～R09） */
+  label: string;
+  /** 部門標示；沒有人時空陣列 */
+  labels: string[];
+  count: number;
+  full: boolean;
+  childSeats: number;
+  vegetarians: number;
+};
+
+/** 部門在員工名單中第一次出現的順序 */
+export function departmentsInOrder(employees: readonly Employee[]): string[] {
+  const out: string[] = [];
+  for (const e of employees) if (e.department && !out.includes(e.department)) out.push(e.department);
+  return out;
+}
+
+/**
+ * 參與人員的預設排序（participants.md PPL-R20、PPL-Q13 的目前假設，原型的做法）：
+ * 部門依員工名單首次出現、部門內依組別首次出現（沒有組別的最後）、再依員工名單順序；眷屬緊接在所屬員工後面；外部貴賓最後，依新增順序。
+ */
+export function sortPeople(data: Pick<AppState, 'employees' | 'participants'>, dir: Directory): Participant[] {
+  const depts = departmentsInOrder(data.employees);
+  const groups = new Map<string, string[]>();
+  const order = new Map<number, number>();
+  data.employees.forEach((e, i) => {
+    order.set(e.id, i);
+    const g = groups.get(e.department) ?? [];
+    if (e.team && !g.includes(e.team)) g.push(e.team);
+    groups.set(e.department, g);
+  });
+  const porder = new Map(data.participants.map((p, i) => [p.id, i]));
+  const key = (p: Participant): number[] => {
+    if (p.kind === 'GUEST') return [depts.length + 1, 0, porder.get(p.id) ?? 0, 0];
+    const e = employeeOf(p, dir);
+    if (!e) return [depts.length, 0, porder.get(p.id) ?? 0, 0];
+    const d = depts.indexOf(e.department);
+    const g = groups.get(e.department) ?? [];
+    return [d < 0 ? depts.length : d, e.team ? g.indexOf(e.team) : g.length, order.get(e.id) ?? 0, p.kind === 'DEPENDENT' ? 1 : 0];
+  };
+  return data.participants
+    .map((p) => [key(p), p] as const)
+    .sort(([a], [b]) => {
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i]! - b[i]!;
+      return 0;
+    })
+    .map(([, p]) => p);
+}
+
+/** 30 桌與工作人員桌的名單與標示 */
+export function buildTables(data: AppState, dir: Directory, sorted: readonly Participant[]): Map<number, TableInfo> {
+  const notes = new Map(data.tables.map((t) => [t.id, t.noteName]));
+  const out = new Map<number, TableInfo>();
+  const byTable = new Map<number, Participant[]>();
+  for (const p of data.participants) {
+    if (p.tableId === null) continue;
+    const list = byTable.get(p.tableId) ?? [];
+    list.push(p);
+    byTable.set(p.tableId, list);
+  }
+  const rank = new Map(sorted.map((p, i) => [p.id, i]));
+  for (let id = 0; id <= TABLE_COUNT; id++) {
+    const isStaff = id === STAFF_TABLE_ID;
+    const roster = [...(byTable.get(id) ?? [])].sort(
+      isStaff
+        ? (a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0)
+        : (a, b) => (a.seatOrder ?? 0) - (b.seatOrder ?? 0) || a.id - b.id,
+    );
+    const labels = tableDepartmentLabels(roster, dir);
+    out.set(id, {
+      id,
+      isStaff,
+      noteName: isStaff ? null : (notes.get(id) ?? null),
+      roster,
+      labels,
+      label: labels.join('＋') || '空桌',
+      count: roster.length,
+      full: roster.length >= (isStaff ? STAFF_TABLE_CAPACITY : TABLE_CAPACITY),
+      childSeats: roster.filter((p) => p.childSeat).length,
+      vegetarians: roster.filter((p) => p.vegetarian).length,
+    });
+  }
+  return out;
+}
+
+/** 外部貴賓的單位／頭銜 */
+export const guestOrg = (p: Participant): string => [p.organization, p.title].filter(Boolean).join(' ');
+
+/** 人員面板第二行（SEAT-R56、COM-R11）：員工與眷屬「部門」與「組別」分開回傳，外部貴賓是單位／頭銜 */
+export function panelMeta(p: Participant, dir: Directory): { department: string; team: string | null } {
+  if (p.kind === 'GUEST') return { department: guestOrg(p) || '—', team: null };
+  return { department: departmentOf(p, dir) ?? '—', team: teamOf(p, dir) };
+}
+
+/** 桌次詳情、加入人員對話框的第二行（COM-R10）：員工「部門・分機」、眷屬部門、外部貴賓單位／頭銜 */
+export function detailMeta(p: Participant, dir: Directory): string {
+  if (p.kind === 'GUEST') return guestOrg(p) || '—';
+  if (p.kind === 'EMPLOYEE') {
+    const e = employeeOf(p, dir);
+    return e ? employeeSecondLine(e) : '—';
+  }
+  return departmentOf(p, dir) ?? '—';
+}
+
+/** 搜尋（SEAT-R54）：顯示名稱、分機、部門、組別與單位／頭銜 */
+export const searchMatch = (p: Participant, dir: Directory, q: string): boolean =>
+  matchesSearch(p, dir, q) || (!!q.trim() && !!p.title?.toLowerCase().includes(q.trim().toLowerCase()));
+
+export const nameOf = (p: Participant, dir: Directory) => displayName(p, dir);
+
+/** 「{備註名稱或部門}」：有備註名稱用備註名稱，沒有時用部門；空桌又沒有備註名稱時沒有（SEAT-R23、SEAT-Q05） */
+export const tableDesc = (t: TableInfo): string => t.noteName || t.labels.join('＋');
+
+/** 收合桌次的 Tooltip：「{備註名稱}・{部門}」，沒有備註名稱時只有部門（SEAT-R13） */
+export const tableTooltip = (t: TableInfo): string => (t.noteName ? `${t.noteName}・${t.label}` : t.label);
+
+// ---- 文案（docs/spec/seating.md 第 4 節）
+
+export const msg = {
+  seated: (name: string, n: number) => `已把 ${name} 安排到第 ${n} 桌。`,
+  moved: (name: string, from: number, to: number) => `已把 ${name} 從第 ${from} 桌移到第 ${to} 桌。`,
+  staffToTable: (name: string, to: number) => `已把 ${name} 從工作人員桌移到第 ${to} 桌。`,
+  unseated: (name: string, n: number) => `已把 ${name} 移出第 ${n} 桌。`,
+  reordered: (n: number) => `已調整第 ${n} 桌的座位順序。`,
+  toStaff: (name: string) => `已把 ${name} 放進工作人員桌。`,
+  tableToStaff: (name: string, from: number) => `已把 ${name} 從第 ${from} 桌移到工作人員桌。`,
+  unstaffed: (name: string) => `已把 ${name} 移出工作人員桌。`,
+  swapped: (a: number, b: number) => `已把第 ${a} 桌和第 ${b} 桌對調。`,
+  cleared: (n: number) => `已清空第 ${n} 桌。`,
+  added: (x: number, n: number) => `已把 ${x} 位人員加入第 ${n} 桌。`,
+  addedStaff: (x: number) => `已把 ${x} 位人員放進工作人員桌。`,
+  staffFull: '工作人員桌已滿，請先移出一位。',
+  employeeOnly: '只有員工可以放進工作人員桌。',
+  undone: '已復原。',
+  saved: '已儲存',
+};
+
+/** 入座或搬移到一般桌的提示（SEAT-R18、R19、R45） */
+export function seatMessage(p: Participant, name: string, to: number): string {
+  if (p.tableId === STAFF_TABLE_ID) return msg.staffToTable(name, to);
+  if (p.tableId === null) return msg.seated(name, to);
+  return msg.moved(name, p.tableId, to);
+}
