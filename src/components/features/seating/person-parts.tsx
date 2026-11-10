@@ -21,7 +21,8 @@ export function NameLine({ person, name, className }: { person: Participant; nam
 
 /**
  * 座位圖名單列的小標示（2.1.8）：外部貴賓一個字的「賓」、兒童椅與素食只放圖示，滑過顯示 Tooltip。
- * 名單卡片的欄寬有限，姓名要完整顯示，所以標示不縮小姓名；放不下時標示疊在旁邊（relative 讓它畫在相鄰的列之上）。
+ * 名單卡片的欄寬有限，姓名要完整顯示，所以標示不縮小姓名。256 px 卡片（D-022）放得下 6 個字元的眷屬名加一個 16 px 標示；
+ * 同時有兩個標示時放不下，標示疊在旁邊（relative 讓它畫在相鄰的列之上）。
  */
 export function SeatMarks({ person }: { person: Participant }) {
   if (person.kind !== 'GUEST' && !person.childSeat && !person.vegetarian) return null;

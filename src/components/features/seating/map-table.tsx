@@ -1,7 +1,7 @@
 'use client';
 
 // 座位圖上的一桌與工作人員桌（docs/spec/seating.md 2.1.5～2.1.9、2.5.1；原型 seating.html 的 tableHTML、staffTableHTML）。
-// 收合：88 px 圓形；精簡（縮放低於 80%）：只有大號桌號與人數；展開：280 px 名單卡片，固定 10 列、兩欄各 5 列，
+// 收合：88 px 圓形；精簡（縮放低於 80%）：只有大號桌號與人數；展開：256 px 名單卡片（D-022），固定 10 列、兩欄各 5 列，
 // 這一桌有 11、12 位時 12 列、兩欄各 6 列，卡片跟著變高（D-018）。
 // 人數：0–9 位「{n}/10」，10 位正向徽章「已滿」，11、12 位待處理徽章「超過」（triangle-alert 圖示，SEAT-R11、2.1.9）。
 import { GripVertical, TriangleAlert } from 'lucide-react';
@@ -204,7 +204,7 @@ function ExpandedCard({
     <div
       onClick={onOpen}
       className={cn(
-        'flex w-[280px] flex-col rounded-xl p-3',
+        'flex w-[256px] flex-col rounded-xl p-3',
         rows > CAPACITY ? 'h-[246px]' : 'h-[220px]',
         frameClasses(info, { over: drop.over, selected, hit }),
         drop.blocked ? 'cursor-not-allowed' : 'cursor-pointer',

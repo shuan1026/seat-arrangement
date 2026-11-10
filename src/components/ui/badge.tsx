@@ -88,7 +88,7 @@ export function MarkBadge({ icon, label, hideTooltip = false, className }: MarkB
       role="img"
       aria-label={label}
       className={cn(
-        'inline-flex h-4 min-w-5 shrink-0 items-center justify-center rounded-full bg-muted px-1 text-card-foreground [&_svg]:size-3',
+        'inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-card-foreground [&_svg]:size-3',
         className,
       )}
     >

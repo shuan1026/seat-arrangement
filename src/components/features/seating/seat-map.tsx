@@ -31,14 +31,14 @@ const LANDMARKS = [
 ] as const;
 
 /**
- * 收合是 88 px 圓形，展開是 280 px 卡片；同一欄的卡片列距 240 px（2.1.5、2.1.7）。
- * 有桌次超過 10 位時那一桌的卡片是 12 列、高 246 px，所有卡片的列距加大為 266 px，仍不會互相重疊（D-018，原型的做法）。
+ * 收合是 88 px 圓形，展開是 256 px 卡片；卡片之間左右、上下各空 12 px：欄距 268 px、同一欄的列距 232 px（2.1.5、2.1.7、D-022）。
+ * 有桌次超過 10 位時那一桌的卡片是 12 列、高 246 px，所有卡片的列距加大為 258 px，仍不會互相重疊（D-018、D-022）。
  */
 export function geometry(expanded: boolean, anyOver = false) {
   const u = expanded
     ? anyOver
-      ? { w: 296, h: 266, item: 280, itemH: 246 }
-      : { w: 296, h: 240, item: 280, itemH: 220 }
+      ? { w: 268, h: 258, item: 256, itemH: 246 }
+      : { w: 268, h: 232, item: 256, itemH: 220 }
     : { w: 112, h: 104, item: 88, itemH: 88 };
   const y0 = PAD + BAND + GAP;
   return { u, y0, W: PAD * 2 + 5 * u.w + u.item, H: y0 + 5 * u.h + u.itemH + GAP + BAND + PAD };
