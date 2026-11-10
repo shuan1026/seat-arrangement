@@ -137,7 +137,8 @@
 3. 全部頁面在 320、375、430、768、1024、1280 px 截圖，對照原型；檢查整頁水平捲動與元件裁切。
 4. seed 匯入真實名單（D-007）：seed 依序用 A 線的 `roster-import.ts` 與 B 線的 `registration-import.ts` 匯入，再依 `staff.csv` 設工作人員、依 `tables.csv` 寫備註名稱（D-015）；測試用虛構的通訊錄與表單 CSV，涵蓋員工表已有資料時跳過、兩個執行個體同時啟動只匯入一次，以及工作人員對不到、沒報名、超過 10 位與桌號或備註名稱不符時略過。
 5. 「不參加」報名狀態（D-014）：Prisma migration 加 `Employee.declined`、契約與 API（`PUT /api/employees/{id}/declined`）；員工名單的分頁、列操作、勾選；加入尾牙（含 bulk-join、參與人員頁新增、匯入報名表）時清掉標記；參與人員頁員工選項的「不參加」標示。照流程 test-writer 先補 `employees.md` 第 5.11 節與 PPL-AC84 的測試。
-6. 全部測試通過。
+6. 匯出座位表按鈕在登入過期時回到登入頁（D-016、EXP-AC21）。
+7. 全部測試通過。
 
 ## 7. 階段 4：上線
 
