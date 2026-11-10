@@ -1,5 +1,5 @@
 // 下載座位表（已登入）：docs/spec/export.md EXP-R01、EXP-R03（檔名台灣日期）、EXP-R04、EXP-R05、EXP-R09、EXP-R12、EXP-R16。
-// 頁首的「匯出座位表」按鈕在階段 3 才接上；這裡用已登入的 request（帶 signIn 產生的 cookie）直接呼叫 GET /api/export/seating，
+// 頁首的「匯出座位表」按鈕見 export-seating-button.spec.ts；這裡用已登入的 request（帶 signIn 產生的 cookie）直接呼叫 GET /api/export/seating，
 // 檢查實際跑起來的伺服器下載的檔案。E2E 的資料庫可能有其他測試留下的資料，所以只檢查和資料無關的部分。
 // 沒登入回 401 在 auth-guard.spec.ts。
 import { expect, test } from '@playwright/test';

@@ -2,9 +2,11 @@
 // 「匯出座位表」按鈕（docs/spec/export.md 第 2 節、第 4 節文案、EXP-R01、EXP-R03、EXP-R06、EXP-R07）。
 // 樣式依 README.md 第 11.3 節的元件對應：Button `outline`，前置 `download` 圖示（原型 people.html、seating.html 的頁首）；
 // 處理中用 Button 的 loading（spinner 取代圖示、不能再按）。按下直接下載，不開對話框。
-// 參與人員頁與座位安排頁頁首各放一個，行為相同（階段 3 接上）。
+// 參與人員頁與座位安排頁頁首各放一個，行為相同。
+// 登入已過期（401）不算匯出失敗：不下載、不顯示提示，和儲存佇列一樣整頁回到登入頁（D-016、EXP-AC21、README AUTH-R07）。
 import { Download } from 'lucide-react';
 import { useState } from 'react';
+import { redirectToExpiredLogin } from '@/client/auth-redirect';
 import { downloadBlob } from '@/client/download';
 import { Button } from '@/components/ui/button';
 import { notify } from '@/components/ui/toaster';
@@ -48,6 +50,10 @@ export function ExportSeatingButton() {
     setBusy(true);
     try {
       const res = await fetch(EXPORT_URL, { method: 'GET', credentials: 'same-origin', cache: 'no-store' });
+      if (res.status === 401) {
+        redirectToExpiredLogin();
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       downloadBlob(fileNameFrom(res.headers.get('Content-Disposition')) ?? fallbackFileName(), blob);

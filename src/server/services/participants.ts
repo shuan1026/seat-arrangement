@@ -11,6 +11,7 @@ import type {
 import { parseRegistrations } from '@/domain/registration-import';
 import { Prisma } from '@/generated/prisma/client';
 import type { z } from 'zod';
+import { isBlankRow } from '../csv';
 import { prisma } from '../db';
 import { AppError } from '../http';
 import { toEmployee, toParticipant } from './state';
@@ -377,8 +378,8 @@ export async function importRegistrations(rows: string[][], db?: Db): Promise<Im
       imported: plan.create.length + plan.update.length,
       created: plan.create.length,
       updated: plan.update.length,
-      // 同一人前面的列、還沒報名而填不參加的列：略過，不算需要處理
-      skipped: Math.max(0, rows.length - 1 - used.size),
+      // 同一人前面的列、還沒報名而填不參加的列：略過，不算需要處理；完全空白的列不是回答，不算在內（COM-R16）
+      skipped: Math.max(0, rows.slice(1).filter((r) => !isBlankRow(r)).length - used.size),
       // 錯誤清單只寫名字與部門，不含電子郵件與時間戳記（PPL-Q06）
       header: ['名字', '部門'],
       errors: plan.issues.map((i) => ({ row: i.row, reason: i.reason, values: [i.name, i.department] })),

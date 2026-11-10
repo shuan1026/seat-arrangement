@@ -59,7 +59,7 @@ export function EmployeesView() {
   const [editor, setEditor] = useState<EmployeeDialogTarget | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
-  // 單筆「加入尾牙」開啟的對話框（EMP-R28），階段 3 接上參與人員的新增人員對話框
+  // 單筆「加入尾牙」開啟的對話框（EMP-R28）：參與人員的新增人員對話框
   const [joinEmployeeId, setJoinEmployeeId] = useState<number | null>(null);
 
   const registered = useMemo(() => registeredEmployeeIds(participants), [participants]);
@@ -253,6 +253,8 @@ export function EmployeesView() {
         onOpenChange={(open) => {
           if (!open) setJoinEmployeeId(null);
         }}
+        // 加入後這位員工變成已報名，勾選一併取消，不再算在批次的人數裡（EMP-R23）
+        onJoined={(id) => unselect([id])}
       />
     </section>
   );

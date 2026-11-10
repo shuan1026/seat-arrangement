@@ -563,3 +563,65 @@ describe('需要處理的人不影響其他人（PPL-R85、PPL-AC83）', () => {
     ]);
   });
 });
+
+// 列號是這一列在檔案中的列號，和用 Excel 開啟時一致：表頭是第 1 列，空白列也算一列，儲存格內的換行不另算一列（階段 3 決定）。
+// rows 是 src/server/csv.ts parseCsv 的結果，空白列保留在原本的位置（[]、[''] 或每格都是空字串）；空白列沒有名字，照 PPL-R70 不處理。
+describe('列號是檔案中的列號：空白列也算一列（PPL-R74 錯誤清單、PPL-Q06）', () => {
+  /** 在報名表的第 at 列（表頭是第 1 列）之前插入一列 */
+  const insertAt = (rows: string[][], at: number, row: string[]) => [...rows.slice(0, at - 1), row, ...rows.slice(at - 1)];
+  const blankOf = (rows: string[][]) => (rows[0] ?? []).map(() => '');
+
+  it.each<[string, (rows: string[][]) => string[]]>([
+    ['空行', () => []],
+    ['只有一個空格子', () => ['']],
+    ['每格都空白（只有逗號）', blankOf],
+  ])('中間有空白列（%s）：後面的人列號照檔案算；空白列不新增、不算需要處理', (_label, makeBlank) => {
+    const sheet = registrationRows([answer('陳大文／研發一部／是'), answer('趙六／行政部／是')]);
+    const rows = insertAt(sheet, 3, makeBlank(sheet)); // 第 1 列表頭、第 2 列陳大文、第 3 列空白、第 4 列趙六
+    const result = ok(parseRegistrations(rows, ROSTER));
+    expect(result.create).toEqual([created(2, CHEN.id)]);
+    expect(result.issues).toEqual([{ row: 4, name: '趙六', department: '行政部', reason: ISSUE_REASON.notFound('趙六') }]);
+  });
+
+  it('好幾列空白：新增的人與需要處理的人都用檔案中的列號', () => {
+    const sheet = registrationRows([answer('陳大文／研發一部／是'), answer('李美華／業務部／是'), answer('趙六／行政部／是')]);
+    // 表頭、空白、陳大文、空白、空白、李美華、趙六
+    let rows = insertAt(sheet, 2, ['']);
+    rows = insertAt(rows, 4, []);
+    rows = insertAt(rows, 5, blankOf(sheet));
+    const result = ok(parseRegistrations(rows, ROSTER));
+    expect(result.create).toEqual([created(3, CHEN.id), created(6, LEE.id)]);
+    expect(result.issues).toEqual([{ row: 7, name: '趙六', department: '行政部', reason: ISSUE_REASON.notFound('趙六') }]);
+  });
+
+  it('同一人填兩次、中間隔著空白列：採用的最後一列用檔案中的列號', () => {
+    const sheet = registrationRows([answer('趙六／行政部／是'), answer('趙六／行政部／是')]);
+    const rows = insertAt(sheet, 3, ['']);
+    const result = ok(parseRegistrations(rows, ROSTER));
+    expect(result.issues).toEqual([{ row: 4, name: '趙六', department: '行政部', reason: ISSUE_REASON.notFound('趙六') }]);
+  });
+
+  it('已報名的人：更新與需要處理的人也用檔案中的列號', () => {
+    const pWang = registered(11, WANG, { note: '舊備註' });
+    const sheet = registrationRows([answer('李美華／業務部／是'), answer('王小明／研發一部／否')]);
+    const rows = insertAt(sheet, 2, ['']);
+    const result = ok(parseRegistrations(rows, ROSTER, [pWang]));
+    expect(result.create).toEqual([created(3, LEE.id)]);
+    expect(result.issues).toEqual([
+      { row: 4, name: '王小明', department: '研發一部', reason: ISSUE_REASON.notAttending('王小明') },
+    ]);
+  });
+
+  it('備註欄有換行的那一列只算一列：後面的人列號不受影響', () => {
+    const sheet = registrationRows([answer('陳大文／研發一部／是／否／否／／／第一行\n第二行'), answer('趙六／行政部／是')]);
+    const result = ok(parseRegistrations(sheet, ROSTER));
+    expect(result.create).toEqual([created(2, CHEN.id, { note: '第一行\n第二行' })]);
+    expect(result.issues).toEqual([{ row: 3, name: '趙六', department: '行政部', reason: ISSUE_REASON.notFound('趙六') }]);
+  });
+
+  it('只有空白列、沒有任何回答：沒有新增、沒有需要處理', () => {
+    const sheet = registrationRows([]);
+    const result = ok(parseRegistrations([...sheet, [''], [], blankOf(sheet)], ROSTER));
+    expect(result).toEqual({ ok: true, create: [], update: [], issues: [] });
+  });
+});

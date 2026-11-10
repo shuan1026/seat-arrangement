@@ -7,6 +7,7 @@ import { useStore } from 'zustand';
 import type { AppState, SessionUser } from '@/contracts/entities';
 import type { ErrorCode } from '@/contracts/errors';
 import { apiFetch } from './api';
+import { redirectToExpiredLogin } from './auth-redirect';
 import { conflictMessage } from './conflict-messages';
 import { SaveQueue } from './save-queue';
 import { createAppStore, type AppStore, type AppStoreState } from './store';
@@ -35,12 +36,8 @@ export function AppProvider({ initialData, user, notify, children }: AppProvider
         const text = queue.lastConflictMessage ?? conflictMessage(code);
         void reload().finally(() => notify?.(text));
       },
-      onUnauthenticated: () => {
-        const back = `${window.location.pathname}${window.location.search}`;
-        // 刻意整頁重新載入：登入過期時要丟掉畫面上還沒存的狀態（AUTH-R07）
-        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-        window.location.assign(`/login?expired=1&callbackUrl=${encodeURIComponent(back)}`);
-      },
+      // 登入過期：整頁回到登入頁，丟掉畫面上還沒存的狀態（AUTH-R07）
+      onUnauthenticated: redirectToExpiredLogin,
     });
     return { store, queue, reload };
   });

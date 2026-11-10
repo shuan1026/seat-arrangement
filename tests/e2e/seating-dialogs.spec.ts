@@ -2,7 +2,7 @@
 // docs/spec/seating.md 2.3.3～2.3.5、2.4、4.3、4.4；SEAT-R22～R25、R28～R31、R39、R72、R84；
 // SEAT-AC08～AC11、AC17～AC19、AC35～AC37、AC86；SEAT-Q05、SEAT-Q06（原型的做法，目前假設）。
 // 參與人員頁的「入座…」（SEAT-AC12）用同一個 TableSelectDialog，元件本身見 tests/unit/components/table-select-dialog.test.tsx；
-// 參與人員頁的入口在階段 3 接上後再補 E2E。
+// 參與人員頁入口的 E2E 在 people-seating.spec.ts。
 import { expect, test, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';

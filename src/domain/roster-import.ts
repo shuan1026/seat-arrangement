@@ -107,7 +107,10 @@ export function parseRoster(rows: string[][]): RosterParseResult {
   let skipped = 0;
 
   body.forEach((values, i) => {
-    const row = i + 2; // 表頭是第 1 列
+    // 列號是檔案中的列號：表頭是第 1 列，空白列也算一列（docs/spec/README.md COM-R16）
+    const row = i + 2;
+    // 完全空白的分隔列（EMP-R49）：不匯入、不算需要處理，也不算在略過的列數
+    if (values.every((v) => !(v ?? '').trim())) return;
     const name = cell(values, '姓名');
     const department = cell(values, '部門');
     const englishName = cell(values, '英文名');

@@ -1,9 +1,10 @@
 // 員工名單頁：清單、Tabs、排列、分頁、搜尋、篩選、空狀態、勾選與列操作。
 // docs/spec/employees.md 第 2.1～2.4、2.6 節，EMP-R03～R30，驗收條件 EMP-AC01～AC06、AC08～AC31、AC34～AC38，
 // 待確認 EMP-Q07、Q08 依 D-008 照「原型或現況」欄的做法；頁面版型 ui-design-system/source-reference/html/employees.html。
-// 跨線的部分只測到按下按鈕前（docs/plan/implementation-plan.md 第 5.2 節）：
-// - 一次加入多位與取消報名的實際送出由 B 線的 API 處理，送出後的結果在 tests/unit/components/employees-page.test.tsx 用假的 API 驗證；
-// - 單筆「加入尾牙」開啟 B 線的新增人員對話框（EMP-R28、EMP-AC35）、「查看參與資料」開啟後的內容（EMP-AC38）在階段 3 測。
+// 跨線的部分這裡只測到按下按鈕前（docs/plan/implementation-plan.md 第 5.2 節）：
+// - 一次加入多位與取消報名送出後的結果：tests/unit/components/employees-page.test.tsx 用假的 API 驗證，
+//   階段 3 接上後走真的伺服器的 E2E 在 employees-join.spec.ts；
+// - 單筆「加入尾牙」開啟 B 線的新增人員對話框（EMP-R28、EMP-AC35）、「查看參與資料」開啟後的內容（EMP-AC38）也在 employees-join.spec.ts。
 // 資料用 tests/e2e/helpers/employees-db.ts 直接寫進測試資料庫。
 import { expect, test } from '@playwright/test';
 import { signIn } from './helpers/auth';

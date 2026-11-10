@@ -4,6 +4,8 @@
 // D-012（英文名空白略過、合併列取第一列、已有兩位同名同部門時列為需要處理、欄位一致的判斷）；
 // 待確認 EMP-Q02（非 CSV 檔）、Q03（{n} 含更新的員工，依 contracts/imports.ts 的 imported）、Q04、Q06、Q09 依 D-008 照目前做法。
 // 列的解析規則逐條在 tests/unit/domain/roster-import.test.ts；這裡驗證寫進資料庫的結果與 API 回應。
+// 錯誤清單的列號（errors[].row）是這一列在檔案中的列號，和用 Excel 開啟時一致：表頭是第 1 列，空白列也算一列，
+// 儲存格內的換行不另算一列（階段 3 決定；見本檔最後一個 describe 與 tests/unit/server/csv.test.ts）。
 import iconv from 'iconv-lite';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST } from '@/app/api/employees/import/route';
@@ -18,6 +20,7 @@ import {
   FAKE_PICKUP_GROUP,
   SHUFFLED_HEADER,
   SWITCHBOARD_ROW,
+  TEMPLATE_HEADER,
   headerRenamed,
   headerWithout,
   rosterCsv,
@@ -529,5 +532,75 @@ describe('系統已有兩位以上同名同部門的員工（EMP-R55、D-012）'
     expect(result).toMatchObject({ imported: 2, updated: 2, created: 0, errors: [] });
     expect((await prisma.employee.findUniqueOrThrow({ where: { id: sales.id } })).extension).toBe('1234');
     expect((await prisma.employee.findUniqueOrThrow({ where: { id: rd.id } })).extension).toBe('2234');
+  });
+});
+
+describe('錯誤清單的列號：和用 Excel 開啟時看到的列號一致（EMP-R59、EMP-R49、EMP-R46）', () => {
+  const quote = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  const line = (record: RosterRecord) => TEMPLATE_HEADER.map((h) => quote(record[h] ?? '')).join(',');
+  /** 組出 CSV 文字（CRLF）：'' 是一個空行，',' 開頭的字串原樣放入（例如只有逗號的列） */
+  const csvOf = (items: readonly (RosterRecord | string)[]) =>
+    [TEMPLATE_HEADER.join(','), ...items.map((item) => (typeof item === 'string' ? item : line(item)))].join('\r\n') + '\r\n';
+  const commasOnly = ','.repeat(TEMPLATE_HEADER.length - 1);
+
+  async function importText(text: string): Promise<ImportResult> {
+    const res = await upload(text);
+    expect(res.ok, `匯入回應 ${res.status}`).toBe(true);
+    return importResultSchema.parse(await res.json());
+  }
+
+  it('檔案中間有空白分隔列：後面那一列部門空白，列號照檔案算（表頭第 1 列、空白列也算一列）', async () => {
+    const result = await importText(
+      csvOf([
+        rosterPerson('甲', '研發部'), // 2
+        '', // 3 空行
+        commasOnly, // 4 只有逗號
+        rosterPerson('乙', '研發部'), // 5
+        rosterPerson('丙', '', { 分機: '1300', 英文名: 'Bing' }), // 6
+      ]),
+    );
+    expect(result).toMatchObject({ imported: 2, created: 2 });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({ row: 6 });
+    expect(result.errors[0]!.values).toEqual(expect.arrayContaining(['丙', '1300', 'Bing']));
+    expect((await prisma.employee.findMany({ orderBy: { sortOrder: 'asc' } })).map((e) => e.name)).toEqual(['甲', '乙']);
+  });
+
+  it('總機資訊列（儲存格內多行）只算一列；空白列也算一列；空白列與總機資訊列都不算在 {m}', async () => {
+    const result = await importText(
+      csvOf([
+        SWITCHBOARD_ROW, // 2（分機欄有三行文字）
+        rosterPerson('王小明', '業務部'), // 3
+        '', // 4
+        rosterPerson('丁', '', { 英文名: 'Ding' }), // 5
+        commasOnly, // 6
+        rosterPerson('戊', '', { 英文名: 'Wu' }), // 7
+      ]),
+    );
+    expect(result).toMatchObject({ imported: 1, created: 1 });
+    expect(result.errors.map((e) => e.row)).toEqual([5, 7]);
+  });
+
+  it('系統已有兩位同名同部門（EMP-R55）：中間隔著空白列時，每一列的列號都照檔案算', async () => {
+    await createEmployee({ name: '王小明', department: '業務部' });
+    await createEmployee({ name: '王小明', department: '業務部' });
+    const result = await importText(
+      csvOf([
+        rosterPerson('王小明', '業務部', { 分機: '1234' }), // 2
+        '', // 3
+        '', // 4
+        rosterPerson('李小華', '研發部'), // 5
+        commasOnly, // 6
+        rosterPerson('王小明', '業務部', { 分機: '1235' }), // 7
+      ]),
+    );
+    expect(result).toMatchObject({ imported: 1, created: 1 });
+    expect(result.errors.map((e) => e.row).sort((a, b) => a - b)).toEqual([2, 7]);
+  });
+
+  it('只有空白列：沒有員工、沒有需要處理的列', async () => {
+    const result = await importText(csvOf(['', commasOnly, '']));
+    expect(result).toMatchObject({ imported: 0, created: 0, updated: 0, errors: [] });
+    expect(await prisma.employee.count()).toBe(0);
   });
 });

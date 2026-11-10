@@ -19,7 +19,9 @@
 //         header: string[] }           // 錯誤清單 CSV 的表頭
 //   parseRoster(rows: string[][]): RosterParseResult
 // sources 讓服務層在「系統已有兩位以上同名同部門」時，把這組的每一列都列為需要處理（EMP-R55）。
-// rows 是 src/server/csv.ts parseCsv 的結果：第一列是表頭，每格已去掉前後空白。
+// rows 是 src/server/csv.ts parseCsv 的結果：第一列是表頭，每格已去掉前後空白；空白列也保留在原本的位置
+// （每格都是空字串，或是 [] 、['']），rows[i] 就是檔案的第 i+1 列。列號是這一列在檔案中的列號，和用 Excel 開啟時一致：
+// 表頭是第 1 列，空白列也算一列，儲存格內的換行不另算一列（階段 3 決定；見 tests/unit/server/csv.test.ts）。
 // 以姓名加部門對應既有員工（新增或更新）是服務層的事，見 tests/integration/api/employees-import.test.ts。
 import { describe, expect, it } from 'vitest';
 import { parseRoster, type RosterParseResult } from '@/domain/roster-import';
@@ -469,5 +471,66 @@ describe('有錯誤的列（EMP-R58、EMP-R59、EMP-Q03）', () => {
     const result = parse([{ 姓名: '張三', 部門: '研發部', 英文名: 'Zhang' }]);
     expect(result.errors).toEqual([]);
     expect(byName(result, '張三')).toMatchObject({ department: '研發部', extension: null, team: null });
+  });
+});
+
+describe('列號是檔案中的列號：空白列也算一列（EMP-R59 錯誤清單、EMP-R49）', () => {
+  /** parseCsv 對空白列的幾種寫法：空行、只有逗號、只有空白（去掉前後空白後） */
+  const BLANK_LINES: readonly (readonly string[])[] = [[], [''], TEMPLATE_HEADER.map(() => '')];
+
+  it.each(BLANK_LINES.map((blank) => [JSON.stringify(blank), blank] as const))(
+    '中間有空白列（%s）：後面的錯誤列列號照檔案算，空白列不算需要處理',
+    (_label, blank) => {
+      const bad = rosterPerson('丙', '', { 分機: '1300', 英文名: 'Bing' });
+      const rows: string[][] = [[...TEMPLATE_HEADER], rosterRow(rosterPerson('甲', '研發部')), [...blank], rosterRow(bad)];
+      const result = parseRoster(rows);
+      if (!result.ok) throw new Error('表頭被判定為和範本不一致');
+      expect(result.employees.map((e) => e.name)).toEqual(['甲']);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({ row: 4, values: rosterRow(bad) });
+    },
+  );
+
+  it('好幾列空白分隔列與總機資訊列：每位員工來自的列號（sources）照檔案算', () => {
+    const a = rosterPerson('王小明', '業務部', { 分機: '1234' });
+    const b = rosterPerson('李小華', '研發部');
+    const c = rosterPerson('王小明', '業務部', { 分機: '1235' });
+    const blank = TEMPLATE_HEADER.map(() => '');
+    const rows: string[][] = [
+      [...TEMPLATE_HEADER], // 1
+      rosterRow(a), // 2
+      [...blank], // 3
+      rosterRow(SWITCHBOARD_ROW), // 4（分機欄有多行文字，只算一列）
+      [], // 5
+      rosterRow(b), // 6
+      [''], // 7
+      [...blank], // 8
+      rosterRow(c), // 9
+    ];
+    const result = parseRoster(rows);
+    if (!result.ok) throw new Error('表頭被判定為和範本不一致');
+    expect(result.employees.map((e) => e.name)).toEqual(['王小明', '李小華']);
+    expect(result.sources).toEqual([
+      [
+        { row: 2, values: rosterRow(a) },
+        { row: 9, values: rosterRow(c) },
+      ],
+      [{ row: 6, values: rosterRow(b) }],
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('空白列放在最前面（表頭下一列）：第一位員工在第 3 列', () => {
+    const bad = rosterPerson('丙', '', { 英文名: 'Bing' });
+    const result = parseRoster([[...TEMPLATE_HEADER], [''], rosterRow(bad)]);
+    if (!result.ok) throw new Error('表頭被判定為和範本不一致');
+    expect(result.errors.map((e) => e.row)).toEqual([3]);
+  });
+
+  it('檔案最後的空白列不影響結果：不新增員工，也不算需要處理', () => {
+    const result = parseRoster([[...TEMPLATE_HEADER], rosterRow(rosterPerson('甲', '研發部')), [''], [], TEMPLATE_HEADER.map(() => '')]);
+    if (!result.ok) throw new Error('表頭被判定為和範本不一致');
+    expect(result.employees.map((e) => e.name)).toEqual(['甲']);
+    expect(result.errors).toEqual([]);
   });
 });

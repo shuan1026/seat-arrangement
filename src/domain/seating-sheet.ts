@@ -4,7 +4,7 @@
 // 待確認依 D-008 照目前假設：EXP-Q01 不放分機、EXP-Q02 只有 F 欄空白、EXP-Q03 工作人員超過十位往下延伸、
 // EXP-Q05 框線範圍與未入座區塊的位置。
 import { STAFF_TABLE_ID, TABLE_CAPACITY, type AppState, type Participant } from '@/contracts/entities';
-import { participantComparator } from './auto-arrange';
+import { participantComparator } from './participants';
 import { buildDirectory, displayName, tableDepartmentLabel, type Directory } from './display';
 import { TABLE_LAYOUT } from './layout';
 
@@ -61,7 +61,7 @@ const bySeatOrder = (a: Participant, b: Participant) => (a.seatOrder ?? 0) - (b.
 
 export function buildSeatingSheet(data: AppState): SeatingSheet {
   const dir = buildDirectory(data);
-  const byDefaultOrder = participantComparator(data, dir);
+  const byDefaultOrder = participantComparator(dir);
   const cells = new Map<string, SheetCell>();
   const merges: SheetMerge[] = [];
 

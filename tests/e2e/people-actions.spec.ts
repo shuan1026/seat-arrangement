@@ -2,7 +2,8 @@
 // 依據：docs/spec/participants.md 第 2.2 節、第 4.1 節的文案、PPL-R14、R15、R17、R18、R34、R36～R38、R43、R77，
 // PPL-AC25～AC27、AC29～AC35、AC76（取消報名的確認對話框）；docs/spec/README.md 第 9 節（危險操作的 Alert Dialog：
 // 桌面取消在左、確認在右；手機滿版堆疊、確認在上）。
-// 「入座…」「移至其他桌次…」開啟的選擇桌次對話框是 C 線的元件，階段 3 才接上（PPL-AC28 不在這裡測）。
+// 「入座…」「移至其他桌次…」開啟的選擇桌次對話框（PPL-AC28、SEAT-AC12）與移出後復原回到原本座號的其他情況，
+// 在階段 3 接上後寫在 people-seating.spec.ts。
 // 資料直接寫進測試資料庫（tests/e2e/helpers/participants-db.ts），都是虛構資料。
 import { expect, test, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
@@ -95,7 +96,7 @@ test.describe('列操作的項目（PPL-R34、第 2.2 節）', () => {
 test.describe('移出桌次（PPL-R17、PPL-R36）', () => {
   test.beforeEach(desktopOnly);
 
-  test('移出第 3 桌：變成未入座、人員沒有被刪除，Sonner 帶「復原」；按「復原」回到第 3 桌（PPL-AC29）', async ({ page }) => {
+  test('移出第 3 桌：變成未入座、人員沒有被刪除，Sonner 帶「復原」；按「復原」回到第 3 桌原本的座號（PPL-AC29、SEAT-R78）', async ({ page }) => {
     await withDb(async (db) => {
       const { wang } = await demoEmployees(db);
       await db.guest('測試貴賓甲', { tableId: 3 });
@@ -121,6 +122,9 @@ test.describe('移出桌次（PPL-R17、PPL-R36）', () => {
 
     await expect(cellOf(personRow(page, '王小明'), '桌次')).toHaveText('第 3 桌');
     await expect.poll(async () => (await findPerson('王小明'))?.tableId).toBe(3);
+    // 回到原本那一桌的原本座號：第 2 列（SEAT-R78）
+    await expect.poll(() => seatedNames(3)).toEqual(['測試貴賓甲', '王小明', '測試貴賓乙']);
+    expect((await findPerson('王小明'))?.seatOrder).toBe(1);
     await page.reload();
     await expect(cellOf(personRow(page, '王小明'), '桌次')).toHaveText('第 3 桌');
   });
