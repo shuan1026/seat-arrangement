@@ -7,8 +7,10 @@
 // - 單筆「加入尾牙」開啟 B 線的新增人員對話框（EMP-R28、EMP-AC35）、「查看參與資料」開啟後的內容（EMP-AC38）也在 employees-join.spec.ts。
 // 「不參加」（D-014）讓 Tabs 變成四個、未報名的列操作多「標記為不參加」、「未報名」的空狀態改為「沒有未報名的員工。」，
 // 這裡的 EMP-AC01、AC24、AC34 依新規則更新；不參加的完整情境（EMP-AC80～AC86）在 employees-declined.spec.ts。
+// 表格（768 px 以上）的姓名（中文那一行）、分機、地區、報名狀態一行顯示、不換行，放不下時只在表格的捲動區左右捲動（EMP-R10、D-024）；
+// 手機的堆疊卡片見 employees-mobile.spec.ts。
 // 資料用 tests/e2e/helpers/employees-db.ts 直接寫進測試資料庫。
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import {
   closeDb,
@@ -45,7 +47,13 @@ import {
   tabOf,
   takenBox,
 } from './helpers/employees-page';
-import { expectNoHorizontalScroll, isMobileWidth, requireBaseURL } from './helpers/page-checks';
+import {
+  expectNoHorizontalScroll,
+  expectOneLine,
+  expectTableScrollsInside,
+  isMobileWidth,
+  requireBaseURL,
+} from './helpers/page-checks';
 
 test.beforeEach(async ({ context, baseURL }) => {
   await resetData();
@@ -824,4 +832,63 @@ test.describe('版面', () => {
     await expect(dataRows(page)).toHaveCount(6);
     await expectNoHorizontalScroll(page);
   });
+});
+
+test.describe('表格的短欄位一行顯示（EMP-R10、2.3、D-024）', () => {
+  test.beforeEach(async ({ page }) => {
+    test.skip(isMobileWidth(page), '表格寬度（768 px 以上）；手機的堆疊卡片見 employees-mobile.spec.ts');
+  });
+
+  // 截圖檢查的情境：部門、組別很長時，表格自動分配欄寬把短欄位擠窄，姓名變成「謝淑／芬」、地區變成「台／北」（D-024 背景）。
+  // 很長的備註讓欄寬更不夠；英文名用短的，免得英文名把姓名欄撐寬而看不出問題。
+  const DEPT_A = '國際事業發展暨策略合作推動處';
+  const DEPT_B = '法務暨智慧財產與法規遵循管理部';
+  const TEAM_A = '跨境電商平台營運暨數據分析組';
+  const TEAM_B = '海外通路夥伴關係經營組';
+  const NOTE = '活動當天需要提早到場協助報到，請安排靠近出入口的座位，並保留一個位置給臨時來賓。';
+
+  /** 王小明（未報名，有英文名與備註）、李小華（已報名）、陳大文（未報名）、林美玲（不參加，沒有組別）；姓名都是 3 個字 */
+  async function seedLongColumns() {
+    const [, li] = await insertEmployees([
+      { name: '王小明', englishName: 'Tony', department: DEPT_A, team: TEAM_A, extension: '1234', region: '台北', note: NOTE },
+      { name: '李小華', department: DEPT_B, team: TEAM_B, extension: '2001', region: '台北' },
+      { name: '陳大文', department: DEPT_A, team: TEAM_A, extension: '3001', region: '台中' },
+      { name: '林美玲', department: DEPT_B, extension: '4001', region: '台北', declined: true },
+    ]);
+    await registerEmployee(li!);
+  }
+
+  /** 這一列的姓名（中文那一行）、分機、地區、報名狀態都一行顯示 */
+  async function expectShortColumnsOneLine(page: Page, name: string, label: string) {
+    const row = rowOf(page, name);
+    await expect(row, `${label}：${name} 那一列`).toHaveCount(1);
+    await expectOneLine(cellOf(row, 'name').getByText(name, { exact: true }), `${label}：${name} 的姓名`);
+    await expectOneLine(cellOf(row, 'extension'), `${label}：${name} 的分機`);
+    await expectOneLine(cellOf(row, 'region'), `${label}：${name} 的地區`);
+    await expectOneLine(cellOf(row, 'status'), `${label}：${name} 的報名狀態`);
+  }
+
+  for (const width of [768, 1024]) {
+    test(`${width} px（Sidebar 維持預設）、部門與組別很長：「全部」與「未報名」分頁的姓名、分機、地區、報名狀態都一行顯示（不會變成「王小／明」「台／北」）；放不下時只在表格的捲動區左右捲動，整頁不水平捲動`, async ({
+      page,
+    }) => {
+      await seedLongColumns();
+      await page.setViewportSize({ width, height: 800 });
+      await gotoEmployees(page);
+
+      await expect(tabOf(page, '全部')).toHaveAttribute('aria-selected', 'true');
+      await expect(dataRows(page)).toHaveCount(4);
+      await expect(cellOf(rowOf(page, '王小明'), 'region')).toHaveText('台北');
+      await expect(cellOf(rowOf(page, '林美玲'), 'status')).toHaveText('不參加');
+      for (const name of ['王小明', '李小華', '陳大文', '林美玲']) {
+        await expectShortColumnsOneLine(page, name, `${width} px「全部」`);
+      }
+      await expectTableScrollsInside(page, '員工名單');
+
+      await tabOf(page, '未報名').click();
+      await expect(dataRows(page)).toHaveCount(2);
+      for (const name of ['王小明', '陳大文']) await expectShortColumnsOneLine(page, name, `${width} px「未報名」`);
+      await expectTableScrollsInside(page, '員工名單');
+    });
+  }
 });

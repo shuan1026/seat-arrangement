@@ -1,6 +1,7 @@
 // 發布頁 /seats：docs/spec/permissions.md 第 2.3 節（版面、搜尋、座位圖、桌次名單、未發布、手機）、PRM-R21～R34、第 4.3 節文案；
 // 驗收條件 PRM-AC23～AC35；待確認 PRM-Q01（已報名但未入座的人搜尋自己 → 目前假設「找不到「{關鍵字}」。」）；
 // docs/spec/README.md AUTH-R15、AUTH-AC20（發布頁也要登入，登入後回到 /seats）、COM-R18（沿用這個瀏覽器的配色、沒有介面配色鈕）；D-021。
+// 精簡顯示（比例低於 80%）時搜尋標示的桌次：「已滿」「超過」徽章仍完整顯示（seating.md 2.1.6、2.1.9；README 第 11.1 節徽章一律有文字）。
 // 桌號（D-019）：測試資料用內部編號（1 = B1、2 = A1、3 = B4、5 = B10、6 = B13、7 = B2、9 = B8、17 = A3），畫面上用桌號。
 // 座位圖、桌次、工具列與桌次名單的無障礙結構和座位安排頁相同（helpers/seating-page.ts 開頭）；發布頁的其他假設見 helpers/permissions-page.ts 開頭。
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
@@ -14,6 +15,8 @@ import {
   blankPointIn,
   detailRows,
   dragAndDrop,
+  expectSameBadgePlace,
+  expectWholeCircleBadge,
   hasBorderColor,
   hasDashedBorder,
   isInside,
@@ -25,6 +28,7 @@ import {
   tableButton,
   tableDetail,
   toolbarButton,
+  zoomToCompact,
   zoomToRegular,
   zoomValue,
 } from './helpers/seating-page';
@@ -368,6 +372,41 @@ test.describe('已發布：找座位（PRM-R30～R33）', () => {
     await expect(notFoundLine(page, '1234')).toBeVisible();
     expect(await hasBorderColor(page, seatMap(page), '--accent', '2px')).toBe(false);
   });
+});
+
+test.describe('精簡顯示時的搜尋標示：「已滿」「超過」徽章不截斷（PRM-R24、PRM-R31；seating.md 2.1.6、2.1.9；README 第 11.1 節）', () => {
+  // 精簡顯示的徽章高 28 px（2.1.6）；標示是 2 px 的 --accent 邊框（2.1.9），徽章文字仍要完整顯示，不能變成「已…」「超…」。
+  // 桌面與手機 320 px 都跑（發布頁兩種寬度都有座位圖與縮放工具列）。
+  test.beforeEach(async ({ context, baseURL }) => {
+    await seedSeats();
+    await asViewer(context, baseURL);
+  });
+
+  for (const { n, code, status, cut, keyword } of [
+    { n: B10, code: 'B10', status: '已滿', cut: '已…', keyword: '佔位貴賓5-10' },
+    { n: B13, code: 'B13', status: '超過', cut: '超…', keyword: '佔位貴賓6-11' },
+  ] as const) {
+    test(`比例低於 80%，搜尋「${keyword}」→ ${code} 桌以 2 px --accent 標示時，「${status}」徽章完整顯示（不是「${cut}」）、高 28 px、在圓形的內容框裡；徽章的位置與寬度和標示前相同`, async ({
+      page,
+    }) => {
+      await gotoSeats(page);
+      await zoomToCompact(page);
+
+      const before = await expectWholeCircleBadge(page, n, status, '標示前');
+      expect(before.height, '標示前：精簡顯示的徽章高 28 px（2.1.6）').toBeCloseTo(28, 0);
+
+      await seatSearch(page).fill(keyword);
+      await expect(resultLine(page, `${keyword}：${code} 桌`)).toBeVisible();
+      await expect.poll(() => highlighted(page, n)).toBe(true);
+      expect(await zoomValue(page), '搜尋後仍是精簡顯示').toBeLessThan(80);
+
+      const during = await expectWholeCircleBadge(page, n, status, '標示中');
+      expect(during.height, '標示中：精簡顯示的徽章高 28 px（2.1.6）').toBeCloseTo(28, 0);
+      expectSameBadgePlace(before, during, '標示前後');
+      // 標示一直留著（PRM-R31），量的時候仍在標示中
+      expect(await highlighted(page, n), '量的時候仍在標示中').toBe(true);
+    });
+  }
 });
 
 test.describe('同名（PRM-R32、PRM-AC30）', () => {

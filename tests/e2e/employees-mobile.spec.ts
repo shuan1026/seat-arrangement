@@ -2,6 +2,7 @@
 // 驗收條件 EMP-AC76～AC79、AC88（不參加，D-014：四個分頁在分頁列內水平捲動、不參加的卡片勾選框停用）；
 // README 第 9 節（對話框寬度隨視窗縮小、按鈕滿版堆疊、主要按鈕在上；不可整頁水平捲動）、COM-AC11。
 // 只在 mobile-320 project 跑；EMP-AC76、AC77、AC79 指定 375 px，測試內改視窗寬度。
+// 短欄位不換行（EMP-R10、D-024）只套用在表格；手機的堆疊卡片不變，很長的姓名、部門照舊在卡片內換行。
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { closeDb, insertEmployees, registerEmployee, resetData } from './helpers/employees-db';
@@ -265,6 +266,36 @@ test('EMP-AC88：320 px、有不參加的員工 → 四個分頁都在，放不�
   const menuBox = await boxOf(menu);
   expect(menuBox.x).toBeGreaterThanOrEqual(0);
   expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(320);
+  await expectNoHorizontalScroll(page);
+});
+
+test('320 px、姓名與部門很長（「阿布杜拉・穆罕默德・哈米德」）：仍是堆疊卡片；姓名、部門、組別都完整顯示在卡片裡（卡片內可以換行）；沒有整頁水平捲動（2.3 手機、EMP-R10、D-024）', async ({
+  page,
+}) => {
+  const LONG_NAME = '阿布杜拉・穆罕默德・哈米德';
+  const DEPT = '國際事業發展暨策略合作推動處';
+  const TEAM = '跨境電商平台營運暨數據分析組';
+  await insertEmployees([
+    { name: LONG_NAME, department: DEPT, team: TEAM, extension: '1234', region: '台北' },
+    { name: '王小明', department: '業務部', region: '台北' },
+  ]);
+  await gotoEmployees(page);
+  expect(page.viewportSize()?.width).toBe(320);
+
+  // 仍是卡片：沒有表頭
+  await expect(page.getByRole('columnheader', { name: '姓名' })).toBeHidden();
+  const card = rowOf(page, LONG_NAME);
+  await expect(card).toBeVisible();
+  const cardBox = await boxOf(card);
+  for (const text of [LONG_NAME, DEPT, TEAM]) {
+    const el = card.getByText(text, { exact: true });
+    await expect(el, text).toBeVisible();
+    const box = await boxOf(el);
+    expect(box.x, `${text} 的左緣在卡片裡`).toBeGreaterThanOrEqual(cardBox.x - 1);
+    expect(box.x + box.width, `${text} 的右緣在卡片裡`).toBeLessThanOrEqual(cardBox.x + cardBox.width + 1);
+    expect(box.x + box.width, `${text} 沒有超出視窗`).toBeLessThanOrEqual(320);
+    expect(await el.evaluate((e) => e.scrollWidth <= e.clientWidth + 1), `${text} 沒有被截斷`).toBe(true);
+  }
   await expectNoHorizontalScroll(page);
 });
 

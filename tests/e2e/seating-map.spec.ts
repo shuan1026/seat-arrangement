@@ -5,6 +5,7 @@
 // 測試資料用內部編號（tableId 1–30）建立，畫面上的字用桌號（對應見 tests/helpers/table-codes.ts）。
 // 適合視窗的比例常低於 80%（精簡顯示，只有桌號與人數），所以看備註名稱與部門時先「全部展開」或放大到 80% 以上。
 // 無障礙名稱的假設見 tests/e2e/helpers/seating-page.ts 開頭。
+// 名單說明「拖移可以調整順序…」只在桌面（768 px 以上）的詳情顯示，767 px 以下的 Dialog 不顯示（2.3.1、2.3.6、D-023）。
 import { expect, test, type Page } from '@playwright/test';
 import { CODES_IN_LIST_ORDER, codeOf } from '../helpers/table-codes';
 import { signIn } from './helpers/auth';
@@ -504,6 +505,35 @@ test.describe('桌次詳情（2.3、SEAT-R72～R74）', () => {
       await expect(detail.getByRole('button', { name, exact: true }), name).toBeVisible();
     }
     await expect(detail.getByRole('button', { name: '關閉' })).toBeVisible();
+  });
+
+  test('名單說明只在桌面顯示：768 px 寬浮出的詳情有「名單」標題與說明；767 px 寬改成 Dialog，仍有「名單」標題與名單，但不顯示說明（2.3.1、2.3.6、D-023）', async ({
+    page,
+  }) => {
+    desktopOnly(page);
+    const HINT = '拖移可以調整順序，也可以從人員面板直接拖進來。';
+    await seed(async (s) => {
+      for (const name of ['甲', '乙']) await s.employee(name, { department: '研發一部', tableId: 3 });
+    });
+
+    await page.setViewportSize({ width: 768, height: 800 });
+    await openSeating(page);
+    await tableButton(page, 3).click();
+    const panel = page.getByRole('region', { name: 'B4 桌', exact: true });
+    await expect(panel, '768 px：詳情從座位圖區右側浮出').toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'B4 桌', exact: true })).toHaveCount(0);
+    await expect(panel.getByRole('heading', { name: '名單', exact: true })).toBeVisible();
+    await expect(panel.getByText(HINT, { exact: true }), '768 px：編輯者看得到名單說明').toBeVisible();
+
+    await page.setViewportSize({ width: 767, height: 800 });
+    await openSeating(page);
+    await tableButton(page, 3).click();
+    const dialog = page.getByRole('dialog', { name: 'B4 桌', exact: true });
+    await expect(dialog, '767 px：詳情是 Dialog').toBeVisible();
+    await expect(dialog.getByRole('button', { name: '加入人員', exact: true })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '名單', exact: true })).toBeVisible();
+    await expectRoster(detailRows(dialog), ['甲', '乙']);
+    await expect(dialog.getByText(HINT), '767 px：不顯示名單說明').toBeHidden();
   });
 
   test('詳情打開時點另一桌就換成那一桌；人員面板仍可操作；按關閉鈕關閉（SEAT-R73、SEAT-AC89）', async ({ page }) => {
