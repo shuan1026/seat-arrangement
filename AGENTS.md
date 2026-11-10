@@ -54,7 +54,7 @@ docs/
 
 | Repo／目錄 | 執行全部測試 | 備註 |
 |---|---|---|
-| 根目錄（Next.js 應用程式） | `npm test` | 依序跑型別檢查、lint、單元測試、整合測試、E2E。先 `npm run db:up` 啟動本機 MySQL（Docker），並有 `.env`（複製 `.env.example`）。平行的功能線用自己的 `TEST_DATABASE_NAME` 與 `E2E_PORT`（`docs/plan/implementation-plan.md` 第 5.3 節）。E2E 用本機的 Google Chrome，先 `next build` 再用 `next start` 跑（開發模式會整頁重新載入，測試不穩）；除錯時可設 `E2E_DEV=1` 改用 `next dev` |
+| 根目錄（Next.js 應用程式） | `npm test` | 依序跑型別檢查、lint、單元測試、整合測試、E2E。先 `npm run db:up` 啟動本機 MySQL（Docker），並有 `.env`（複製 `.env.example`）。平行的功能線用自己的 `TEST_DATABASE_NAME` 與 `E2E_PORT`（`docs/plan/implementation-plan.md` 第 5.3 節）。E2E 用本機的 Google Chrome，先 `next build` 再用 `next start` 跑（開發模式會整頁重新載入，測試不穩）。`npm run test:e2e` 只建置一次，再分 3 組同時跑（`E2E_SHARDS` 可調；第 n 組用測試資料庫 `{TEST_DATABASE_NAME}_e{n}` 與埠號 `E2E_PORT + 100n`）；開發中只跑單一檔案用 `npx playwright test <檔案>`；除錯時可設 `E2E_DEV=1` 改用 `next dev` |
 | `ui-design-system/source-reference/html/`（HTML 原型） | 無自動化測試 | 用瀏覽器截圖驗證 |
 
 ## Git

@@ -14,7 +14,9 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  // 分組同時跑時（scripts/e2e.mjs）每組用自己的輸出與報告資料夾
+  outputDir: process.env.E2E_OUTPUT_DIR || 'test-results',
+  reporter: [['list'], ['html', { open: 'never', outputFolder: process.env.E2E_REPORT_DIR || 'playwright-report' }]],
   globalSetup: './tests/e2e/global-setup.ts',
   use: {
     baseURL,
@@ -28,13 +30,25 @@ export default defineConfig({
     { name: 'desktop', use: { ...devices['Desktop Chrome'], channel, viewport: { width: 1280, height: 800 } } },
     {
       name: 'mobile-320',
-      use: { ...devices['Desktop Chrome'], channel, viewport: { width: 320, height: 700 }, isMobile: true, hasTouch: true },
+      use: {
+        ...devices['Desktop Chrome'],
+        channel,
+        viewport: { width: 320, height: 700 },
+        isMobile: true,
+        hasTouch: true,
+      },
     },
   ],
   // 用正式建置跑 E2E：開發模式邊跑邊編譯頁面，編譯完會觸發整頁重新載入，測試會不穩定；
   // 正式建置也比較接近 aiborn 上實際跑的版本。設 E2E_DEV=1 可改用 next dev（除錯用）。
+  // npm run test:e2e（scripts/e2e.mjs）先建置一次再分組，各組設 E2E_SKIP_BUILD=1 只啟動伺服器。
   webServer: {
-    command: process.env.E2E_DEV === '1' ? `npx next dev --port ${port}` : `npx next build && npx next start --port ${port}`,
+    command:
+      process.env.E2E_DEV === '1'
+        ? `npx next dev --port ${port}`
+        : process.env.E2E_SKIP_BUILD === '1'
+          ? `npx next start --port ${port}`
+          : `npx next build && npx next start --port ${port}`,
     url: `${baseURL}/api/health`,
     reuseExistingServer: false,
     timeout: 300_000,
