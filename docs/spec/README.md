@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 版本 | v1.3（2026-11-10，桌號改為 A1～A15、B1～B15，D-019） |
+| 版本 | v1.4（2026-11-10，桌號改為 A1～A15、B1～B15 D-019；新增深色主題 D-020） |
 | 範圍 | 本檔寫產品定位、頁面、App Shell、儲存、多人操作、登入、通用狀態、設計與文案規範；各功能見第 3 節 |
 | 視覺 | `ui-design-system/`，視覺一律以它為準 |
 | 頁面版型 | `ui-design-system/source-reference/html/` 的原型頁面決定頁面區塊、排列與文案位置 |
@@ -103,12 +103,12 @@ Seat Arrangement 是尾牙承辦人在活動前安排座位的工具，只服務
 | 區域 | 做法 |
 |---|---|
 | Sidebar | 桌面展開 240 px、收合為 48 px 圖示列，固定在視窗內距 24 px，底色 `--sidebar`，外框 `--sidebar-border`。切換鈕在 Header；視窗低於 1024 px 時預設收合 |
-| Logo 區 | 展開 208 × 72 px 放完整 Logo（符號加字標），收合 24 × 24 px 只放符號；瀏覽器分頁圖示也用符號。單色：淺色表面用 `--color-text`，深色表面用白色版。檔案在 `ui-design-system/assets/logo/`：`logo-dark.svg`、`logo-light.svg`（完整 Logo）與 `symbol-dark.svg`、`symbol-light.svg`（符號），`dark`／`light` 指 Logo 本身的顏色。Logo 與配色已確認：Logo 用這組圓桌座位標誌，色彩用多彩活力 |
+| Logo 區 | 展開 208 × 72 px 放完整 Logo（符號加字標），收合 24 × 24 px 只放符號；瀏覽器分頁圖示也用符號。單色：淺色表面用 `--color-text`，深色表面用白色版；深色主題時 Sidebar 與 Drawer 的 Logo 用白色版（D-020）。檔案在 `ui-design-system/assets/logo/`：`logo-dark.svg`、`logo-light.svg`（完整 Logo）與 `symbol-dark.svg`、`symbol-light.svg`（符號），`dark`／`light` 指 Logo 本身的顏色。Logo 與配色已確認：Logo 用這組圓桌座位標誌，色彩用多彩活力 |
 | 導覽項目 | 座位安排、參與人員、員工名單，各配一個 Lucide 圖示（`armchair`、`users`、`id-card`）。圖示用 `--muted-foreground`；目前頁面用 `--primary` 12% 的淡色底加 `Text-sm/Medium`；收合時以 Tooltip 顯示名稱 |
 | 使用者區塊 | 依設計系統的 Sidebar User Footer 放在 Sidebar 底部：32 px 圓形頭像（`--sidebar-avatar-bg` 底、`--sidebar-avatar-fg` 字，放姓名的第一個字），旁邊兩行是姓名 `Text-sm/Semi Bold` 與 email `Text-xs/Regular`，最右是 `chevrons-up-down` 圖示。Sidebar 收合時只剩頭像，滑過以 Tooltip 顯示姓名。點開是 Dropdown Menu `user-menu`，在觸發區右側、底邊對齊：第一列是姓名與 email，下面只有「登出」（`log-out` 圖示）。手機放在 Drawer 底部，選單往上開、和觸發區同寬 |
-| Header | 約 48 px，跟著頁面捲動，沒有底色。左側是 Sidebar 切換鈕，右側是儲存狀態（第 6 節）。桌面與手機的 Header 都不顯示產品名稱與頁面標題 |
+| Header | 約 48 px，跟著頁面捲動，沒有底色。左側是 Sidebar 切換鈕，右側依序是介面配色鈕（COM-R17）與儲存狀態（第 6 節）。桌面與手機的 Header 都不顯示產品名稱與頁面標題 |
 | 內容區 | 底色 `--background`，內容放在 `--card` 面板，頁面標題（H1）在內容區最上方 |
-| 手機（767 px 以下） | 不顯示桌面 Sidebar，改為固定在頂部的 Mobile Header 與 Mobile Drawer。Mobile Header 左側是選單鈕，右側是儲存狀態；Logo、導覽與使用者區塊在 Drawer 裡 |
+| 手機（767 px 以下） | 不顯示桌面 Sidebar，改為固定在頂部的 Mobile Header 與 Mobile Drawer。Mobile Header 左側是選單鈕，右側依序是介面配色鈕與儲存狀態；Logo、導覽與使用者區塊在 Drawer 裡 |
 
 - 切換頁面時只更換右側主畫面，導覽與 Header 維持不動，資料不重新載入。
 - 開啟網址進入座位安排；沒登入時先到登入頁（第 8 節）。
@@ -182,6 +182,8 @@ Seat Arrangement 是尾牙承辦人在活動前安排座位的工具，只服務
 | COM-R14 | 搜尋姓名的地方都能用分機搜尋。 |
 | COM-R15 | 同一人有多個分機時以「／」合併顯示，例如「1234／1235」。 |
 | COM-R16 | 匯入的錯誤清單與完成訊息裡的列號，是這一列在檔案中的列號，和用 Excel 開啟時看到的一致：表頭是第 1 列，空白列也算一列，儲存格內的換行不另算一列。適用於匯入員工名單與匯入參與人員。 |
+| COM-R17 | 介面配色有「淺色」「深色」兩種，預設是淺色（D-020）。Header 的介面配色鈕（Icon Button，`palette` 圖示，無障礙名稱與 Tooltip「介面配色」）開啟 Dropdown Menu，對齊按鈕右緣：最上面是 `Text-xs/Regular` 的淡色標題「介面配色」，下面是「淺色」「深色」兩個單選項目，各有 16 px 圓形色塊（`--theme-swatch-vivid`、`--theme-swatch-dark`），目前的配色右邊打勾。選了立即套用、不重新整理，選單關閉、焦點回到按鈕，以 Sonner 顯示「已切換為淺色。」或「已切換為深色。」。 |
+| COM-R18 | 配色記在這個瀏覽器（換電腦或瀏覽器要再選一次），不跟著作業系統的深色模式。開啟任何頁面時在畫面第一次繪製前就套用，不會先閃淺色。登入頁沿用這個瀏覽器的選擇，但沒有介面配色鈕。配色只換顏色，版面、元件與文案都不變；匯出的座位表不受配色影響（`export.md`）。 |
 
 ## 11. 設計規範
 
@@ -301,6 +303,7 @@ Seat Arrangement 是尾牙承辦人在活動前安排座位的工具，只服務
 |---|---|
 | 導覽 | 座位安排／參與人員／員工名單 |
 | 儲存狀態 | 已儲存 {時:分}／儲存中…／儲存失敗，請檢查網路後再試一次。按鈕：重試 |
+| 介面配色 | 按鈕與選單標題：介面配色。選項：淺色／深色。切換後：已切換為淺色。／已切換為深色。 |
 | 別人剛改過資料 | 資料已被其他人更新，已重新載入。 |
 | 系統錯誤 | 系統發生問題，請稍後再試。按鈕：再試一次 |
 | 找不到頁面 | 標題：找不到這個頁面。內文：連結可能已失效，或內容已被移除。按鈕：回到座位安排 |
@@ -338,6 +341,11 @@ Seat Arrangement 是尾牙承辦人在活動前安排座位的工具，只服務
 | COM-AC13 | 員工出現在桌次詳情、參與人員、員工名單、選員工下拉 → 第二行是「{部門}・分機 {分機}」；沒有分機的員工只顯示部門 | COM-R10 |
 | COM-AC14 | 在座位安排的人員面板 → 員工第二行是「{部門}・{組別}」；用分機搜尋找得到該員工 | COM-R11、COM-R14 |
 | COM-AC15 | 有兩個分機的員工 → 顯示「1234／1235」，用其中任一個分機都搜尋得到 | COM-R14、COM-R15 |
+| COM-AC16 | 第一次開啟 → 是淺色；按 Header 的「介面配色」→ 選單有「淺色」（打勾）「深色」 → 選「深色」→ 不重新整理，整個畫面立即換成深色，選單關閉、焦點回到按鈕，Sonner「已切換為深色。」；Sidebar 的 Logo 是白色版 | COM-R17、第 5 節 |
+| COM-AC17 | 已選深色 → 重新整理、換頁、開新分頁、登出後回到登入頁 → 都是深色，開頁時沒有先閃淺色；登入頁沒有介面配色鈕；換另一個瀏覽器開啟 → 是淺色 | COM-R18 |
+| COM-AC18 | 作業系統是深色模式、這個瀏覽器沒選過 → 開啟 → 是淺色 | COM-R18 |
+| COM-AC19 | 已選深色 → 開啟座位安排、參與人員、員工名單，以及對話框、選單、Sonner → 文字與背景都看得清楚，狀態徽章、已滿與超過徽章、空桌虛線都可辨認；視窗 320 px 時 Mobile Header 也有介面配色鈕 | COM-R17、第 11 節 |
+| COM-AC20 | 已選深色 → 匯出座位表 → Excel 的底色與框線和淺色時相同 | COM-R18、`export.md` |
 | AUTH-AC01 | 沒登入，開 `/people?q=王` → 導到登入頁；用公司帳號登入 → 回到 `/people?q=王` | AUTH-R01 |
 | AUTH-AC02 | 沒登入，直接開 `/login` 並登入 → 進入座位安排 | AUTH-R01 |
 | AUTH-AC03 | 用公司網域、email 已驗證的帳號登入 → 登入成功 | AUTH-R02 |

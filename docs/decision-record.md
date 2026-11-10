@@ -303,3 +303,21 @@
   - 匯出座位表的標題格寫「A1 桌」，取消「位置代碼不出現」的規定。
   - 資料庫的桌次仍用內部編號 1–30，不改資料表。
 - 影響：`docs/spec/` 的 README、seating、participants、auto-arrange、export（所有「第 {n} 桌」的規則、文案與驗收條件）；`docs/architecture.md` 第 7.3、11.3 節；`docs/plan/implementation-plan.md` 第 6 節；`prisma/seed-data/tables.csv`（不進 repo）。HTML 原型與 `docs/product-spec.md` 是否同步，另由使用者決定。
+
+### D-020 新增深色主題
+
+- 狀態：已決議（2026-11-10）
+- 背景：使用者要新增深色主題。設計系統已有三套配色（多彩活力、海港晴光、深色）與 Header 的「介面配色」切換鈕規範，深色的 token 也已在 `src/styles/tokens.css`，但程式沒有切換的地方。
+- 選項與過程：2026-11-10 以 `/grill-me` 討論，Claude 每題提出建議，使用者全部採用，另外決定選項名稱：
+  - 配色數量：只有淺色與深色；另一個選項是連海港晴光共三種，沒有採用。
+  - 切換鈕位置：照設計系統放在 Header 右側（儲存狀態左邊），桌面與手機都有；另一個選項是放進使用者選單，沒有採用。
+  - 預設：淺色，不跟著作業系統的深色模式。
+  - 記住方式：記在這個瀏覽器；另一個選項是記在帳號上，要新增使用者設定資料表，沒有採用。
+  - 匯出座位表：不受配色影響，一律用淺色的色碼。
+  - 名稱：使用者決定選單與 Sonner 寫「淺色」「深色」，不用設計系統的「多彩活力」。
+- 決議：
+  - 介面配色有淺色（預設）與深色兩種，Header 的「介面配色」鈕切換，立即套用，Sonner「已切換為淺色。」「已切換為深色。」。
+  - 選擇記在瀏覽器，畫面繪製前套用；登入頁沿用選擇但沒有切換鈕；深色時 Logo 用白色版。
+  - 匯出 Excel 一律用淺色的色碼。
+  - 不寫進 `docs/product-spec.md`，原型不同步。
+- 影響：`docs/spec/README.md`（第 5 節 Header、COM-R17、R18、共用文案、COM-AC16～AC20）、`docs/spec/export.md` EXP-R21、`docs/architecture.md` 第 11.3 節、`docs/plan/implementation-plan.md` 第 6 節。

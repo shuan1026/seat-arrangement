@@ -486,6 +486,7 @@ type SeatingOperationResult = {
 
 ### 11.3 座位安排
 
+- 介面配色（D-020）：淺色是 `:root` 的預設 token，深色是設計系統既有的 `:root[data-theme="dark"]`（`src/styles/tokens.css`）。選擇存在瀏覽器的 localStorage，由根版面 `<head>` 裡一段 inline script 在第一次繪製前把 `data-theme` 設在 `<html>`，避免先閃淺色；不存資料庫。元件只用語意 token，不判斷目前的配色。匯出 Excel 的色碼固定用淺色主題換算。
 - 桌號（D-019）：資料庫與 API 的桌次仍用內部編號 1–30（工作人員桌 0），畫面、匯出與網址參數（`/?table=A1`）都用位置代碼 A1～A15、B1～B15，對應寫在 `src/domain/layout.ts`。清單依 A1～A15、B1～B15 排列；自動排座的填桌順序沿用內部編號的順序（`docs/spec/auto-arrange.md` 的「填桌順序」）。
 - `seating-rules.ts` 對每個指令回傳「變更後的座位」或「違反哪條規則」，前端與後端共用。
 - 員工拖進工作人員桌時離開原本的桌次；眷屬不跟著移動。
