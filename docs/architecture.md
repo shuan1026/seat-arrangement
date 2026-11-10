@@ -385,7 +385,7 @@ type SeatingOperationResult = {
 | 400 | `IMPORT_FORMAT_INVALID` | CSV 欄位和範本不一致 | 顯示匯入對話框的格式錯誤文案 |
 | 401 | `UNAUTHENTICATED` | 沒有登入或登入已過期 | 導向登入頁 |
 | 404 | `NOT_FOUND` | 資料已被別人刪除 | 重新載入全部資料，顯示「資料已被其他人更新，已重新載入。」（D-004） |
-| 409 | `TABLE_FULL`、`STAFF_TABLE_FULL`、`STAFF_EMPLOYEE_ONLY` | 寫入時才發現違反規則（通常是別人剛改過） | 重新載入全部資料，顯示規格中既有的文案，例如桌次已滿（D-004） |
+| 409 | `TABLE_FULL`、`STAFF_TABLE_FULL`（10 位，選單類入口）、`TABLE_LIMIT`、`STAFF_TABLE_LIMIT`（12 位，拖移與加入人員，D-018）、`STAFF_EMPLOYEE_ONLY` | 寫入時才發現違反規則（通常是別人剛改過） | 重新載入全部資料，顯示規格中既有的文案，例如桌次已滿（D-004） |
 | 409 | `DUPLICATE_PARTICIPANT`、`DEPENDENT_EXISTS` | 員工已被別人加入、已有眷屬 | 重新載入全部資料，顯示「資料已被其他人更新，已重新載入。」（D-004） |
 | 500 | `INTERNAL` | 其他錯誤 | Header 顯示儲存失敗與「重試」 |
 
