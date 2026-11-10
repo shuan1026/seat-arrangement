@@ -1,13 +1,9 @@
 import type { Metadata } from 'next';
-import { PageHead } from '@/components/shell/page-head';
+import { EmployeesView } from '@/components/features/employees/employees-view';
 
-// 員工名單（docs/spec/employees.md）。頁面內容由階段 2 的 A 線實作。
+// 員工名單（docs/spec/employees.md）：資料由 (main)/layout.tsx 在伺服器端讀進 store，頁面內容在前端元件。
 export const metadata: Metadata = { title: '員工名單' };
 
 export default function EmployeesPage() {
-  return (
-    <section className="min-w-0">
-      <PageHead title="員工名單" description="公司全部員工。把報名尾牙的人加入，參與人員就會出現在座位安排。" />
-    </section>
-  );
+  return <EmployeesView />;
 }
