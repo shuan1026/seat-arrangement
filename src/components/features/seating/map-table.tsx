@@ -4,6 +4,7 @@
 // 收合：88 px 圓形；精簡（縮放低於 80%）：只有大號桌號與人數；展開：256 px 名單卡片（D-022），固定 10 列、兩欄各 5 列，
 // 這一桌有 11、12 位時 12 列、兩欄各 6 列，卡片跟著變高（D-018）。
 // 人數：0–9 位「{n}/10」，10 位正向徽章「已滿」，11、12 位待處理徽章「超過」（triangle-alert 圖示，SEAT-R11、2.1.9）。
+// 發布頁 /seats 也用這個元件（只有收合與精簡顯示、沒有拖移把手；docs/spec/permissions.md 第 2.3 節），所以收合時只讀 TableFace。
 import { GripVertical, TriangleAlert } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useAppStore } from '@/client/app-provider';
@@ -15,13 +16,14 @@ import { cn } from '@/components/ui/cn';
 import { IconButton } from '@/components/ui/icon-button';
 import { Tooltip } from '@/components/ui/tooltip';
 import { dropAttr, useDragState, useIsDragging, useSeatingDraggable } from './drag';
-import { CAPACITY, rosterRows, tableTooltip, type TableInfo } from './model';
+import { CAPACITY, isTableInfo, rosterRows, tableTooltip, type TableFace, type TableInfo } from './model';
 import { SeatMarks } from './person-parts';
 
 export type TableMode = 'collapsed' | 'compact' | 'expanded';
 
 export interface MapTableProps {
-  info: TableInfo;
+  /** 展開模式要有名單（TableInfo）；收合與精簡顯示只要 TableFace */
+  info: TableFace;
   x: number;
   y: number;
   mode: TableMode;
@@ -45,7 +47,7 @@ function MapTooltip({ content, children }: { content: ReactNode; children: React
   );
 }
 
-function useDropState(info: TableInfo) {
+function useDropState(info: TableFace) {
   return useDragState((s) => {
     const t = s.target;
     const over = info.isStaff ? t?.kind === 'staff' && t.area === 'map' : t?.kind === 'table' && t.tableId === info.id && t.area === 'map';
@@ -59,7 +61,7 @@ function useDropState(info: TableInfo) {
 }
 
 /** 圓形或卡片的外框：空桌虛線、已選取與可放置用 --primary、搜尋標示 2 px --accent（2.1.9） */
-function frameClasses(info: TableInfo, { over, selected, hit }: { over: boolean; selected: boolean; hit: boolean }) {
+function frameClasses(info: TableFace, { over, selected, hit }: { over: boolean; selected: boolean; hit: boolean }) {
   const empty = info.count === 0;
   return cn(
     'bg-card text-card-foreground transition-[border-color,box-shadow] duration-150 outline-none',
@@ -75,7 +77,7 @@ function frameClasses(info: TableInfo, { over, selected, hit }: { over: boolean;
   );
 }
 
-function CountOrFull({ info, mode }: { info: TableInfo; mode: TableMode }) {
+function CountOrFull({ info, mode }: { info: TableFace; mode: TableMode }) {
   // 精簡顯示時徽章放大：高 28 px、Text-base/Medium（2.1.6）
   const large = mode === 'compact' && 'h-7! px-2! type-base-medium! [&_svg]:size-4!';
   if (info.status === 'over') {
@@ -111,7 +113,7 @@ function codeFont(code: string, mode: TableMode, withHandle: boolean): string {
 }
 
 /** 拖移把手：只能從這裡拖整桌去對調（SEAT-R35、SEAT-R37）；Tooltip 與無障礙名稱「拖移調換桌次」 */
-function Handle({ info, mode, scale }: { info: TableInfo; mode: TableMode; scale: number }) {
+function Handle({ info, mode, scale }: { info: TableFace; mode: TableMode; scale: number }) {
   const { setNodeRef, listeners, attributes } = useSeatingDraggable(`table:${info.id}`, { kind: 'table', tableId: info.id }, { scale });
   return (
     <MapTooltip content="拖移調換桌次">
@@ -152,8 +154,8 @@ export function MapTable(props: MapTableProps) {
       className={cn('absolute', drop.swapSource && 'opacity-60')}
       style={{ left: x, top: y }}
     >
-      {mode === 'expanded' ? (
-        <ExpandedCard {...props} name={name} ariaLabel={ariaLabel} drop={drop} />
+      {mode === 'expanded' && isTableInfo(info) ? (
+        <ExpandedCard {...props} info={info} name={name} ariaLabel={ariaLabel} drop={drop} />
       ) : (
         <>
           <MapTooltip content={tooltip}>
@@ -196,7 +198,7 @@ function ExpandedCard({
   name,
   ariaLabel,
   drop,
-}: MapTableProps & { name: string; ariaLabel: string; drop: ReturnType<typeof useDropState> }) {
+}: MapTableProps & { info: TableInfo; name: string; ariaLabel: string; drop: ReturnType<typeof useDropState> }) {
   const dir = useAppStore((s) => s.dir);
   const rows = rosterRows(info.count);
   return (

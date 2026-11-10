@@ -6,10 +6,12 @@
 // 待確認 EMP-Q07、Q08 依 D-008 照原型：換頁、換分頁、改搜尋或篩選後勾選保留且計入；換分頁、改搜尋或篩選後回到第 1 頁；
 // 沒有任何員工時不顯示 Tabs 與工具列，只有空狀態。
 // Tabs 有四個分頁「全部」「未報名」「已報名」「不參加」（EMP-R08、D-014；原型沒有「不參加」）；放不下時在分頁列內水平捲動。
+// 只能檢視時（EMP-R67、D-021）：頁首按鈕、空狀態的按鈕、勾選欄與批次按鈕、會修改資料的列操作與對話框都不顯示（隱藏，不是停用）；
+// 權限在畫面開著時被移除，對話框跟著關閉（AUTH-R13）。
 import { Ban, Check, IdCard, Plus, Search, Upload, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { useAppStore } from '@/client/app-provider';
+import { useAppStore, useIsEditor } from '@/client/app-provider';
 import type { Employee } from '@/contracts/entities';
 import {
   changeDepartmentFilter,
@@ -50,6 +52,7 @@ export function EmployeesView() {
   const router = useRouter();
   const employees = useAppStore((s) => s.data.employees);
   const participants = useAppStore((s) => s.data.participants);
+  const isEditor = useIsEditor();
   const actions = useEmployeeActions();
 
   const [tab, setTab] = useState<RegistrationTab>('all');
@@ -148,14 +151,16 @@ export function EmployeesView() {
         title="員工名單"
         description={DESCRIPTION}
         actions={
-          <>
-            <Button variant="primary" leadingIcon={<Plus />} onClick={openCreate}>
-              新增員工
-            </Button>
-            <Button variant="outline" leadingIcon={<Upload />} onClick={openImport}>
-              匯入員工名單
-            </Button>
-          </>
+          isEditor ? (
+            <>
+              <Button variant="primary" leadingIcon={<Plus />} onClick={openCreate}>
+                新增員工
+              </Button>
+              <Button variant="outline" leadingIcon={<Upload />} onClick={openImport}>
+                匯入員工名單
+              </Button>
+            </>
+          ) : undefined
         }
       />
 
@@ -165,14 +170,16 @@ export function EmployeesView() {
           title="還沒有員工名單。"
           description="匯入公司員工名單，或先新增幾位員工。"
           action={
-            <>
-              <Button variant="primary" leadingIcon={<Upload />} onClick={openImport}>
-                匯入員工名單
-              </Button>
-              <Button variant="outline" leadingIcon={<Plus />} onClick={openCreate}>
-                新增員工
-              </Button>
-            </>
+            isEditor ? (
+              <>
+                <Button variant="primary" leadingIcon={<Upload />} onClick={openImport}>
+                  匯入員工名單
+                </Button>
+                <Button variant="outline" leadingIcon={<Plus />} onClick={openCreate}>
+                  新增員工
+                </Button>
+              </>
+            ) : undefined
           }
         />
       ) : (
@@ -202,7 +209,7 @@ export function EmployeesView() {
               onDepartmentChange={(d) => changeFilters(changeDepartmentFilter(employees, filters, d))}
               onTeamChange={(team) => changeFilters({ ...filters, team })}
               onRegionChange={(region) => changeFilters({ ...filters, region })}
-              picked={picked.length}
+              picked={isEditor ? picked.length : 0}
               onBulkJoin={() => setConfirm({ kind: 'bulk', employeeIds: picked })}
             />
             <FilterChips
@@ -228,46 +235,52 @@ export function EmployeesView() {
                 onToggle={toggle}
                 onToggleAll={(checked) => setSelected((prev) => toggleAllOnPage(pageRows, registered, prev, checked))}
                 onAction={onAction}
+                readOnly={!isEditor}
               />
             )}
           </TabsContent>
         </Tabs>
       )}
 
-      <EmployeeDialog
-        target={editor}
-        onOpenChange={(open) => {
-          if (!open) setEditor(null);
-        }}
-        onSubmit={(target, values) =>
-          target.mode === 'edit' ? actions.updateEmployee(target.employee, values) : actions.createEmployee(values)
-        }
-      />
-      <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
-      <ConfirmDialog
-        confirm={confirm}
-        onClose={() => setConfirm(null)}
-        onConfirm={(c) => {
-          if (c.kind === 'delete') {
-            unselect([c.employee.id]);
-            actions.deleteEmployee(c.employee);
-          } else if (c.kind === 'cancel') {
-            unselect([c.employee.id]);
-            actions.cancelRegistration(c.employee, c.participantId);
-          } else {
-            unselect(c.employeeIds);
-            actions.bulkJoin(c.employeeIds);
-          }
-        }}
-      />
-      <JoinDialogSlot
-        employeeId={joinEmployeeId}
-        onOpenChange={(open) => {
-          if (!open) setJoinEmployeeId(null);
-        }}
-        // 加入後這位員工變成已報名，勾選一併取消，不再算在批次的人數裡（EMP-R23）
-        onJoined={(id) => unselect([id])}
-      />
+      {/* 會修改資料的對話框只給編輯者；權限被移除時跟著關閉（AUTH-R13） */}
+      {isEditor ? (
+        <>
+          <EmployeeDialog
+            target={editor}
+            onOpenChange={(open) => {
+              if (!open) setEditor(null);
+            }}
+            onSubmit={(target, values) =>
+              target.mode === 'edit' ? actions.updateEmployee(target.employee, values) : actions.createEmployee(values)
+            }
+          />
+          <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
+          <ConfirmDialog
+            confirm={confirm}
+            onClose={() => setConfirm(null)}
+            onConfirm={(c) => {
+              if (c.kind === 'delete') {
+                unselect([c.employee.id]);
+                actions.deleteEmployee(c.employee);
+              } else if (c.kind === 'cancel') {
+                unselect([c.employee.id]);
+                actions.cancelRegistration(c.employee, c.participantId);
+              } else {
+                unselect(c.employeeIds);
+                actions.bulkJoin(c.employeeIds);
+              }
+            }}
+          />
+          <JoinDialogSlot
+            employeeId={joinEmployeeId}
+            onOpenChange={(open) => {
+              if (!open) setJoinEmployeeId(null);
+            }}
+            // 加入後這位員工變成已報名，勾選一併取消，不再算在批次的人數裡（EMP-R23）
+            onJoined={(id) => unselect([id])}
+          />
+        </>
+      ) : null}
     </section>
   );
 }

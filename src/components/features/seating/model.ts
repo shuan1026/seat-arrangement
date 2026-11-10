@@ -33,26 +33,36 @@ export const rosterRows = (count: number): number => (count > CAPACITY ? MAX_SEA
 export const NOTE_SUGGESTIONS = ['主桌', '董事貴賓', '供應商', '客戶貴賓'] as const;
 export const CATEGORY_LABEL: Record<Participant['kind'], string> = { EMPLOYEE: '員工', DEPENDENT: '眷屬', GUEST: '外部貴賓' };
 
-export type TableInfo = {
+/**
+ * 座位圖上一桌收合（或精簡顯示）時需要的資料：桌號、備註名稱、部門標示與人數。
+ * 座位安排頁用完整的 TableInfo；發布頁只有這些（docs/spec/permissions.md 第 2.3 節，PRM-R24）。
+ */
+export type TableFace = {
   id: number;
   isStaff: boolean;
   noteName: string | null;
-  /** 依座號（工作人員桌依參與人員的預設排序，SEAT-R34） */
-  roster: Participant[];
   /** 部門標示，例如「研發一部＋業務部」；沒有人時「空桌」（SEAT-R07～R09） */
   label: string;
+  count: number;
+  /** 人數標示：0–9 位 {n}/10、10 位「已滿」、11、12 位「超過」（SEAT-R11） */
+  status: TableStatus;
+};
+
+export type TableInfo = TableFace & {
+  /** 依座號（工作人員桌依參與人員的預設排序，SEAT-R34） */
+  roster: Participant[];
   /** 部門標示；沒有人時空陣列 */
   labels: string[];
-  count: number;
   /** 10 位以上（含超過）：選單類入口停用並標示「已滿」（SEAT-R23、SEAT-R88） */
   full: boolean;
   /** 已有 12 位：拖移擋下、「加入人員」停用（SEAT-R20、SEAT-R30、SEAT-R42） */
   max: boolean;
-  /** 人數標示：0–9 位 {n}/10、10 位「已滿」、11、12 位「超過」（SEAT-R11） */
-  status: TableStatus;
   childSeats: number;
   vegetarians: number;
 };
+
+/** 有完整名單的桌次（座位安排頁）；發布頁的桌次只有 TableFace */
+export const isTableInfo = (t: TableFace): t is TableInfo => 'roster' in t;
 
 /** 部門在員工名單中第一次出現的順序 */
 export function departmentsInOrder(employees: readonly Employee[]): string[] {
@@ -132,7 +142,7 @@ export const nameOf = (p: Participant, dir: Directory) => displayName(p, dir);
 export const tableDesc = (t: TableInfo): string => t.noteName || t.labels.join('＋');
 
 /** 收合桌次的 Tooltip：「{備註名稱}・{部門}」，沒有備註名稱時只有部門（SEAT-R13） */
-export const tableTooltip = (t: TableInfo): string => (t.noteName ? `${t.noteName}・${t.label}` : t.label);
+export const tableTooltip = (t: Pick<TableFace, 'noteName' | 'label'>): string => (t.noteName ? `${t.noteName}・${t.label}` : t.label);
 
 // ---- 文案（docs/spec/seating.md 第 4 節）
 

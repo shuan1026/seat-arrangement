@@ -6,6 +6,9 @@ import { tableTitle } from '@/domain/layout';
 
 export const CONFLICT_FALLBACK = '資料已被其他人更新，已重新載入。';
 
+/** 編輯權限被移除後的下一次操作（README AUTH-R13、第 14 節共用文案） */
+export const NOT_EDITOR_MESSAGE = '你沒有編輯權限，已重新載入。';
+
 const BY_CODE: Partial<Record<ErrorCode, string>> = {
   // docs/spec/seating.md SEAT-R41、SEAT-R42、SEAT-R86；工作人員桌到 10 位（人員對話框）與到 12 位（拖移、加入人員，D-018）
   STAFF_TABLE_FULL: '工作人員桌已滿，請先移出一位。',

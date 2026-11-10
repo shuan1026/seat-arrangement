@@ -2,6 +2,7 @@
 
 // 參與人員表格（docs/spec/participants.md 第 2.1 節的表格欄位、第 2.2 節的列操作、PPL-R29～R34、PPL-R75）。
 // Data Management 的 Table Rules：桌面是表格，767 px 以下改成堆疊卡片（不顯示備註，保留列操作）。
+// 只能檢視（readOnly，PPL-R86）：列操作的項目全都會修改資料，所以表格不顯示列操作欄，手機卡片也沒有列操作按鈕。
 import { ArrowRightLeft, Armchair, Baby, Leaf, Pencil, Trash2, UserMinus, UserX } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
@@ -59,7 +60,16 @@ function Marks({ p }: { p: Participant }) {
   );
 }
 
-export function PeopleTable({ rows, onCommand }: { rows: Participant[]; onCommand: (command: RowCommand, p: Participant) => void }) {
+export function PeopleTable({
+  rows,
+  onCommand,
+  readOnly = false,
+}: {
+  rows: Participant[];
+  onCommand: (command: RowCommand, p: Participant) => void;
+  /** 只能檢視：沒有列操作欄 */
+  readOnly?: boolean;
+}) {
   const dir = useAppStore((s) => s.dir);
   return (
     <Table label="參與人員" stackOnMobile>
@@ -72,9 +82,11 @@ export function PeopleTable({ rows, onCommand }: { rows: Participant[]; onComman
           <TableHead>標示</TableHead>
           <TableHead>桌次</TableHead>
           <TableHead>備註</TableHead>
-          <TableHead kind="actions">
-            <span className="sr-only">操作</span>
-          </TableHead>
+          {readOnly ? null : (
+            <TableHead kind="actions">
+              <span className="sr-only">操作</span>
+            </TableHead>
+          )}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -109,19 +121,21 @@ export function PeopleTable({ rows, onCommand }: { rows: Participant[]; onComman
               <TableCell label="備註" hideOnMobile>
                 {p.note ? <span className="min-w-0 [overflow-wrap:anywhere]">{p.note}</span> : <Empty />}
               </TableCell>
-              <TableCell kind="actions">
-                <ActionMenu>
-                  {actions.map((a) => {
-                    const c = COMMANDS[a];
-                    return [
-                      c.destructive ? <DropdownMenuSeparator key={`${a}-sep`} /> : null,
-                      <DropdownMenuItem key={a} icon={c.icon} destructive={c.destructive} onSelect={() => onCommand(a, p)}>
-                        {c.label}
-                      </DropdownMenuItem>,
-                    ];
-                  })}
-                </ActionMenu>
-              </TableCell>
+              {readOnly ? null : (
+                <TableCell kind="actions">
+                  <ActionMenu>
+                    {actions.map((a) => {
+                      const c = COMMANDS[a];
+                      return [
+                        c.destructive ? <DropdownMenuSeparator key={`${a}-sep`} /> : null,
+                        <DropdownMenuItem key={a} icon={c.icon} destructive={c.destructive} onSelect={() => onCommand(a, p)}>
+                          {c.label}
+                        </DropdownMenuItem>,
+                      ];
+                    })}
+                  </ActionMenu>
+                </TableCell>
+              )}
             </TableRow>
           );
         })}

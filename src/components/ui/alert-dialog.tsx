@@ -60,7 +60,7 @@ export function AlertDialogContent({
               {title}
             </AlertDialogPrimitive.Title>
             {description ? (
-              <AlertDialogPrimitive.Description className="mt-3 type-sm-regular text-muted-foreground">
+              <AlertDialogPrimitive.Description className="mt-3 type-sm-regular text-muted-foreground [overflow-wrap:anywhere]">
                 {description}
               </AlertDialogPrimitive.Description>
             ) : null}

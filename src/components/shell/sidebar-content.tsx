@@ -6,12 +6,13 @@ import { ChevronsUpDown, LogOut } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
+import { useIsEditor } from '@/client/app-provider';
 import type { SessionUser } from '@/contracts/entities';
 import { cn } from '@/components/ui/cn';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuTrigger, UserMenuContent } from '@/components/ui/dropdown-menu';
 import { Tooltip } from '@/components/ui/tooltip';
 import { Logo } from './logo';
-import { isCurrent, NAV_ITEMS } from './nav';
+import { isCurrent, navItemsFor } from './nav';
 
 type Mode = 'expanded' | 'collapsed' | 'drawer';
 
@@ -26,10 +27,12 @@ function SidebarLogo({ collapsed }: { collapsed: boolean }) {
 
 function NavItems({ mode, onNavigate }: { mode: Mode; onNavigate?: () => void }) {
   const pathname = usePathname();
+  // 「權限」只有編輯者看得到（README 第 4 節）；權限在畫面開著時被移除，下一次操作後就拿掉（AUTH-R13）
+  const isEditor = useIsEditor();
   const collapsed = mode === 'collapsed';
   return (
     <nav aria-label="主要導覽" className={cn('flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto', collapsed && 'items-center')}>
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+      {navItemsFor(isEditor).map(({ href, label, icon: Icon }) => {
         const current = isCurrent(pathname, href);
         const link = (
           <Link

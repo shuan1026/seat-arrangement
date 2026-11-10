@@ -3,6 +3,8 @@
 // 座位圖（docs/spec/seating.md 2.1.3、2.1.4、3.11；原型 seating.html 的 geometry、fit、applyZoom、bindPan）。
 // 場地圖以 CSS transform: scale() 縮放，只在座位圖區內捲動與平移；「適合視窗」讓 30 桌全部可見，
 // 打開桌次詳情時只用沒被詳情蓋住的寬度（低於 35% 時改用整個座位圖區），場地圖在沒被蓋住的區域水平置中。
+// 發布頁 /seats 也用這個元件（docs/spec/permissions.md 第 2.3 節）：只有收合的桌次、工具列只有縮放，
+// 「全部展開」「自動排座」沒有傳入處理函式時不顯示（只能檢視時也沒有「自動排座」，SEAT-R90）。
 import { FoldVertical, Maximize, PanelLeftOpen, UnfoldVertical, WandSparkles, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { STAFF_TABLE_ID } from '@/contracts/entities';
@@ -11,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/cn';
 import { IconButton } from '@/components/ui/icon-button';
 import { MapTable, type TableMode } from './map-table';
-import { CAPACITY, type TableInfo } from './model';
+import { CAPACITY, type TableFace } from './model';
 
 const PAD = 24;
 const BAND = 56;
@@ -61,19 +63,23 @@ function fitZoom(size: Size, g: Geometry, cover: number): number {
 }
 
 export interface SeatMapProps {
-  tables: Map<number, TableInfo>;
+  /** 展開模式要傳 TableInfo（有名單）；發布頁只有 TableFace，不會展開 */
+  tables: ReadonlyMap<number, TableFace>;
   expanded: boolean;
   /** 手動縮放的比例（百分比）；null 是適合視窗 */
   manualPct: number | null;
   onManualPct: (pct: number | null) => void;
-  onToggleExpanded: () => void;
-  onAutoArrange: () => void;
+  /** 「全部展開／全部收合」；沒有時不顯示（發布頁） */
+  onToggleExpanded?: () => void;
+  /** 「自動排座」；沒有時不顯示（只能檢視、發布頁） */
+  onAutoArrange?: () => void;
   /** 人員面板收合時，工具列的「顯示人員面板」 */
   onShowPanel?: () => void;
   /** 被桌次詳情蓋住的寬度（桌面打開詳情時） */
   covered: boolean;
   selected: number | 'staff' | null;
-  hit: { tableId: number; nonce: number } | null;
+  /** 搜尋標示的桌次（2 px --accent）；nonce 改變時把第一桌捲到看得到的位置（SEAT-R62、PRM-R31） */
+  hit: { tableIds: readonly number[]; nonce: number } | null;
   onOpen: (target: number | 'staff') => void;
   draggable: boolean;
   mobile: boolean;
@@ -183,11 +189,12 @@ export function SeatMap(props: SeatMapProps) {
     setPanning(false);
   };
 
-  // 找人：把那一桌捲到看得到、沒被詳情蓋住的位置（SEAT-R62）
+  // 找人：把（第一個）標示的桌次捲到看得到、沒被詳情蓋住的位置（SEAT-R62、PRM-R31）
   useLayoutEffect(() => {
     const vp = vpRef.current;
-    if (!hit || !vp || !measured) return;
-    const place = hit.tableId === STAFF_TABLE_ID ? STAFF_TABLE_PLACEMENT : TABLE_LAYOUT.find((t) => t.id === hit.tableId);
+    const first = hit?.tableIds[0];
+    if (first === undefined || !vp || !measured) return;
+    const place = first === STAFF_TABLE_ID ? STAFF_TABLE_PLACEMENT : TABLE_LAYOUT.find((t) => t.id === first);
     if (!place) return;
     const { z: cz, offset: co } = layout.current;
     const visible = vp.clientWidth - cover;
@@ -219,19 +226,23 @@ export function SeatMap(props: SeatMapProps) {
             <Maximize />
           </IconButton>
         </span>
-        <Button
-          variant="outline"
-          leadingIcon={expanded ? <FoldVertical /> : <UnfoldVertical />}
-          onClick={props.onToggleExpanded}
-          className={cn(mobile && 'flex-auto')}
-        >
-          {expanded ? '全部收合' : '全部展開'}
-        </Button>
-        <span className="ml-auto">
-          <Button variant="outline" leadingIcon={<WandSparkles />} onClick={props.onAutoArrange}>
-            自動排座
+        {props.onToggleExpanded ? (
+          <Button
+            variant="outline"
+            leadingIcon={expanded ? <FoldVertical /> : <UnfoldVertical />}
+            onClick={props.onToggleExpanded}
+            className={cn(mobile && 'flex-auto')}
+          >
+            {expanded ? '全部收合' : '全部展開'}
           </Button>
-        </span>
+        ) : null}
+        {props.onAutoArrange ? (
+          <span className="ml-auto">
+            <Button variant="outline" leadingIcon={<WandSparkles />} onClick={props.onAutoArrange}>
+              自動排座
+            </Button>
+          </span>
+        ) : null}
       </div>
       <div className="relative flex min-h-0 flex-1">
         <div
@@ -250,47 +261,46 @@ export function SeatMap(props: SeatMapProps) {
             panning ? 'cursor-grabbing select-none' : 'cursor-grab',
           )}
         >
+          {/* 量到座位圖區大小之前也先畫（量測在繪製前完成，畫面上不會閃）；量不到大小的環境（測試）照樣有桌次 */}
           <div className="relative" style={{ width: stageW, height: stageH }}>
-            {measured ? (
-              <div
-                className="absolute top-0 origin-top-left"
-                style={{ left: offset, width: g.W, height: g.H, transform: `scale(${z})` }}
-              >
-                {LANDMARKS.map((l) => (
-                  <div
-                    key={l.label}
-                    className="absolute grid place-items-center rounded-lg bg-muted type-sm-medium text-muted-foreground"
-                    style={{
-                      left: PAD + l.cols[0] * g.u.w,
-                      top: landmarkTop('bottom' in l && l.bottom),
-                      width: (l.cols[1] - l.cols[0]) * g.u.w + g.u.item,
-                      height: BAND,
-                    }}
-                  >
-                    {l.label}
-                  </div>
-                ))}
-                {[STAFF_TABLE_PLACEMENT, ...TABLE_LAYOUT].map((place) => {
-                  const info = tables.get(place.id);
-                  if (!info) return null;
-                  const key = place.id === STAFF_TABLE_ID ? 'staff' : place.id;
-                  return (
-                    <MapTable
-                      key={key}
-                      info={info}
-                      x={PAD + place.col * g.u.w}
-                      y={g.y0 + place.row * g.u.h}
-                      mode={mode}
-                      scale={z}
-                      selected={props.selected === key}
-                      hit={hit?.tableId === place.id}
-                      draggable={props.draggable}
-                      onOpen={() => props.onOpen(key)}
-                    />
-                  );
-                })}
-              </div>
-            ) : null}
+            <div
+              className="absolute top-0 origin-top-left"
+              style={{ left: offset, width: g.W, height: g.H, transform: `scale(${z})` }}
+            >
+              {LANDMARKS.map((l) => (
+                <div
+                  key={l.label}
+                  className="absolute grid place-items-center rounded-lg bg-muted type-sm-medium text-muted-foreground"
+                  style={{
+                    left: PAD + l.cols[0] * g.u.w,
+                    top: landmarkTop('bottom' in l && l.bottom),
+                    width: (l.cols[1] - l.cols[0]) * g.u.w + g.u.item,
+                    height: BAND,
+                  }}
+                >
+                  {l.label}
+                </div>
+              ))}
+              {[STAFF_TABLE_PLACEMENT, ...TABLE_LAYOUT].map((place) => {
+                const info = tables.get(place.id);
+                if (!info) return null;
+                const key = place.id === STAFF_TABLE_ID ? 'staff' : place.id;
+                return (
+                  <MapTable
+                    key={key}
+                    info={info}
+                    x={PAD + place.col * g.u.w}
+                    y={g.y0 + place.row * g.u.h}
+                    mode={mode}
+                    scale={z}
+                    selected={props.selected === key}
+                    hit={hit?.tableIds.includes(place.id) ?? false}
+                    draggable={props.draggable}
+                    onOpen={() => props.onOpen(key)}
+                  />
+                );
+              })}
+            </div>
           </div>
         </div>
         {props.detail}

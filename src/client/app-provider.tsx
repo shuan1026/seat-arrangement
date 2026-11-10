@@ -2,13 +2,15 @@
 
 // 把伺服器端載入的資料交給前端 store，並建立唯一的儲存佇列。
 // 各功能用 useAppStore 讀資料、用 useMutation 做「先改畫面、再依序儲存」。
+// 權限（D-021）：store 的 isEditor 決定各頁是否顯示會修改資料的入口（COM-R19）；重新載入時以 GET /api/state 的 me.isEditor 為準。
 import { createContext, useCallback, useContext, useState } from 'react';
 import { useStore } from 'zustand';
 import type { AppState, SessionUser } from '@/contracts/entities';
 import type { ErrorCode } from '@/contracts/errors';
+import type { StateResponse } from '@/contracts/permissions';
 import { apiFetch } from './api';
 import { redirectToExpiredLogin } from './auth-redirect';
-import { conflictMessage } from './conflict-messages';
+import { conflictMessage, NOT_EDITOR_MESSAGE } from './conflict-messages';
 import { SaveQueue } from './save-queue';
 import { createAppStore, type AppStore, type AppStoreState } from './store';
 
@@ -18,26 +20,42 @@ const AppContext = createContext<Ctx | null>(null);
 export type AppProviderProps = {
   initialData: AppState;
   user: SessionUser;
+  /** 目前登入者是否為編輯者；省略時是編輯者（只有測試會省略，(main)/layout.tsx 一律傳伺服器判斷的值） */
+  isEditor?: boolean;
+  /** 座位表是否已發布；省略時是未發布（PRM-R17） */
+  seatsPublished?: boolean;
   /** 顯示提示（Sonner）；由版面注入，方便測試替換 */
   notify?: (text: string) => void;
   children: React.ReactNode;
 };
 
-export function AppProvider({ initialData, user, notify, children }: AppProviderProps) {
+export function AppProvider({ initialData, user, isEditor, seatsPublished, notify, children }: AppProviderProps) {
   const [ctx] = useState<Ctx>(() => {
-    const store = createAppStore({ data: initialData, user });
+    const store = createAppStore({ data: initialData, user, isEditor, seatsPublished });
     const reload = async () => {
-      const data = await apiFetch<AppState>('/api/state');
-      store.getState().replaceData(data);
+      // 回應多了 me 與 seatsPublished；舊的回應（或測試）沒有時保留目前的值
+      const { me, seatsPublished: published, ...data } = await apiFetch<Partial<StateResponse> & AppState>('/api/state');
+      const s = store.getState();
+      s.replaceData(data);
+      if (me) s.setIsEditor(me.isEditor);
+      if (typeof published === 'boolean') s.setSeatsPublished(published);
     };
     const queue = new SaveQueue({
       onStatus: (s) => store.getState().setSave(s),
       onConflict: (code: ErrorCode) => {
+        // 空字串表示這次的提示由畫面自己顯示（例如欄位錯誤），不另外用 Sonner
         const text = queue.lastConflictMessage ?? conflictMessage(code);
-        void reload().finally(() => notify?.(text));
+        void reload().finally(() => {
+          if (text) notify?.(text);
+        });
       },
       // 登入過期：整頁回到登入頁，丟掉畫面上還沒存的狀態（AUTH-R07）
       onUnauthenticated: redirectToExpiredLogin,
+      // 編輯權限被移除（AUTH-R13）：先切換成只能檢視（開著的對話框跟著關閉），再重新載入最新資料
+      onNotEditor: () => {
+        store.getState().setIsEditor(false);
+        void reload().finally(() => notify?.(NOT_EDITOR_MESSAGE));
+      },
     });
     return { store, queue, reload };
   });
@@ -56,6 +74,8 @@ export function useAppStore<T>(selector: (s: AppStoreState) => T): T {
 
 export const useSaveQueue = () => useCtx().queue;
 export const useReload = () => useCtx().reload;
+/** 目前登入者是否為編輯者（COM-R19：只能檢視時隱藏會修改資料的入口） */
+export const useIsEditor = () => useAppStore((s) => s.isEditor);
 
 /**
  * 先改畫面、再排進儲存佇列。
@@ -68,7 +88,7 @@ export function useMutation() {
       optimistic?: (data: AppState) => AppState;
       send: () => Promise<T>;
       onSuccess?: (result: T, s: AppStoreState) => void;
-      /** 衝突時的既有提示；沒有時用共用文案（COM-R08） */
+      /** 衝突時的既有提示；沒有時用共用文案（COM-R08）；空字串表示不顯示 Sonner */
       conflictMessage?: (code: ErrorCode) => string | undefined;
     }) => {
       if (m.optimistic) store.getState().update(m.optimistic);

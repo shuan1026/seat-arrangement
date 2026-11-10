@@ -5,6 +5,7 @@
 // 手機（767 px 以下）改成堆疊卡片：勾選框在左上角、不顯示備註、沒有全選（EMP-R26）。
 // 報名狀態有三種（EMP-R03、D-014）：已報名 positive、未報名 pending、不參加 neutral（沒有圖示，README 第 11.1 節）；
 // 只有未報名的列能勾（EMP-R18）。
+// 只能檢視（readOnly，EMP-R67）：沒有勾選欄；列操作只留不修改資料的「查看參與資料」，一個項目都沒有時不顯示列操作按鈕。
 import { Fragment, type ReactNode } from 'react';
 import { Ban, Pencil, Trash2, Undo2, UserPlus, UserX, Users } from 'lucide-react';
 import type { Employee } from '@/contracts/entities';
@@ -50,7 +51,12 @@ export interface EmployeeTableProps {
   onToggle: (id: number, checked: boolean) => void;
   onToggleAll: (checked: boolean) => void;
   onAction: (action: RowAction, employee: Employee) => void;
+  /** 只能檢視：沒有勾選欄，列操作只留「查看參與資料」 */
+  readOnly?: boolean;
 }
+
+/** 只能檢視時仍可用的列操作（不修改資料，EMP-R67） */
+const READ_ONLY_ACTIONS: ReadonlySet<RowAction> = new Set(['view']);
 
 const Dash = () => <span className="text-muted-foreground">—</span>;
 
@@ -64,6 +70,7 @@ export function EmployeeTable({
   onToggle,
   onToggleAll,
   onAction,
+  readOnly = false,
 }: EmployeeTableProps) {
   const header = headerCheckState(rows, registered, selected);
   return (
@@ -71,14 +78,16 @@ export function EmployeeTable({
       <Table label="員工名單" stackOnMobile>
         <TableHeader>
           <TableRow>
-            <TableHead kind="check">
-              <Checkbox
-                aria-label="全選這一頁未報名的員工"
-                checked={header.checked}
-                disabled={header.disabled}
-                onCheckedChange={(v) => onToggleAll(v === true)}
-              />
-            </TableHead>
+            {readOnly ? null : (
+              <TableHead kind="check">
+                <Checkbox
+                  aria-label="全選這一頁未報名的員工"
+                  checked={header.checked}
+                  disabled={header.disabled}
+                  onCheckedChange={(v) => onToggleAll(v === true)}
+                />
+              </TableHead>
+            )}
             <TableHead>姓名</TableHead>
             <TableHead>部門</TableHead>
             <TableHead>組別</TableHead>
@@ -97,17 +106,19 @@ export function EmployeeTable({
             const badge = STATUS_BADGE[status];
             return (
               <TableRow key={e.id}>
-                <TableCell kind="check">
-                  {status !== 'unregistered' ? (
-                    <Checkbox aria-label={`${e.name} ${DISABLED_CHECK_LABEL[status]}`} checked={false} disabled />
-                  ) : (
-                    <Checkbox
-                      aria-label={`勾選 ${e.name}`}
-                      checked={selected.has(e.id)}
-                      onCheckedChange={(v) => onToggle(e.id, v === true)}
-                    />
-                  )}
-                </TableCell>
+                {readOnly ? null : (
+                  <TableCell kind="check">
+                    {status !== 'unregistered' ? (
+                      <Checkbox aria-label={`${e.name} ${DISABLED_CHECK_LABEL[status]}`} checked={false} disabled />
+                    ) : (
+                      <Checkbox
+                        aria-label={`勾選 ${e.name}`}
+                        checked={selected.has(e.id)}
+                        onCheckedChange={(v) => onToggle(e.id, v === true)}
+                      />
+                    )}
+                  </TableCell>
+                )}
                 <TableCell kind="primary">
                   <div className="type-sm-medium text-foreground [overflow-wrap:anywhere]">{e.name}</div>
                   {e.englishName ? (
@@ -129,7 +140,7 @@ export function EmployeeTable({
                   {e.note ? <span className="[overflow-wrap:anywhere]">{e.note}</span> : <Dash />}
                 </TableCell>
                 <TableCell kind="actions">
-                  <RowMenu status={status} onAction={(a) => onAction(a, e)} />
+                  <RowMenu status={status} readOnly={readOnly} onAction={(a) => onAction(a, e)} />
                 </TableCell>
               </TableRow>
             );
@@ -156,10 +167,20 @@ const MENU_ITEMS: Record<RowAction, { label: string; icon: ReactNode; destructiv
  * 列操作（EMP-R27）：未報名「加入尾牙」「標記為不參加」「編輯」「刪除」；不參加「加入尾牙」「改回未報名」「編輯」「刪除」；
  * 已報名「查看參與資料」「取消報名」「編輯」「刪除」。「刪除」前有分隔線。
  */
-function RowMenu({ status, onAction }: { status: RegistrationStatus; onAction: (action: RowAction) => void }) {
+function RowMenu({
+  status,
+  readOnly,
+  onAction,
+}: {
+  status: RegistrationStatus;
+  readOnly: boolean;
+  onAction: (action: RowAction) => void;
+}) {
+  const actions = employeeRowActions(status).filter((a) => !readOnly || READ_ONLY_ACTIONS.has(a));
+  if (!actions.length) return null;
   return (
     <ActionMenu>
-      {employeeRowActions(status).map((action) => {
+      {actions.map((action) => {
         const item = MENU_ITEMS[action];
         return (
           <Fragment key={action}>

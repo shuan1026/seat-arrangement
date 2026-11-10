@@ -12,6 +12,10 @@ export type AppStoreState = {
   data: AppState;
   dir: Directory;
   user: SessionUser;
+  /** 目前登入者是否為編輯者（D-021）；只能檢視時各頁隱藏會修改資料的入口（COM-R19） */
+  isEditor: boolean;
+  /** 座位表是否已發布（PRM-R17） */
+  seatsPublished: boolean;
   save: SaveStatus;
   undo: UndoEntry | null;
   /** 用伺服器的最新資料整份取代（重新載入、衝突後） */
@@ -20,15 +24,19 @@ export type AppStoreState = {
   update: (fn: (data: AppState) => AppState) => void;
   setSave: (save: SaveStatus) => void;
   setUndo: (undo: UndoEntry | null) => void;
+  setIsEditor: (isEditor: boolean) => void;
+  setSeatsPublished: (published: boolean) => void;
 };
 
 export type AppStore = ReturnType<typeof createAppStore>;
 
-export const createAppStore = (init: { data: AppState; user: SessionUser }) =>
+export const createAppStore = (init: { data: AppState; user: SessionUser; isEditor?: boolean; seatsPublished?: boolean }) =>
   createStore<AppStoreState>()((set) => ({
     data: init.data,
     dir: buildDirectory(init.data),
     user: init.user,
+    isEditor: init.isEditor ?? true,
+    seatsPublished: init.seatsPublished ?? false,
     save: { state: 'idle', savedAt: null },
     undo: null,
     replaceData: (data) => set({ data, dir: buildDirectory(data), undo: null }),
@@ -39,4 +47,7 @@ export const createAppStore = (init: { data: AppState; user: SessionUser }) =>
       }),
     setSave: (save) => set({ save }),
     setUndo: (undo) => set({ undo }),
+    // 變成只能檢視時，前一個操作的「復原」也不能再用
+    setIsEditor: (isEditor) => set(isEditor ? { isEditor } : { isEditor, undo: null }),
+    setSeatsPublished: (seatsPublished) => set({ seatsPublished }),
   }));

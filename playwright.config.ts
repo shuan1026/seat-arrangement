@@ -60,6 +60,9 @@ export default defineConfig({
       GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || 'e2e-client-id',
       GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || 'e2e-client-secret',
       APP_ENV: 'test',
+      // 伺服器比 globalSetup（重建測試資料庫）更早啟動，啟動時不能讀寫資料庫：不寫入初始編輯者（D-021）。
+      // 明確設成空字串，就算本機 .env 填了 INITIAL_EDITOR_EMAILS 也不會套用（Next.js 不覆寫已存在的環境變數）。
+      INITIAL_EDITOR_EMAILS: '',
     },
   },
 });
