@@ -24,7 +24,7 @@ export type ParticipantSeed = {
   childSeat?: boolean;
   vegetarian?: boolean;
   note?: string | null;
-  /** 1–30 是桌號、0 是工作人員桌、null 是未入座；入座時排在那一桌名單的最後 */
+  /** 1–30 是桌次的內部編號（畫面上的桌號見 tests/helpers/table-codes.ts，D-019）、0 是工作人員桌、null 是未入座；入座時排在那一桌名單的最後 */
   tableId?: number | null;
 };
 
@@ -137,7 +137,7 @@ export class PeopleDb {
     return ids;
   }
 
-  /** 讓這一桌多 count 位外部貴賓（名稱「佔位貴賓{桌號}-{序號}」） */
+  /** 讓這一桌多 count 位外部貴賓（名稱「佔位貴賓{內部編號}-{序號}」，例如 3 號（B4 桌）是「佔位貴賓3-1」） */
   fillTable(tableId: number, count: number): Promise<number[]> {
     return this.guests(count, `佔位貴賓${tableId}-`, tableId);
   }

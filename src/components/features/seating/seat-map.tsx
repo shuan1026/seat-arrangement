@@ -194,7 +194,7 @@ export function SeatMap(props: SeatMapProps) {
     const cx = PAD + place.col * g.u.w + g.u.item / 2;
     const cy = g.y0 + place.row * g.u.h + g.u.itemH / 2;
     vp.scrollTo({ left: co + cx * cz - visible / 2, top: cy * cz - vp.clientHeight / 2 });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在每次按下「第 {n} 桌」時捲動一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在每次按下「{桌號}」時捲動一次
   }, [hit?.nonce, measured]);
 
   const landmarkTop = (bottom: boolean) => (bottom ? g.y0 + 5 * g.u.h + g.u.itemH + GAP : PAD);

@@ -2,6 +2,7 @@
 // docs/spec/seating.md 2.5、4.5；SEAT-R34、R40～R51、R57、R58、R89；SEAT-AC38～AC47、AC49；docs/spec/README.md COM-R10。
 // D-018：工作人員桌和一般桌相同，標準 10 位、拖移與「加入人員」最多到 12 位（SEAT-R42、SEAT-R50）；其他情況見 seating-overflow.spec.ts。
 // 座位圖上工作人員桌的外觀（AC48）見 seating-map.spec.ts。
+// 桌號 A1～A15、B1～B15（D-019）：測試資料用內部編號（3 = B4、5 = B10、7 = B2），畫面上的字用桌號；工作人員桌不變。
 import { expect, test, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
@@ -60,7 +61,7 @@ test.describe('放進工作人員桌（SEAT-R40～R44、R47）', () => {
     expect((await seatOf(await idOf(page, '王小明'))).tableId).toBe(STAFF);
   });
 
-  test('坐在第 3 桌第 1 列的員工拖到工作人員桌：其他人往前補；Sonner「已把 王小明 從第 3 桌移到工作人員桌。」；統計列已入座與總人數各減 1（SEAT-AC39）', async ({
+  test('坐在 B4 桌第 1 列的員工拖到工作人員桌：其他人往前補；Sonner「已把 王小明 從 B4 桌移到工作人員桌。」；統計列已入座與總人數各減 1（SEAT-AC39）', async ({
     page,
   }) => {
     await seed(async (s) => {
@@ -74,7 +75,7 @@ test.describe('放進工作人員桌（SEAT-R40～R44、R47）', () => {
 
     await dragAndDrop(page, personRow(page, '王小明'), staffTableButton(page));
 
-    await expectToast(page, '已把 王小明 從第 3 桌移到工作人員桌。', { undo: true });
+    await expectToast(page, '已把 王小明 從 B4 桌移到工作人員桌。', { undo: true });
     await expect.poll(() => rosterNames(3)).toEqual(['甲', '乙']);
     await expectStats(page, { seated: 2, total: 3, unseated: 1, empty: 298, full: 0 });
   });
@@ -86,7 +87,7 @@ test.describe('放進工作人員桌（SEAT-R40～R44、R47）', () => {
     await openSeating(page);
     const detail = await openTableDetail(page, 3);
     await dragAndDrop(page, rowWithName(detailRows(detail), page, '王小明'), staffTableButton(page));
-    await expectToast(page, '已把 王小明 從第 3 桌移到工作人員桌。', { undo: true });
+    await expectToast(page, '已把 王小明 從 B4 桌移到工作人員桌。', { undo: true });
     expect(await rosterNames(STAFF)).toEqual(['王小明']);
   });
 
@@ -98,7 +99,7 @@ test.describe('放進工作人員桌（SEAT-R40～R44、R47）', () => {
     await openSeating(page);
     await panelTab(page, '全部').click();
     await dragAndDrop(page, personRow(page, '王小明'), staffTableButton(page));
-    await expectToast(page, '已把 王小明 從第 3 桌移到工作人員桌。', { undo: true });
+    await expectToast(page, '已把 王小明 從 B4 桌移到工作人員桌。', { undo: true });
     await expect.poll(() => rosterNames(3)).toEqual(['王小明_眷屬']);
   });
 
@@ -184,7 +185,7 @@ test.describe('放進工作人員桌（SEAT-R40～R44、R47）', () => {
 });
 
 test.describe('離開工作人員桌（SEAT-R45、R46）', () => {
-  test('從工作人員桌詳情拖到第 7 桌：排到最後、不再是工作人員；按「復原」回到工作人員桌（SEAT-R45、SEAT-R78、SEAT-AC43）', async ({ page }) => {
+  test('從工作人員桌詳情拖到 B2 桌：排到最後、不再是工作人員；按「復原」回到工作人員桌（SEAT-R45、SEAT-R78、SEAT-AC43）', async ({ page }) => {
     await seed(async (s) => {
       await s.staff('王小明');
       await s.employee('甲', { tableId: 7 });
@@ -195,18 +196,18 @@ test.describe('離開工作人員桌（SEAT-R45、R46）', () => {
     const saved = waitForOperation(page);
     await dragAndDrop(page, rowWithName(detailRows(detail), page, '王小明'), tableButton(page, 7));
     await saved;
-    await expectToast(page, '已把 王小明 從工作人員桌移到第 7 桌。', { undo: true });
+    await expectToast(page, '已把 王小明 從工作人員桌移到 B2 桌。', { undo: true });
     await expect.poll(() => rosterNames(7)).toEqual(['甲', '王小明']);
     expect(await rosterNames(STAFF)).toEqual([]);
 
-    await clickUndo(page, '已把 王小明 從工作人員桌移到第 7 桌。');
+    await clickUndo(page, '已把 王小明 從工作人員桌移到 B2 桌。');
     await expectToast(page, '已復原。', { undo: false });
     await expect.poll(() => rosterNames(STAFF)).toEqual(['王小明']);
     expect(await rosterNames(7)).toEqual(['甲']);
   });
 
   // D-018：原本拖到 10 位的桌就擋下，改為拖到 12 位的桌才擋下（改過的 SEAT-AC44）
-  test('拖到已有 12 位的桌：Sonner「第 5 桌已達 12 位，請先移出一位。」，仍是工作人員（SEAT-R45、SEAT-AC44）', async ({ page }) => {
+  test('拖到已有 12 位的桌：Sonner「B10 桌已達 12 位，請先移出一位。」，仍是工作人員（SEAT-R45、SEAT-AC44）', async ({ page }) => {
     await seed(async (s) => {
       await s.staff('王小明');
       await s.fill(5, 12);
@@ -214,11 +215,11 @@ test.describe('離開工作人員桌（SEAT-R45、R46）', () => {
     await openSeating(page);
     const detail = await openStaffDetail(page);
     await dragAndDrop(page, rowWithName(detailRows(detail), page, '王小明'), tableButton(page, 5));
-    await expectToast(page, '第 5 桌已達 12 位，請先移出一位。', { undo: false });
+    await expectToast(page, 'B10 桌已達 12 位，請先移出一位。', { undo: false });
     expect(await rosterNames(STAFF)).toEqual(['王小明']);
   });
 
-  test('拖到已有 10 位的桌：入座第 11 位、不再是工作人員，Sonner「已把 王小明 從工作人員桌移到第 5 桌，這一桌已超過 10 位。」帶「復原」（SEAT-R45、SEAT-R89）', async ({
+  test('拖到已有 10 位的桌：入座第 11 位、不再是工作人員，Sonner「已把 王小明 從工作人員桌移到 B10 桌，這一桌已超過 10 位。」帶「復原」（SEAT-R45、SEAT-R89）', async ({
     page,
   }) => {
     await seed(async (s) => {
@@ -230,7 +231,7 @@ test.describe('離開工作人員桌（SEAT-R45、R46）', () => {
     const saved = waitForOperation(page);
     await dragAndDrop(page, rowWithName(detailRows(detail), page, '王小明'), tableButton(page, 5));
     await saved;
-    await expectToast(page, '已把 王小明 從工作人員桌移到第 5 桌，這一桌已超過 10 位。', { undo: true });
+    await expectToast(page, '已把 王小明 從工作人員桌移到 B10 桌，這一桌已超過 10 位。', { undo: true });
     expect(await rosterNames(STAFF)).toEqual([]);
     expect((await rosterNames(5))[10]).toBe('王小明');
   });
@@ -318,7 +319,7 @@ test.describe('工作人員桌詳情（2.5.2、SEAT-R34、SEAT-R48、SEAT-R72）
 });
 
 test.describe('加入人員到工作人員桌（2.5.3、SEAT-R50）', () => {
-  test('只列還不是工作人員的員工（含已入座）；第二行最後「・第 3 桌」；勾陳大華與乙按「加入 2 位」；復原後各自回到原處（SEAT-AC47）', async ({
+  test('只列還不是工作人員的員工（含已入座）；第二行最後「・B4 桌」（{部門}・{組別}・{桌號} 桌）；勾陳大華與乙按「加入 2 位」；復原後各自回到原處（SEAT-AC47）', async ({
     page,
   }) => {
     await seed(async (s) => {
@@ -342,7 +343,7 @@ test.describe('加入人員到工作人員桌（2.5.3、SEAT-R50）', () => {
     await expect(dialog.getByRole('checkbox')).toHaveCount(4);
 
     const chenBox = dialog.getByRole('checkbox', { name: /^陳大華/ });
-    const chenLine = dialog.getByText(/研發一部・前端組・第 3 桌$/);
+    const chenLine = dialog.getByText(/研發一部・前端組・B4 桌$/);
     await expect(chenLine).toBeVisible();
     await expect(dialog.getByText(/^業務部$/)).toBeVisible();
 

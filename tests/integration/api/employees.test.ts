@@ -253,7 +253,7 @@ describe('PATCH /api/employees/{id}：編輯員工', () => {
       { tableId: 5, seatOrder: 0 },
     );
     const dependent = await createDependent(participant.id, { tableId: 5, seatOrder: 1 });
-    // 第 5 桌另有一位業務部的同事：改部門前桌次標示是「業務部」，改後研發部 2 位、業務部 1 位
+    // B10 桌（內部編號 5）另有一位業務部的同事：改部門前桌次標示是「業務部」，改後研發部 2 位、業務部 1 位
     await createRegisteredEmployee({ name: '業務同事', department: '業務部' }, { tableId: 5, seatOrder: 2 });
 
     const before = await loadState();
@@ -297,7 +297,7 @@ describe('DELETE /api/employees/{id}：刪除員工', () => {
     expect((await prisma.employee.findMany()).map((e) => e.id)).toEqual([li.id]);
   });
 
-  it('EMP-AC53：刪除已報名、帶一位眷屬的李小華（第 5 桌 8/10）→ 員工、參與人員與眷屬都移除，第 5 桌變成 6/10（EMP-R43）', async () => {
+  it('EMP-AC53：刪除已報名、帶一位眷屬的李小華（B10 桌 8/10）→ 員工、參與人員與眷屬都移除，B10 桌變成 6/10（EMP-R43）', async () => {
     await createRegisteredEmployee({ name: '同桌一', department: '研發部' }, { tableId: 5, seatOrder: 0 });
     const li = await createRegisteredEmployee({ name: '李小華', department: '研發部' }, { tableId: 5, seatOrder: 1 });
     const dependent = await createDependent(li.participant.id, { tableId: 5, seatOrder: 2 });

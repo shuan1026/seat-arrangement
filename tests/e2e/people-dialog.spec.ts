@@ -6,7 +6,9 @@
 // 從員工名單開啟的「加入尾牙」（join 模式）在 tests/unit/components/people-person-dialog.test.tsx 與階段 3 測。
 // 員工名單上標記為不參加的員工（D-014）：選項照常可選、後面標示「不參加」，加入後標記清掉（PPL-R42、PPL-AC84）。
 // 資料直接寫進測試資料庫（tests/e2e/helpers/participants-db.ts），都是虛構資料。
+// 桌號（D-019）：測試資料用內部編號（3 = B4、4 = B7、5 = B10、6 = B13），畫面上是桌號；對應見 tests/helpers/table-codes.ts。
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { CODES_IN_LIST_ORDER, codeOf } from '../helpers/table-codes';
 import { signIn } from './helpers/auth';
 import {
   cellOf as employeeCell,
@@ -263,38 +265,38 @@ test.describe('新增人員：員工', () => {
     await expect(cellOf(personRow(page, '陳大文'), '標示')).toHaveText('—');
   });
 
-  test('第 3 桌剩 5 位：同時加眷屬並選「第 3 桌（剩 5 位）」，兩人都在第 3 桌（PPL-AC41、PPL-R56、PPL-R57）', async ({ page }) => {
+  test('B4 桌剩 5 位：同時加眷屬並選「B4 桌（剩 5 位）」，兩人都在 B4 桌（PPL-AC41、PPL-R56、PPL-R57）', async ({ page }) => {
     await seedDemo();
     await withDb((db) => db.fillTable(3, 5));
     await gotoPeople(page);
     const dialog = await openNewPersonDialog(page);
     await chooseOption(page, selectField(dialog, '員工'), /^陳大文（研發一部）/, '陳大文');
     await checkbox(dialog, '同時加一位眷屬').check();
-    await chooseOption(page, selectField(dialog, '桌次'), /^第 3 桌（剩 5 位）/);
+    await chooseOption(page, selectField(dialog, '桌次'), /^B4 桌（剩 5 位）/);
     await save(dialog);
 
     await expect(dialog).toBeHidden();
-    await expect(cellOf(personRow(page, '陳大文'), '桌次')).toHaveText('第 3 桌');
-    await expect(cellOf(personRow(page, '陳大文_眷屬'), '桌次')).toHaveText('第 3 桌');
+    await expect(cellOf(personRow(page, '陳大文'), '桌次')).toHaveText('B4');
+    await expect(cellOf(personRow(page, '陳大文_眷屬'), '桌次')).toHaveText('B4');
   });
 
-  test('第 3 桌只剩 1 位：陳大文入座、陳大文_眷屬未入座，Sonner「第 3 桌只剩 1 位，陳大文_眷屬先留在未入座。」（PPL-AC42、PPL-R57）', async ({ page }) => {
+  test('B4 桌只剩 1 位：陳大文入座、陳大文_眷屬未入座，Sonner「B4 桌只剩 1 位，陳大文_眷屬先留在未入座。」（PPL-AC42、PPL-R57）', async ({ page }) => {
     await seedDemo();
     await withDb((db) => db.fillTable(3, 9));
     await gotoPeople(page);
     const dialog = await openNewPersonDialog(page);
     await chooseOption(page, selectField(dialog, '員工'), /^陳大文（研發一部）/, '陳大文');
     await checkbox(dialog, '同時加一位眷屬').check();
-    await chooseOption(page, selectField(dialog, '桌次'), /^第 3 桌（剩 1 位）/);
+    await chooseOption(page, selectField(dialog, '桌次'), /^B4 桌（剩 1 位）/);
     await save(dialog);
 
     await expect(dialog).toBeHidden();
-    await expectToast(page, '第 3 桌只剩 1 位，陳大文_眷屬先留在未入座。');
-    await expect(cellOf(personRow(page, '陳大文'), '桌次')).toHaveText('第 3 桌');
+    await expectToast(page, 'B4 桌只剩 1 位，陳大文_眷屬先留在未入座。');
+    await expect(cellOf(personRow(page, '陳大文'), '桌次')).toHaveText('B4');
     await expect(cellOf(personRow(page, '陳大文_眷屬'), '桌次')).toHaveText('未入座');
   });
 
-  test('第 4 桌已坐滿 10 位：桌次選項停用並標示「已滿」；選項是「未入座」與第 1～30 桌（PPL-AC43、PPL-R56）', async ({ page }) => {
+  test('B7 桌已坐滿 10 位：桌次選項停用並標示「已滿」；選項是「未入座」與 30 桌（PPL-AC43、PPL-R56）', async ({ page }) => {
     await seedDemo();
     await withDb((db) => db.fillTable(4, 10));
     await gotoPeople(page);
@@ -302,10 +304,22 @@ test.describe('新增人員：員工', () => {
     const listbox = await openOptions(page, selectField(dialog, '桌次'));
     await expect(listbox.getByRole('option')).toHaveCount(31);
     await expect(listbox.getByRole('option').first()).toHaveText('未入座');
-    const full = optionIn(listbox, /^第 4 桌/);
+    const full = optionIn(listbox, /^B7 桌/);
     await expect(full).toBeDisabled();
     await expect(full).toContainText('已滿');
-    await expect(optionIn(listbox, /^第 5 桌（剩 10 位）/)).toBeEnabled();
+    await expect(optionIn(listbox, /^B10 桌（剩 10 位）/)).toBeEnabled();
+  });
+
+  test('桌次欄位的選項：「未入座」後依 A1～A15、B1～B15 排列，格式「{桌號} 桌（剩 {k} 位）」（PPL-R56、第 4.3 節、D-019）', async ({ page }) => {
+    await seedDemo();
+    await gotoPeople(page);
+    const dialog = await openNewPersonDialog(page);
+    const listbox = await openOptions(page, selectField(dialog, '桌次'));
+    const labels = (await listbox.getByRole('option').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+    expect(labels[0]).toBe('未入座');
+    expect(labels.slice(1).map((l) => /^([AB]\d{1,2}) 桌（剩 \d+ 位）/.exec(l)?.[1])).toEqual(CODES_IN_LIST_ORDER);
+    // 空桌：「A1 桌（剩 10 位）」
+    await expect(optionIn(listbox, /^A1 桌（剩 10 位）/)).toBeEnabled();
   });
 
   test('工作人員桌有 3 位：勾「工作人員」後桌次欄位消失；同時加眷屬；儲存後陳大文是工作人員、工作人員桌 4 位、眷屬未入座（PPL-AC44、PPL-R10、PPL-R53）', async ({ page }) => {
@@ -346,7 +360,7 @@ test.describe('新增人員：員工', () => {
   });
 
   // D-018：拖移與「加入人員」可以讓一桌或工作人員桌有 11、12 位；人員對話框的桌次與「工作人員」仍到 10 位為止
-  test('第 4 桌 11 位、第 5 桌 12 位（拖移或加入人員造成的）：桌次選項都停用並標示「已滿」（SEAT-AC94、SEAT-R88、PPL-R56）', async ({ page }) => {
+  test('B7 桌 11 位、B10 桌 12 位（拖移或加入人員造成的）：桌次選項都停用並標示「已滿」（SEAT-AC94、SEAT-R88、PPL-R56）', async ({ page }) => {
     await seedDemo();
     await withDb(async (db) => {
       await db.fillTable(4, 11);
@@ -357,12 +371,12 @@ test.describe('新增人員：員工', () => {
     const dialog = await openNewPersonDialog(page);
     const listbox = await openOptions(page, selectField(dialog, '桌次'));
     for (const n of [4, 5]) {
-      const full = optionIn(listbox, new RegExp(`^第 ${n} 桌`));
+      const full = optionIn(listbox, new RegExp(`^${codeOf(n)} 桌`));
       await expect(full).toBeDisabled();
       await expect(full).toContainText('已滿');
       await expect(full).not.toContainText(/剩\s*-/);
     }
-    await expect(optionIn(listbox, /^第 6 桌（剩 1 位）/)).toBeEnabled();
+    await expect(optionIn(listbox, /^B13 桌（剩 1 位）/)).toBeEnabled();
   });
 
   for (const count of [11, 12]) {
@@ -395,10 +409,10 @@ test.describe('新增人員：員工', () => {
     await gotoPeople(page);
 
     const dialog = await openEditDialog(page, '王小明');
-    await expect(selectField(dialog, '桌次')).toContainText('第 4 桌');
+    await expect(selectField(dialog, '桌次')).toContainText('B7 桌');
     const listbox = await openOptions(page, selectField(dialog, '桌次'));
-    await expect(optionIn(listbox, /^第 4 桌/)).toBeEnabled();
-    await expect(optionIn(listbox, /^第 5 桌/)).toBeDisabled();
+    await expect(optionIn(listbox, /^B7 桌/)).toBeEnabled();
+    await expect(optionIn(listbox, /^B10 桌/)).toBeDisabled();
     await page.keyboard.press('Escape');
     await textField(dialog, '備註').fill('靠走道');
     await save(dialog, '儲存');
@@ -644,7 +658,7 @@ test.describe('編輯人員', () => {
     await expect(dialog.getByText('王小明 有 1 位眷屬，要變更類別請先處理眷屬。', { exact: true })).toBeVisible();
   });
 
-  test('王小明與眷屬在第 3 桌：勾「工作人員」儲存後移到工作人員桌，第 3 桌少 1 人、眷屬仍在第 3 桌（PPL-AC46、PPL-R10、PPL-R55）', async ({ page }) => {
+  test('王小明與眷屬在 B4 桌：勾「工作人員」儲存後移到工作人員桌，B4 桌少 1 人、眷屬仍在 B4 桌（PPL-AC46、PPL-R10、PPL-R55）', async ({ page }) => {
     await withDb(async (db) => {
       const { wang } = await demoEmployees(db);
       await db.guest('測試貴賓甲', { tableId: 3 });
@@ -658,9 +672,9 @@ test.describe('編輯人員', () => {
     await save(dialog, '儲存');
 
     await expect(dialog).toBeHidden();
-    await expectToast(page, '已儲存，王小明 已從第 3 桌移到工作人員桌。');
+    await expectToast(page, '已儲存，王小明 已從 B4 桌移到工作人員桌。');
     await expect(cellOf(personRow(page, '王小明'), '桌次')).toHaveText('工作人員');
-    await expect(cellOf(personRow(page, '王小明_眷屬'), '桌次')).toHaveText('第 3 桌');
+    await expect(cellOf(personRow(page, '王小明_眷屬'), '桌次')).toHaveText('B4');
     await expect.poll(() => withDb((db) => db.seatedNames(3))).toEqual(['測試貴賓甲', '王小明_眷屬']);
   });
 
@@ -720,15 +734,15 @@ test.describe('編輯人員', () => {
 
     let dialog = await openEditDialog(page, '王小明');
     let listbox = await openOptions(page, selectField(dialog, '桌次'));
-    await expect(optionIn(listbox, /^第 4 桌/)).toBeEnabled();
+    await expect(optionIn(listbox, /^B7 桌/)).toBeEnabled();
     await page.keyboard.press('Escape');
     await dialog.getByRole('button', { name: '取消' }).click();
     await expect(dialog).toBeHidden();
 
     dialog = await openEditDialog(page, '李美華');
-    await expect(selectField(dialog, '桌次')).toContainText('第 3 桌');
+    await expect(selectField(dialog, '桌次')).toContainText('B4 桌');
     listbox = await openOptions(page, selectField(dialog, '桌次'));
-    await expect(optionIn(listbox, /^第 4 桌/)).toBeDisabled();
+    await expect(optionIn(listbox, /^B7 桌/)).toBeDisabled();
     await optionIn(listbox, '未入座').click();
     await save(dialog, '儲存');
 
@@ -753,7 +767,7 @@ test.describe('編輯人員', () => {
     await expect(personRow(page, '林董')).toHaveCount(0);
     const row = personRow(page, '陳大文');
     await expect(cellOf(row, '類別')).toHaveText('員工');
-    await expect(cellOf(row, '桌次')).toHaveText('第 5 桌');
+    await expect(cellOf(row, '桌次')).toHaveText('B10');
   });
 });
 

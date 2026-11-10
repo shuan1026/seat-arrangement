@@ -264,7 +264,7 @@ describe('對應既有員工：姓名加部門（EMP-R55～R57、EMP-R61）', ()
     expect(await prisma.participant.count()).toBe(1);
   });
 
-  it('EMP-AC71：已報名、坐第 5 桌的王小明分機改成 1300 → 參與人員與桌次詳情的第二行跟著變，座位不變（EMP-R57）', async () => {
+  it('EMP-AC71：已報名、坐 B10 桌（內部編號 5）的王小明分機改成 1300 → 參與人員與桌次詳情的第二行跟著變，座位不變（EMP-R57）', async () => {
     const wang = await createRegisteredEmployee(
       { name: '王小明', department: '業務部', extension: '1234' },
       { tableId: 5, seatOrder: 0 },

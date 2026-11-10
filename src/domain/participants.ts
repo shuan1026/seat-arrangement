@@ -4,12 +4,12 @@ import {
   STAFF_TABLE_CAPACITY,
   STAFF_TABLE_ID,
   TABLE_CAPACITY,
-  TABLE_COUNT,
   type Employee,
   type Participant,
   type ParticipantKind,
 } from '@/contracts/entities';
 import { departmentOf, employeeOf, matchesSearch, type Directory } from './display';
+import { TABLE_IDS_IN_ORDER } from './layout';
 
 /** 入座狀態（PPL-R25）：坐在 1–30 桌是已入座；工作人員自成一類，不算已入座也不算未入座（PPL-R10） */
 export type SeatState = 'seated' | 'unseated' | 'staff';
@@ -152,7 +152,7 @@ export function filterParticipants(
       // 外部貴賓沒有部門，不符合任何部門（PPL-R24）
       (f.department === null || departmentOf(p, dir) === f.department) &&
       (f.seat === null || seatState(p) === f.seat) &&
-      // 工作人員桌的 id 是 0，不會等於 1–30 的桌號（PPL-R26）
+      // 工作人員桌的 id 是 0，不會等於 1–30 的內部編號（PPL-R26）
       (f.tableId === null || p.tableId === f.tableId) &&
       matchesSearch(p, dir, query),
   );
@@ -165,12 +165,11 @@ export const seatedCount = (participants: readonly Participant[], tableId: numbe
   participants.reduce((n, p) => (p.tableId === tableId ? n + 1 : n), 0);
 
 /**
- * 對話框的桌次選項（PPL-R56、PPL-Q08）：第 1～30 桌與剩幾位；已滿的停用，
- * 但 self（編輯中的人）目前所在的桌次不算已滿。
+ * 對話框的桌次選項（PPL-R56、PPL-Q08）：30 桌依 A1～A15、B1～B15 排列（D-019）與剩幾位；已滿的停用，
+ * 但 self（編輯中的人）目前所在的桌次不算已滿。tableId 是內部編號。
  */
 export function tableChoices(participants: readonly Participant[], self?: Participant | null): TableChoice[] {
-  return Array.from({ length: TABLE_COUNT }, (_, i) => {
-    const tableId = i + 1;
+  return TABLE_IDS_IN_ORDER.map((tableId) => {
     const remaining = TABLE_CAPACITY - seatedCount(participants, tableId);
     return { tableId, remaining, disabled: remaining <= 0 && self?.tableId !== tableId };
   });

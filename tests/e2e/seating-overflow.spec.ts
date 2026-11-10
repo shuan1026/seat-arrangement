@@ -6,6 +6,7 @@
 // 改過的 AC14、AC15、AC42、AC44、AC88 在 seating-drag、seating-staff、seating-save.spec.ts；選擇桌次與人員對話框的部分也在
 // seating-dialogs、people-seating、people-dialog.spec.ts。
 // 無障礙名稱的假設見 tests/e2e/helpers/seating-page.ts 開頭。
+// 桌號 A1～A15、B1～B15（D-019）：測試資料用內部編號（3 = B4、4 = B7、5 = B10、6 = B13、7 = B2、9 = B8），畫面上的字用桌號。
 import { expect, test, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
@@ -40,6 +41,7 @@ import {
   tableButton,
   tableDetail,
   tableHandle,
+  titleFor,
   tokenBackground,
   tokenColor,
   toast,
@@ -55,7 +57,7 @@ test.beforeEach(async ({ context, baseURL }) => {
 });
 
 const desktopOnly = (page: Page) => test.skip(isMobileWidth(page), '桌面版面（手機不提供拖移）；手機見本檔最後');
-const addDialog = (page: Page, n: number) => page.getByRole('dialog', { name: `加入人員到第 ${n} 桌`, exact: true });
+const addDialog = (page: Page, n: number) => page.getByRole('dialog', { name: `加入人員到 ${titleFor(n)}`, exact: true });
 const staffAddDialog = (page: Page) => page.getByRole('dialog', { name: '加入人員到工作人員桌', exact: true });
 const names = (prefix: string, count: number) => Array.from({ length: count }, (_, i) => `${prefix}${i + 1}`);
 
@@ -64,7 +66,7 @@ async function zoomToCompact(page: Page) {
 }
 
 test.describe('SEAT-AC91 拖進第 11 位（SEAT-R02、SEAT-R11、SEAT-R20、SEAT-R75、SEAT-R89）', () => {
-  test('第 5 桌 10 位「已滿」→ 拖王小明進去：拖到上方時有放置樣式；成為第 11 位、改為「超過」；詳情「11/10 人」；Sonner 加上「這一桌已超過 10 位。」帶「復原」；統計列「已滿 1 桌・超過 1 桌」、空位不變', async ({
+  test('B10 桌 10 位「已滿」→ 拖王小明進去：拖到上方時有放置樣式；成為第 11 位、改為「超過」；詳情「11/10 人」；Sonner 加上「這一桌已超過 10 位。」帶「復原」；統計列「已滿 1 桌・超過 1 桌」、空位不變', async ({
     page,
   }) => {
     desktopOnly(page);
@@ -86,11 +88,11 @@ test.describe('SEAT-AC91 拖進第 11 位（SEAT-R02、SEAT-R11、SEAT-R20、SEA
     await drop(page);
     await saved;
 
-    await expectToast(page, '已把 王小明 安排到第 5 桌，這一桌已超過 10 位。', { undo: true });
+    await expectToast(page, '已把 王小明 安排到 B10 桌，這一桌已超過 10 位。', { undo: true });
     await expect(mapTable(page, 5)).toContainText('超過');
     await expect(mapTable(page, 5)).not.toContainText('已滿');
     expect(await rosterNames(5)).toEqual([...names('五', 10), '王小明']);
-    // 空位每桌只算到 10 位：第 5 桌超過也不會讓空位變少或變成負數
+    // 空位每桌只算到 10 位：B10 桌超過也不會讓空位變少或變成負數
     await expectStats(page, { seated: 11, total: 12, unseated: 1, empty: 290, full: 1, over: 1 });
 
     const detail = await openTableDetail(page, 5);
@@ -98,7 +100,7 @@ test.describe('SEAT-AC91 拖進第 11 位（SEAT-R02、SEAT-R11、SEAT-R20、SEA
     await expect(rowWithName(detailRows(detail), page, '王小明')).toHaveCount(1);
   });
 
-  test('按 Sonner 的「復原」：王小明回到未入座，第 5 桌回到 10 位「已滿」，統計列沒有「超過」（SEAT-R78、SEAT-R79）', async ({ page }) => {
+  test('按 Sonner 的「復原」：王小明回到未入座，B10 桌回到 10 位「已滿」，統計列沒有「超過」（SEAT-R78、SEAT-R79）', async ({ page }) => {
     desktopOnly(page);
     await seed(async (s) => {
       await s.fill(5, 10, { prefix: '五' });
@@ -108,10 +110,10 @@ test.describe('SEAT-AC91 拖進第 11 位（SEAT-R02、SEAT-R11、SEAT-R20、SEA
     const saved = waitForOperation(page);
     await dragAndDrop(page, personRow(page, '王小明'), tableButton(page, 5));
     await saved;
-    await expectToast(page, '已把 王小明 安排到第 5 桌，這一桌已超過 10 位。', { undo: true });
+    await expectToast(page, '已把 王小明 安排到 B10 桌，這一桌已超過 10 位。', { undo: true });
 
     const restored = waitForOperation(page);
-    await clickUndo(page, '已把 王小明 安排到第 5 桌，這一桌已超過 10 位。');
+    await clickUndo(page, '已把 王小明 安排到 B10 桌，這一桌已超過 10 位。');
     await restored;
     await expectToast(page, '已復原。', { undo: false });
     await expect.poll(() => rosterNames(5)).toEqual(names('五', 10));
@@ -129,12 +131,12 @@ test.describe('SEAT-AC91 拖進第 11 位（SEAT-R02、SEAT-R11、SEAT-R20、SEA
     const saved = waitForOperation(page);
     await dragAndDrop(page, personRow(page, '王小明'), tableButton(page, 5));
     await saved;
-    await expectToast(page, '已把 王小明 安排到第 5 桌。', { undo: true });
+    await expectToast(page, '已把 王小明 安排到 B10 桌。', { undo: true });
     await expect(toast(page, '這一桌已超過 10 位。')).toHaveCount(0);
     await expect(mapTable(page, 5)).toContainText('已滿');
   });
 
-  test('從第 3 桌搬到 11 位的第 5 桌：成為第 12 位，Sonner「已把 王小明 從第 3 桌移到第 5 桌，這一桌已超過 10 位。」；從超過的桌搬到別桌不加（SEAT-R19、SEAT-R89）', async ({
+  test('從 B4 桌搬到 11 位的 B10 桌：成為第 12 位，Sonner「已把 王小明 從 B4 桌移到 B10 桌，這一桌已超過 10 位。」；從超過的桌搬到別桌不加（SEAT-R19、SEAT-R89）', async ({
     page,
   }) => {
     desktopOnly(page);
@@ -148,19 +150,19 @@ test.describe('SEAT-AC91 拖進第 11 位（SEAT-R02、SEAT-R11、SEAT-R20、SEA
     let saved = waitForOperation(page);
     await dragAndDrop(page, personRow(page, '王小明'), tableButton(page, 5));
     await saved;
-    await expectToast(page, '已把 王小明 從第 3 桌移到第 5 桌，這一桌已超過 10 位。', { undo: true });
+    await expectToast(page, '已把 王小明 從 B4 桌移到 B10 桌，這一桌已超過 10 位。', { undo: true });
     expect(await rosterNames(5)).toHaveLength(12);
     expect(await rosterNames(3)).toEqual([]);
 
-    // 從超過的第 5 桌搬到空的第 3 桌：目標桌沒有超過，不加
+    // 從超過的 B10 桌搬到空的 B4 桌：目標桌沒有超過，不加
     saved = waitForOperation(page);
     await dragAndDrop(page, personRow(page, '五1'), tableButton(page, 3));
     await saved;
-    await expectToast(page, '已把 五1 從第 5 桌移到第 3 桌。', { undo: true });
-    await expect(toast(page, '已把 五1 從第 5 桌移到第 3 桌，')).toHaveCount(0);
+    await expectToast(page, '已把 五1 從 B10 桌移到 B4 桌。', { undo: true });
+    await expect(toast(page, '已把 五1 從 B10 桌移到 B4 桌，')).toHaveCount(0);
   });
 
-  test('在 11 位的桌內調整順序：Sonner「已調整第 5 桌的座位順序。」，不加「這一桌已超過 10 位。」（SEAT-R32、SEAT-R33、SEAT-R89）', async ({
+  test('在 11 位的桌內調整順序：Sonner「已調整 B10 桌的座位順序。」，不加「這一桌已超過 10 位。」（SEAT-R32、SEAT-R33、SEAT-R89）', async ({
     page,
   }) => {
     desktopOnly(page);
@@ -173,7 +175,7 @@ test.describe('SEAT-AC91 拖進第 11 位（SEAT-R02、SEAT-R11、SEAT-R20、SEA
     // 詳情的名單在 1280×800 放不下 12 列：來源（第 11 列）與目標要在同一個可視範圍內，所以拖到第 8 列（往上拖，落點是那一列，SEAT-R17）
     await dragAndDrop(page, rowWithName(detailRows(detail), page, '五11'), rowWithName(detailRows(detail), page, '五8'));
     await saved;
-    await expectToast(page, '已調整第 5 桌的座位順序。', { undo: true });
+    await expectToast(page, '已調整 B10 桌的座位順序。', { undo: true });
     await expect(toast(page, '這一桌已超過 10 位。')).toHaveCount(0);
     await expect
       .poll(() => rosterNames(5))
@@ -217,13 +219,13 @@ test.describe('SEAT-AC92 拖到 12 位的桌（SEAT-R20、2.1.9）', () => {
     expect(await hasShadow(page, mapTable(page, 5), '--shadow-md')).toBe(false);
     await drop(page);
 
-    await expectToast(page, '第 5 桌已達 12 位，請先移出一位。', { undo: false });
+    await expectToast(page, 'B10 桌已達 12 位，請先移出一位。', { undo: false });
     await expect(personRow(page, '王小明')).toHaveCount(1);
     expect(await rosterNames(5)).toEqual(names('五', 12));
     await expectStats(page, { seated: 23, total: 24, unseated: 1, empty: 280, full: 2, over: 2 });
   });
 
-  test('展開狀態拖到 12 位桌卡片的名單列：不入座，Sonner「第 5 桌已達 12 位，請先移出一位。」', async ({ page }) => {
+  test('展開狀態拖到 12 位桌卡片的名單列：不入座，Sonner「B10 桌已達 12 位，請先移出一位。」', async ({ page }) => {
     desktopOnly(page);
     await seed(async (s) => {
       await s.fill(5, 12, { prefix: '五' });
@@ -232,13 +234,13 @@ test.describe('SEAT-AC92 拖到 12 位的桌（SEAT-R20、2.1.9）', () => {
     await openSeating(page);
     await expandAll(page);
     await dragAndDrop(page, personRow(page, '王小明'), cardRows(page, 5).nth(3));
-    await expectToast(page, '第 5 桌已達 12 位，請先移出一位。', { undo: false });
+    await expectToast(page, 'B10 桌已達 12 位，請先移出一位。', { undo: false });
     expect(await rosterNames(5)).toEqual(names('五', 12));
   });
 });
 
 test.describe('SEAT-AC93 加入人員到 10 位以上的桌（SEAT-R30、SEAT-R31、SEAT-R89、2.3.4）', () => {
-  test('第 5 桌 10 位：說明「已滿，最多還可以加入 2 位。」；勾第 3 位不會勾選、顯示「最多只能再加入 2 位。」；加入 2 位後 12 位、「加入人員」停用、Sonner 加上「這一桌已超過 10 位。」', async ({
+  test('B10 桌 10 位：說明「已滿，最多還可以加入 2 位。」；勾第 3 位不會勾選、顯示「最多只能再加入 2 位。」；加入 2 位後 12 位、「加入人員」停用、Sonner 加上「這一桌已超過 10 位。」', async ({
     page,
   }) => {
     desktopOnly(page);
@@ -265,7 +267,7 @@ test.describe('SEAT-AC93 加入人員到 10 位以上的桌（SEAT-R30、SEAT-R3
     await dialog.getByRole('button', { name: '加入 2 位' }).click();
     await saved;
     await expect(dialog).toBeHidden();
-    await expectToast(page, '已把 2 位人員加入第 5 桌，這一桌已超過 10 位。', { undo: true });
+    await expectToast(page, '已把 2 位人員加入 B10 桌，這一桌已超過 10 位。', { undo: true });
     // 依勾選順序排入（SEAT-Q06 的目前假設）
     await expect.poll(async () => (await rosterNames(5)).slice(10)).toEqual(['乙', '甲']);
     await expect(detail).toContainText('12/10 人');
@@ -273,7 +275,7 @@ test.describe('SEAT-AC93 加入人員到 10 位以上的桌（SEAT-R30、SEAT-R3
     await expect(mapTable(page, 5)).toContainText('超過');
   });
 
-  test('加入 2 位後按「復原」：2 位一起回到未入座，第 5 桌回到 10 位，「加入人員」又可以按（SEAT-R78）', async ({ page }) => {
+  test('加入 2 位後按「復原」：2 位一起回到未入座，B10 桌回到 10 位，「加入人員」又可以按（SEAT-R78）', async ({ page }) => {
     desktopOnly(page);
     await seed(async (s) => {
       await s.fill(5, 10, { prefix: '五' });
@@ -289,7 +291,7 @@ test.describe('SEAT-AC93 加入人員到 10 位以上的桌（SEAT-R30、SEAT-R3
     await saved;
 
     saved = waitForOperation(page);
-    await clickUndo(page, '已把 2 位人員加入第 5 桌，這一桌已超過 10 位。');
+    await clickUndo(page, '已把 2 位人員加入 B10 桌，這一桌已超過 10 位。');
     await saved;
     await expectToast(page, '已復原。', { undo: false });
     await expect(detail).toContainText('10/10 人');
@@ -298,7 +300,7 @@ test.describe('SEAT-AC93 加入人員到 10 位以上的桌（SEAT-R30、SEAT-R3
     await expect(detail.getByRole('button', { name: '加入人員', exact: true })).toBeEnabled();
   });
 
-  test('第 5 桌 11 位：說明「已滿，最多還可以加入 1 位。」；勾第 2 位時顯示「最多只能再加入 1 位。」', async ({ page }) => {
+  test('B10 桌 11 位：說明「已滿，最多還可以加入 1 位。」；勾第 2 位時顯示「最多只能再加入 1 位。」', async ({ page }) => {
     desktopOnly(page);
     await seed(async (s) => {
       await s.fill(5, 11, { prefix: '五' });
@@ -319,7 +321,7 @@ test.describe('SEAT-AC93 加入人員到 10 位以上的桌（SEAT-R30、SEAT-R3
     await expect(dialog.getByText('最多只能再加入 1 位。')).toBeVisible();
   });
 
-  test('第 5 桌 9 位：說明「還有 1 個空位。」（空位只算到 10 位）；可以勾 3 位，第 4 位顯示「最多只能再加入 3 位。」；加入 3 位後 12 位', async ({
+  test('B10 桌 9 位：說明「還有 1 個空位。」（空位只算到 10 位）；可以勾 3 位，第 4 位顯示「最多只能再加入 3 位。」；加入 3 位後 12 位', async ({
     page,
   }) => {
     desktopOnly(page);
@@ -346,11 +348,11 @@ test.describe('SEAT-AC93 加入人員到 10 位以上的桌（SEAT-R30、SEAT-R3
     const saved = waitForOperation(page);
     await dialog.getByRole('button', { name: '加入 3 位' }).click();
     await saved;
-    await expectToast(page, '已把 3 位人員加入第 5 桌，這一桌已超過 10 位。', { undo: true });
+    await expectToast(page, '已把 3 位人員加入 B10 桌，這一桌已超過 10 位。', { undo: true });
     await expect.poll(() => rosterNames(5)).toEqual([...names('五', 9), '甲', '乙', '丙']);
   });
 
-  test('第 5 桌 12 位：桌次詳情的「加入人員」停用；「調換桌次…」仍可以按（2.3.1、SEAT-R30）', async ({ page }) => {
+  test('B10 桌 12 位：桌次詳情的「加入人員」停用；「調換桌次…」仍可以按（2.3.1、SEAT-R30）', async ({ page }) => {
     desktopOnly(page);
     await seed(async (s) => {
       await s.fill(5, 12, { prefix: '五' });
@@ -447,10 +449,10 @@ test.describe('SEAT-AC94 選單類入口仍到 10 位為止（SEAT-R23、SEAT-R8
     const dialog = page.getByRole('dialog', { name: '安排 王小明 入座', exact: true });
     const labels = await optionLabels(page, dialog, /^桌次/);
     for (const n of [5, 6, 9]) {
-      expect(labels.find((l) => l.startsWith(`第 ${n} 桌`)), `第 ${n} 桌`).toContain('已滿');
-      await expect(page.getByRole('option', { name: new RegExp(`^第 ${n} 桌`) })).toHaveAttribute('aria-disabled', 'true');
+      expect(labels.find((l) => l.startsWith(titleFor(n))), titleFor(n)).toContain('已滿');
+      await expect(page.getByRole('option', { name: new RegExp(`^${titleFor(n)}`) })).toHaveAttribute('aria-disabled', 'true');
     }
-    await expect(page.getByRole('option', { name: /^第 4 桌/ })).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByRole('option', { name: /^B7 桌/ })).not.toHaveAttribute('aria-disabled', 'true');
     for (const l of labels) expect(l).not.toMatch(/剩\s*-/);
   });
 
@@ -465,7 +467,7 @@ test.describe('SEAT-AC94 選單類入口仍到 10 位為止（SEAT-R23、SEAT-R8
     await rowAction(page, personRow(page, '王小明'), '移至其他桌次…');
     const dialog = page.getByRole('dialog', { name: '把 王小明 移到其他桌次', exact: true });
     await dialog.getByRole('combobox', { name: /^桌次/ }).click();
-    const six = page.getByRole('option', { name: /^第 6 桌/ });
+    const six = page.getByRole('option', { name: /^B13 桌/ });
     await expect(six).toHaveAttribute('aria-disabled', 'true');
     await expect(six).toContainText('已滿');
   });
@@ -481,7 +483,7 @@ test.describe('SEAT-AC94 選單類入口仍到 10 位為止（SEAT-R23、SEAT-R8
     const dialog = page.getByRole('dialog', { name: '新增人員' });
     await expect(dialog).toBeVisible();
     await dialog.getByRole('combobox', { name: '桌次', exact: true }).click();
-    const six = page.getByRole('option', { name: /^第 6 桌/ });
+    const six = page.getByRole('option', { name: /^B13 桌/ });
     await expect(six).toBeDisabled();
     await expect(six).toContainText('已滿');
   });
@@ -520,7 +522,7 @@ test.describe('SEAT-AC95 工作人員桌放到 11、12 位（SEAT-R42、SEAT-R88
 });
 
 test.describe('SEAT-AC96 展開卡片與精簡顯示（2.1.6、2.1.7、2.1.9、README 狀態徽章）', () => {
-  test('第 5 桌 11 位、全部展開：第 5 桌卡片 12 列（11 位與 1 個空位）；和同一欄的第 4、6 桌卡片不重疊；其他桌仍是 10 列', async ({ page }) => {
+  test('B10 桌 11 位、全部展開：B10 桌卡片 12 列（11 位與 1 個空位）；和同一欄的 B7、B13 桌卡片不重疊；其他桌仍是 10 列', async ({ page }) => {
     desktopOnly(page);
     await seed(async (s) => {
       await s.fill(4, 3, { prefix: '四' });
@@ -539,7 +541,7 @@ test.describe('SEAT-AC96 展開卡片與精簡顯示（2.1.6、2.1.7、2.1.9、R
     const box5 = await mapTable(page, 5).boundingBox();
     const box6 = await mapTable(page, 6).boundingBox();
     if (!box4 || !box5 || !box6) throw new Error('量不到卡片');
-    // 同一欄（B 外）：第 4 桌在上、第 6 桌在下，三張卡片不重疊
+    // 同一欄（B 外）：B7 桌在上、B13 桌在下，三張卡片不重疊
     expect(box4.y + box4.height).toBeLessThanOrEqual(box5.y + 0.5);
     expect(box5.y + box5.height).toBeLessThanOrEqual(box6.y + 0.5);
     // 卡片跟著變高
@@ -547,7 +549,7 @@ test.describe('SEAT-AC96 展開卡片與精簡顯示（2.1.6、2.1.7、2.1.9、R
     await expect(mapTable(page, 5)).toContainText('超過');
   });
 
-  test('第 5 桌 12 位、全部展開：12 列都有人，沒有空位列', async ({ page }) => {
+  test('B10 桌 12 位、全部展開：12 列都有人，沒有空位列', async ({ page }) => {
     desktopOnly(page);
     await seed(async (s) => {
       await s.fill(5, 12, { prefix: '五' });
@@ -630,7 +632,7 @@ test.describe('SEAT-AC96 展開卡片與精簡顯示（2.1.6、2.1.7、2.1.9、R
 });
 
 test.describe('SEAT-AC98 復原與對調可以回到 11、12 位（SEAT-R88）', () => {
-  test('第 5 桌 11 位 → 移出一位後按「復原」→ 回到 11 位、原本的座號，仍是「超過」', async ({ page }) => {
+  test('B10 桌 11 位 → 移出一位後按「復原」→ 回到 11 位、原本的座號，仍是「超過」', async ({ page }) => {
     desktopOnly(page);
     await seed(async (s) => {
       await s.fill(5, 11, { prefix: '五' });
@@ -640,12 +642,12 @@ test.describe('SEAT-AC98 復原與對調可以回到 11、12 位（SEAT-R88）',
     let saved = waitForOperation(page);
     await rowAction(page, rowWithName(detailRows(detail), page, '五4'), '移出桌次');
     await saved;
-    await expectToast(page, '已把 五4 移出第 5 桌。', { undo: true });
+    await expectToast(page, '已把 五4 移出 B10 桌。', { undo: true });
     await expect(detail).toContainText('10/10 人');
     await expect(mapTable(page, 5)).toContainText('已滿');
 
     saved = waitForOperation(page);
-    await clickUndo(page, '已把 五4 移出第 5 桌。');
+    await clickUndo(page, '已把 五4 移出 B10 桌。');
     await saved;
     await expectToast(page, '已復原。', { undo: false });
     await expect.poll(() => rosterNames(5)).toEqual(names('五', 11));
@@ -653,7 +655,7 @@ test.describe('SEAT-AC98 復原與對調可以回到 11、12 位（SEAT-R88）',
     await expect(mapTable(page, 5)).toContainText('超過');
   });
 
-  test('第 5 桌 11 位和 9 位的第 6 桌用把手對調 → 名單整組交換，第 6 桌變成 11 位「超過」、第 5 桌 9 位；統計列不變', async ({ page }) => {
+  test('B10 桌 11 位和 9 位的 B13 桌用把手對調 → 名單整組交換，B13 桌變成 11 位「超過」、B10 桌 9 位；統計列不變', async ({ page }) => {
     desktopOnly(page);
     await seed(async (s) => {
       await s.fill(5, 11, { prefix: '五' });
@@ -664,7 +666,7 @@ test.describe('SEAT-AC98 復原與對調可以回到 11、12 位（SEAT-R88）',
     const saved = waitForOperation(page);
     await dragAndDrop(page, tableHandle(page, 5), tableButton(page, 6));
     await saved;
-    await expectToast(page, '已把第 5 桌和第 6 桌對調', { undo: true });
+    await expectToast(page, '已把 B10 桌和 B13 桌對調', { undo: true });
     await expect.poll(() => rosterNames(6)).toEqual(names('五', 11));
     expect(await rosterNames(5)).toEqual(names('六', 9));
     await expect(mapTable(page, 6)).toContainText('超過');
@@ -672,7 +674,7 @@ test.describe('SEAT-AC98 復原與對調可以回到 11、12 位（SEAT-R88）',
     await expectStats(page, { seated: 20, total: 20, unseated: 0, empty: 281, full: 1, over: 1 });
   });
 
-  test('「調換桌次…」：11 位的桌的選項是「第 5 桌（11/10）・{部門}」，可以選；對調後第 6 桌 11 位', async ({ page }) => {
+  test('「調換桌次…」：11 位的桌的選項是「B10 桌（11/10）・{部門}」，可以選；對調後 B13 桌 11 位', async ({ page }) => {
     desktopOnly(page);
     await seed(async (s) => {
       await s.fill(5, 11, { prefix: '五', department: '業務部' });
@@ -681,10 +683,10 @@ test.describe('SEAT-AC98 復原與對調可以回到 11、12 位（SEAT-R88）',
     await openSeating(page);
     const detail = await openTableDetail(page, 6);
     await detail.getByRole('button', { name: '調換桌次…', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: '把第 6 桌和哪一桌對調？', exact: true });
+    const dialog = page.getByRole('dialog', { name: '把 B13 桌和哪一桌對調？', exact: true });
     const labels = await optionLabels(page, dialog, /^桌次/);
-    expect(labels).toContain('第 5 桌（11/10）・業務部');
-    const five = page.getByRole('option', { name: /^第 5 桌/ });
+    expect(labels).toContain('B10 桌（11/10）・業務部');
+    const five = page.getByRole('option', { name: /^B10 桌/ });
     await expect(five).not.toHaveAttribute('aria-disabled', 'true');
     await five.click();
     const saved = waitForOperation(page);
@@ -706,13 +708,13 @@ test.describe('統計列（SEAT-R75）', () => {
       await s.fill(STAFF, 12, { prefix: '工作' });
     });
     await openSeating(page);
-    // 空位：第 3 桌 6 位 + 其他 26 桌各 10 位 = 266（不是 300 − 37）
+    // 空位：B4 桌 6 位 + 其他 26 桌各 10 位 = 266（不是 300 − 37）
     await expectStats(page, { seated: 37, total: 38, unseated: 1, empty: 266, full: 3, over: 2 });
   });
 });
 
 test.describe('手機：只能用「加入人員」放進第 11、12 位（SEAT-R82、SEAT-AC93）', () => {
-  test('375 以下寬度：第 5 桌 10 位的詳情 Dialog 按「加入人員」→ 說明「已滿，最多還可以加入 2 位。」；加入 2 位後 12 位、「加入人員」停用', async ({
+  test('375 以下寬度：B10 桌 10 位的詳情 Dialog 按「加入人員」→ 說明「已滿，最多還可以加入 2 位。」；加入 2 位後 12 位、「加入人員」停用', async ({
     page,
   }) => {
     test.skip(!isMobileWidth(page), '手機版面');
@@ -722,7 +724,7 @@ test.describe('手機：只能用「加入人員」放進第 11、12 位（SEAT-
     });
     await openSeating(page);
     await tableButton(page, 5).click();
-    const detail = page.getByRole('dialog', { name: '第 5 桌', exact: true });
+    const detail = page.getByRole('dialog', { name: 'B10 桌', exact: true });
     await expect(detail).toBeVisible();
     await detail.getByRole('button', { name: '加入人員', exact: true }).click();
 
@@ -739,7 +741,7 @@ test.describe('手機：只能用「加入人員」放進第 11、12 位（SEAT-
     await dialog.getByRole('button', { name: '加入 2 位' }).click();
     await saved;
     await expect(dialog).toBeHidden();
-    await expectToast(page, '已把 2 位人員加入第 5 桌，這一桌已超過 10 位。', { undo: true });
+    await expectToast(page, '已把 2 位人員加入 B10 桌，這一桌已超過 10 位。', { undo: true });
     expect(await rosterNames(5)).toHaveLength(12);
     await expect(detail).toContainText('12/10 人');
     await expect(detail.getByRole('button', { name: '加入人員', exact: true })).toBeDisabled();
@@ -756,7 +758,7 @@ test.describe('手機：只能用「加入人員」放進第 11、12 位（SEAT-
     await rowAction(page, personRow(page, '王小明'), '入座…');
     const dialog = page.getByRole('dialog', { name: '安排 王小明 入座', exact: true });
     await dialog.getByRole('combobox', { name: /^桌次/ }).click();
-    const six = page.getByRole('option', { name: /^第 6 桌/ });
+    const six = page.getByRole('option', { name: /^B13 桌/ });
     await expect(six).toHaveAttribute('aria-disabled', 'true');
     await expect(six).toContainText('已滿');
   });

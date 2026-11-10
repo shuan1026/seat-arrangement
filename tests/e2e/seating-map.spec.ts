@@ -1,10 +1,12 @@
 // 座位安排：頁首、統計列、座位圖排列、桌次標示、備註名稱、桌次詳情、座位圖上的工作人員桌。
 // docs/spec/seating.md 2.1.1～2.1.9、2.3.1、2.3.2、2.5.1、4.1、4.3、4.5；SEAT-R01、R03～R05、R07～R13、R48、R49、R72～R75；
 // SEAT-AC20～AC23、AC25～AC29、AC48、AC89；docs/spec/participants.md PPL-R33 與 docs/plan/implementation-plan.md 5.2
-// （參與人員頁的「第 {n} 桌」開啟 /?table={n}，顯示並標示那一桌）。
+// （參與人員頁的「{桌號}」開啟 /?table={桌號}，顯示並標示那一桌）。桌號 A1～A15、B1～B15（D-019）。
+// 測試資料用內部編號（tableId 1–30）建立，畫面上的字用桌號（對應見 tests/helpers/table-codes.ts）。
 // 適合視窗的比例常低於 80%（精簡顯示，只有桌號與人數），所以看備註名稱與部門時先「全部展開」或放大到 80% 以上。
 // 無障礙名稱的假設見 tests/e2e/helpers/seating-page.ts 開頭。
 import { expect, test, type Page } from '@playwright/test';
+import { CODES_IN_LIST_ORDER, codeOf } from '../helpers/table-codes';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
 import { noteNameOf, seed, setEmployeeDepartmentByName, STAFF } from './helpers/seating-data';
@@ -17,6 +19,7 @@ import {
   expectToast,
   hasBorderColor,
   hasDashedBorder,
+  isInside,
   landmark,
   mapTable,
   menuItemsOf,
@@ -41,7 +44,7 @@ test.beforeEach(async ({ context, baseURL }) => {
 
 const desktopOnly = (page: Page) => test.skip(isMobileWidth(page), '桌面版面；手機見 seating-mobile.spec.ts');
 
-/** 桌號 → [欄, 列]（docs/spec/seating.md 2.1.4 的欄與列對照；欄 0–5 是 A 外、A 中、A 內、B 內、B 中、B 外） */
+/** 內部編號 → [欄, 列]（docs/spec/seating.md 2.1.4 的欄與列對照；欄 0–5 是 A 外、A 中、A 內、B 內、B 中、B 外；例如 1 是 B1、2 是 A1） */
 const LAYOUT: Record<number, [number, number]> = {
   1: [3, 0], 2: [2, 0], 3: [5, 1], 4: [5, 2], 5: [5, 3], 6: [5, 4], 7: [4, 0.5], 8: [4, 1.5], 9: [4, 2.5], 10: [4, 3.5],
   11: [4, 4.5], 12: [3, 1], 13: [3, 2], 14: [3, 3], 15: [3, 4], 16: [3, 5], 17: [2, 1], 18: [2, 2], 19: [2, 3], 20: [2, 4],
@@ -50,7 +53,7 @@ const LAYOUT: Record<number, [number, number]> = {
 
 async function centerOf(page: Page, n: number) {
   const box = await mapTable(page, n).boundingBox();
-  if (!box) throw new Error(`量不到第 ${n} 桌`);
+  if (!box) throw new Error(`量不到 ${codeOf(n)} 桌`);
   return { x: box.x + box.width / 2, y: box.y + box.height / 2, box };
 }
 
@@ -103,11 +106,11 @@ test.describe('統計列（SEAT-R75、SEAT-R47）', () => {
 });
 
 test.describe('座位圖的排列（SEAT-R01、R03～R05、SEAT-AC21）', () => {
-  test('30 桌依欄與列排列：同一欄對齊、同一列對齊、相鄰的列錯開半格；第 1、2 桌最靠近舞台', async ({ page }) => {
+  test('30 桌依欄與列排列：同一欄對齊、同一列對齊、相鄰的列錯開半格；A1、B1 桌最靠近舞台', async ({ page }) => {
     await seed(async () => {});
     await openSeating(page);
 
-    await expect(seatMap(page).getByRole('group', { name: /^第 \d+ 桌$/ })).toHaveCount(30);
+    await expect(seatMap(page).getByRole('group', { name: /^[AB]\d{1,2} 桌$/ })).toHaveCount(30);
     const centers = new Map<number, { x: number; y: number }>();
     for (let n = 1; n <= 30; n++) centers.set(n, await centerOf(page, n));
 
@@ -117,14 +120,15 @@ test.describe('座位圖的排列（SEAT-R01、R03～R05、SEAT-AC21）', () => 
         const [cb, rb] = LAYOUT[b]!;
         const pa = centers.get(a)!;
         const pb = centers.get(b)!;
-        if (ca === cb) expect(Math.abs(pa.x - pb.x), `第 ${a}、${b} 桌同一欄`).toBeLessThanOrEqual(2);
-        else expect(Math.sign(pb.x - pa.x), `第 ${a}、${b} 桌的左右`).toBe(Math.sign(cb - ca));
-        if (ra === rb) expect(Math.abs(pa.y - pb.y), `第 ${a}、${b} 桌同一列`).toBeLessThanOrEqual(2);
-        else expect(Math.sign(pb.y - pa.y), `第 ${a}、${b} 桌的上下`).toBe(Math.sign(rb - ra));
+        const pair = `${codeOf(a)}、${codeOf(b)} 桌`;
+        if (ca === cb) expect(Math.abs(pa.x - pb.x), `${pair}同一欄`).toBeLessThanOrEqual(2);
+        else expect(Math.sign(pb.x - pa.x), `${pair}的左右`).toBe(Math.sign(cb - ca));
+        if (ra === rb) expect(Math.abs(pa.y - pb.y), `${pair}同一列`).toBeLessThanOrEqual(2);
+        else expect(Math.sign(pb.y - pa.y), `${pair}的上下`).toBe(Math.sign(rb - ra));
       }
     }
 
-    // 錯開半格：第 7 桌（列 0.5）在第 1 桌（列 0）與第 12 桌（列 1）的正中間
+    // 錯開半格：B2 桌（內部編號 7，列 0.5）在 B1 桌（列 0）與 B3 桌（內部編號 12，列 1）的正中間
     const y1 = centers.get(1)!.y;
     expect(Math.abs(centers.get(7)!.y - (y1 + centers.get(12)!.y) / 2)).toBeLessThanOrEqual(3);
 
@@ -134,7 +138,7 @@ test.describe('座位圖的排列（SEAT-R01、R03～R05、SEAT-AC21）', () => 
     expect(Math.abs(centers.get(2)!.y - minY)).toBeLessThanOrEqual(2);
   });
 
-  test('工作人員桌在 B 區外側列最上面（控台下方、第 3 桌上方），和第 1、2 桌同一列（SEAT-R05）', async ({ page }) => {
+  test('工作人員桌在 B 區外側列最上面（控台下方、B4 桌上方），和 A1、B1 桌同一列（SEAT-R05）', async ({ page }) => {
     await seed(async () => {});
     await openSeating(page);
     const staff = await staffTable(page).boundingBox();
@@ -179,7 +183,9 @@ test.describe('座位圖的排列（SEAT-R01、R03～R05、SEAT-AC21）', () => 
     expect(covers(exit, (t16.x + t21.x) / 2)).toBe(true);
   });
 
-  test('畫面上沒有位置代碼，也沒有新增、刪除桌次或改桌號的操作（SEAT-R01、SEAT-R04）', async ({ page }) => {
+  test('桌號寫成「A1」，不寫成「A-1」；沒有新增、刪除桌次或改桌號的操作（SEAT-R01、SEAT-R04、README 第 13 節用語表）', async ({
+    page,
+  }) => {
     await seed(async (s) => {
       await s.fill(3, 2);
     });
@@ -188,6 +194,67 @@ test.describe('座位圖的排列（SEAT-R01、R03～R05、SEAT-AC21）', () => 
     await expect(page.getByRole('button', { name: /新增桌|刪除桌|桌號/ })).toHaveCount(0);
     await expandAll(page);
     await expect(page.locator('body')).not.toContainText(/[AB]-\d{1,2}/);
+  });
+
+  test('30 桌各顯示自己的桌號：收合時只有「A3」（不加「桌」），座位圖上沒有「第 n 桌」（SEAT-R04、SEAT-AC21、2.1.5）', async ({
+    page,
+  }) => {
+    desktopOnly(page);
+    await seed(async () => {});
+    await openSeating(page);
+    await zoomToRegular(page);
+
+    for (const code of CODES_IN_LIST_ORDER) {
+      const table = mapTable(page, code);
+      await expect(table, code).toBeVisible();
+      // 收合時畫面上的桌號文字正好是「A3」（exact：「A1」不會對到「A10」）
+      await expect(table.getByText(code, { exact: true }).first(), `${code} 的桌號`).toBeVisible();
+    }
+    await expect(seatMap(page)).not.toContainText(/第 \d+ 桌/);
+
+    // 例子：收合的 A3 桌顯示「A3」
+    await expect(mapTable(page, 'A3').getByText('A3', { exact: true })).toBeVisible();
+  });
+
+  test('精簡顯示與一般收合時，三個字元的桌號「A15」「B15」「A10」完整顯示、不被截斷或裁切（2.1.5、2.1.6）', async ({ page }) => {
+    desktopOnly(page);
+    await seed(async (s) => {
+      // 有人的桌與空桌都看：A15（內部編號 21）坐 10 位顯示「已滿」，B15（16）空桌
+      await s.fill(21, 10);
+    });
+    await openSeating(page);
+
+    const expectWhole = async (code: string, label: string) => {
+      const table = mapTable(page, code);
+      const text = table.getByText(code, { exact: true }).first();
+      await expect(text, `${label}：${code}`).toBeVisible();
+      // 文字沒有被截斷（內容沒有超出自己的框，所以不會出現省略號）
+      expect(await text.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), `${label}：${code} 沒有被截斷`).toBe(true);
+      // 文字在桌次的圓形裡，沒有被裁切到外面
+      expect(await isInside(text, table), `${label}：${code} 在桌次裡`).toBe(true);
+      // 文字的每一個祖先（到桌次為止）都沒有把它裁掉
+      expect(
+        await text.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          for (let a = el.parentElement; a && a.getAttribute('role') !== 'group'; a = a.parentElement) {
+            const s = getComputedStyle(a);
+            if (s.overflow === 'visible' && s.overflowX === 'visible') continue;
+            const b = a.getBoundingClientRect();
+            if (r.left < b.left - 1 || r.right > b.right + 1 || r.top < b.top - 1 || r.bottom > b.bottom + 1) return false;
+          }
+          return true;
+        }),
+        `${label}：${code} 沒有被外層裁切`,
+      ).toBe(true);
+    };
+
+    // 精簡顯示：縮放低於 80%，桌號用 Text-4xl（2.1.6）
+    for (let i = 0; i < 25; i++) await toolbarButton(page, '縮小').click();
+    for (const code of ['A15', 'B15', 'A10', 'B10']) await expectWhole(code, '精簡顯示');
+
+    // 一般收合：80% 以上（2.1.5）
+    await zoomToRegular(page);
+    for (const code of ['A15', 'B15', 'A10', 'B10']) await expectWhole(code, '一般收合');
   });
 });
 
@@ -207,7 +274,8 @@ test.describe('桌次標示（SEAT-R07～R13）', () => {
     await expect(t9).toContainText('0/10');
     expect(await hasDashedBorder(t9)).toBe(true);
     expect(await hasDashedBorder(mapTable(page, 3))).toBe(false);
-    expect((await styleOfText(t9, '9'))?.color).toBe(await tokenColor(page, '--muted-foreground'));
+    // 內部編號 9 是 B8 桌：桌號文字「B8」
+    expect((await styleOfText(t9, 'B8'))?.color).toBe(await tokenColor(page, '--muted-foreground'));
 
     const detail = await openTableDetail(page, 9);
     await expect(detail).toContainText('部門：—');
@@ -416,7 +484,7 @@ test.describe('桌次詳情（2.3、SEAT-R72～R74）', () => {
     await openSeating(page);
     const detail = await openTableDetail(page, 3);
 
-    await expect(detail.getByRole('heading', { name: '第 3 桌' })).toBeVisible();
+    await expect(detail.getByRole('heading', { name: 'B4 桌', exact: true })).toBeVisible();
     await expect(detail).toContainText('4/10 人');
     await expect(detail.getByRole('textbox', { name: '備註名稱' })).toBeVisible();
     await expect(detail).toContainText('部門：研發一部＋貴賓');
@@ -484,16 +552,33 @@ test.describe('桌次詳情（2.3、SEAT-R72～R74）', () => {
     await expect(tableDetail(page, 3)).toBeVisible();
   });
 
-  test('網址 /?table={n}：開啟座位安排，顯示那一桌的詳情並標示那一桌（PPL-R33、SEAT-R62）', async ({ page }) => {
+  test('網址 /?table={桌號}：開啟座位安排，顯示那一桌的詳情並標示那一桌（PPL-R33、SEAT-R62、D-019）', async ({ page }) => {
     await seed(async (s) => {
-      await s.employee('王小明', { tableId: 12 });
+      await s.employee('王小明', { tableId: 12 }); // B3 桌
     });
-    await page.goto('/?table=12');
+    await page.goto('/?table=B3');
     await expect(page.getByRole('heading', { level: 1, name: '座位安排' })).toBeVisible();
-    await expect(tableDetail(page, 12)).toBeVisible();
+    await expect(tableDetail(page, 'B3')).toBeVisible();
+    await expect(detailRows(tableDetail(page, 'B3')).filter({ hasText: '王小明' })).toHaveCount(1);
     if (!isMobileWidth(page)) {
-      await expect.poll(() => hasBorderColor(page, mapTable(page, 12), '--accent', '2px')).toBe(true);
+      await expect.poll(() => hasBorderColor(page, mapTable(page, 'B3'), '--accent', '2px')).toBe(true);
     }
+  });
+
+  test('網址 /?table=A1、/?table=B15：每個桌號都開到自己那一桌，不會把 A1 當成 A10～A15（D-019）', async ({ page }) => {
+    await seed(async (s) => {
+      await s.employee('甲', { tableId: 2 }); // A1 桌
+      await s.employee('乙', { tableId: 16 }); // B15 桌
+    });
+    await page.goto('/?table=A1');
+    await expect(tableDetail(page, 'A1')).toBeVisible();
+    await expect(tableDetail(page, 'A1').getByRole('heading', { name: 'A1 桌', exact: true })).toBeVisible();
+    await expect(detailRows(tableDetail(page, 'A1')).filter({ hasText: '甲' })).toHaveCount(1);
+    for (const other of ['A10', 'A11', 'A12', 'A13', 'A14', 'A15']) await expect(tableDetail(page, other)).toHaveCount(0);
+
+    await page.goto('/?table=B15');
+    await expect(tableDetail(page, 'B15')).toBeVisible();
+    await expect(detailRows(tableDetail(page, 'B15')).filter({ hasText: '乙' })).toHaveCount(1);
   });
 });
 
@@ -509,7 +594,7 @@ test.describe('座位圖上的工作人員桌（2.5.1、SEAT-R48、SEAT-R49、SE
     const staff = staffTable(page);
     await expect(staff).toContainText('工作人員');
     await expect(staff).toContainText('2/10');
-    await expect(staff).not.toContainText(/第 \d+ 桌/);
+    await expect(staff).not.toContainText(/第 \d+ 桌|[AB]\d{1,2}/);
     await expect(staff.getByRole('button', { name: '拖移調換桌次' })).toHaveCount(0);
     expect(await hasDashedBorder(staff)).toBe(false);
     await staff.getByRole('button', { name: /^工作人員桌/ }).hover();

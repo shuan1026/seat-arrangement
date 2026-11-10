@@ -5,6 +5,7 @@
 // 「入座…」「移至其他桌次…」開啟的選擇桌次對話框（PPL-AC28、SEAT-AC12）與移出後復原回到原本座號的其他情況，
 // 在階段 3 接上後寫在 people-seating.spec.ts。
 // 資料直接寫進測試資料庫（tests/e2e/helpers/participants-db.ts），都是虛構資料。
+// 桌號（D-019）：測試資料用內部編號 tableId 3，畫面上是 B4 桌（對應見 tests/helpers/table-codes.ts）。
 import { expect, test, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
@@ -74,7 +75,7 @@ test.describe('列操作的項目（PPL-R34、第 2.2 節）', () => {
     await expect(menu.getByRole('menuitem')).toHaveText(['編輯', '取消報名']);
   });
 
-  test('眷屬在第 3 桌：編輯／移至其他桌次…／移出桌次／刪除；外部貴賓未入座：編輯／入座…／刪除（PPL-AC27）', async ({ page }) => {
+  test('眷屬在 B4 桌：編輯／移至其他桌次…／移出桌次／刪除；外部貴賓未入座：編輯／入座…／刪除（PPL-AC27）', async ({ page }) => {
     await withDb(async (db) => {
       const { wang } = await demoEmployees(db);
       const pWang = await db.register(wang);
@@ -96,7 +97,7 @@ test.describe('列操作的項目（PPL-R34、第 2.2 節）', () => {
 test.describe('移出桌次（PPL-R17、PPL-R36）', () => {
   test.beforeEach(desktopOnly);
 
-  test('移出第 3 桌：變成未入座、人員沒有被刪除，Sonner 帶「復原」；按「復原」回到第 3 桌原本的座號（PPL-AC29、SEAT-R78）', async ({ page }) => {
+  test('移出 B4 桌：變成未入座、人員沒有被刪除，Sonner 帶「復原」；按「復原」回到 B4 桌原本的座號（PPL-AC29、SEAT-R78）', async ({ page }) => {
     await withDb(async (db) => {
       const { wang } = await demoEmployees(db);
       await db.guest('測試貴賓甲', { tableId: 3 });
@@ -108,7 +109,7 @@ test.describe('移出桌次（PPL-R17、PPL-R36）', () => {
     await rowAction(page, '王小明', '移出桌次');
 
     await expect(cellOf(personRow(page, '王小明'), '桌次')).toHaveText('未入座');
-    await expectToast(page, '已把 王小明 移出第 3 桌。');
+    await expectToast(page, '已把 王小明 移出 B4 桌。');
     // 只改入座狀態，不刪除人員：還找得到王小明，而且未入座
     await expect
       .poll(async () => {
@@ -120,13 +121,13 @@ test.describe('移出桌次（PPL-R17、PPL-R36）', () => {
 
     await toasts(page).getByRole('button', { name: '復原' }).click();
 
-    await expect(cellOf(personRow(page, '王小明'), '桌次')).toHaveText('第 3 桌');
+    await expect(cellOf(personRow(page, '王小明'), '桌次')).toHaveText('B4');
     await expect.poll(async () => (await findPerson('王小明'))?.tableId).toBe(3);
     // 回到原本那一桌的原本座號：第 2 列（SEAT-R78）
     await expect.poll(() => seatedNames(3)).toEqual(['測試貴賓甲', '王小明', '測試貴賓乙']);
     expect((await findPerson('王小明'))?.seatOrder).toBe(1);
     await page.reload();
-    await expect(cellOf(personRow(page, '王小明'), '桌次')).toHaveText('第 3 桌');
+    await expect(cellOf(personRow(page, '王小明'), '桌次')).toHaveText('B4');
   });
 });
 
@@ -142,7 +143,7 @@ test.describe('取消報名（PPL-R14、PPL-R37）', () => {
     });
   }
 
-  test('確認對話框：標題、內文與「返回」「確認取消報名」；確認後員工與眷屬都移除、第 3 桌少 2 人、沒有「復原」；員工名單不變（PPL-AC30、PPL-R18）', async ({ page }) => {
+  test('確認對話框：標題、內文與「返回」「確認取消報名」；確認後員工與眷屬都移除、B4 桌少 2 人、沒有「復原」；員工名單不變（PPL-AC30、PPL-R18）', async ({ page }) => {
     await seedWangAtTable3();
     await gotoPeople(page);
 

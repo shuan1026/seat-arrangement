@@ -88,7 +88,7 @@ export class SheetData {
     return this;
   }
 
-  /** 第 n 桌依序再坐這些人，接在原本的人後面；離開的桌其他人依原本的順序往前補（SEAT-R06） */
+  /** 內部編號 tableId 的桌依序再坐這些人，接在原本的人後面；離開的桌其他人依原本的順序往前補（SEAT-R06） */
   seat(tableId: number, names: readonly string[]): this {
     for (const name of names) {
       const p = this.get(name);
@@ -119,7 +119,7 @@ export class SheetData {
 
   note(tableId: number, noteName: string): this {
     const t = this.tables.find((x) => x.id === tableId);
-    if (!t) throw new Error(`沒有第 ${tableId} 桌`);
+    if (!t) throw new Error(`沒有內部編號 ${tableId} 的桌次`);
     t.noteName = noteName;
     return this;
   }
@@ -169,7 +169,8 @@ export class SheetData {
  * 資料甲（export.md 第 5.1 節）：
  * 員工名單依序王大同、李小華（總經理室）、陳志明、林美玲（業務部）、張家豪（研發部）；陳志明的眷屬需要兒童椅；
  * 外部貴賓周董事（兒童椅、素食）、吳協理；林美玲素食；張家豪是工作人員；
- * 第 1 桌「主桌」王大同、李小華、周董事；第 5 桌陳志明、陳志明_眷屬、林美玲；第 17 桌「供應商」沒有人；第 22 桌「客戶貴賓」吳協理。
+ * B1 桌「主桌」王大同、李小華、周董事；B10 桌陳志明、陳志明_眷屬、林美玲；A3 桌「供應商」沒有人；A2 桌「客戶貴賓」吳協理
+ * （D-019 的桌號；內部編號分別是 1、5、17、22，對應見 tests/helpers/table-codes.ts）。
  */
 export function sampleA(): SheetData {
   return new SheetData()

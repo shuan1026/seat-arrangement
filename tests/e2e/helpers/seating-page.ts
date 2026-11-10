@@ -2,41 +2,53 @@
 //
 // 假設的無障礙結構（實作請照做）：
 // - 座位圖區（場地圖、可捲動與平移的區域，不含工具列）：region「座位圖」。
-// - 每一桌：座位圖區裡的 group，名稱正好是「第 {n} 桌」；裡面有
-//   - 開啟桌次詳情的 button，名稱以「第 {n} 桌」開頭（例如「第 3 桌，主桌，研發一部，4/10」）；
+// - 桌號（D-019）：畫面上用桌號 A1～A15、B1～B15，單獨出現寫「A1」，標題與句子寫「A1 桌」（README 第 12 節）。
+//   本檔的函式可以傳內部編號（1–30，測試資料用的 tableId）或桌號（'A1'），一律換成桌號找畫面上的元素。
+// - 每一桌：座位圖區裡的 group，名稱正好是「{桌號} 桌」（例如「A1 桌」）；裡面有
+//   - 開啟桌次詳情的 button，名稱以「{桌號} 桌」開頭（例如「B4 桌，主桌，研發一部，4/10」）；
 //   - 拖移把手 button「拖移調換桌次」（桌面才有）；
 //   - 展開時的名單列是 listitem（固定 10 列，這一桌有 11、12 位時 12 列；空位列文字「空位」）。
-//   收合時畫面上的文字是桌號數字、備註名稱或部門、人數（或「已滿」，11、12 位時「超過」，D-018）。
+//   收合時畫面上的文字是桌號（只有「A1」，不加「桌」）、備註名稱或部門、人數（或「已滿」，11、12 位時「超過」，D-018）。
 // - 工作人員桌：座位圖區裡的 group「工作人員桌」，裡面開啟詳情的 button 名稱以「工作人員桌」開頭（2.5.1：「工作人員桌・{部門}」）。
-// - 桌次詳情：桌面是 region（或非 modal 的 dialog）、手機是 dialog，名稱正好是「第 {n} 桌」；工作人員桌詳情名稱「工作人員桌」。
+// - 桌次詳情：桌面是 region（或非 modal 的 dialog）、手機是 dialog，名稱正好是「{桌號} 桌」；工作人員桌詳情名稱「工作人員桌」。
 //   詳情的名單是 list「名單」，每列是 listitem；名單列的列操作是 button「更多操作」（README 第 14 節）。
 // - 人員面板：complementary「人員」；人員列是 listitem，顯示名稱在自己的元素裡（文字正好是顯示名稱）；
-//   列操作 button「更多操作」；「全部」分頁已入座的人有 button「第 {n} 桌」。
+//   列操作 button「更多操作」；「全部」分頁已入座的人有 button，名稱正好是桌號（例如「B4」，SEAT-R57）。
 // - 名單列的小徽章：貴賓「賓」是文字；兒童椅、素食的圖示徽章有 aria-label「兒童椅」「素食」；滑過都顯示 Tooltip（role tooltip）。
 // - Sonner 依 src/components/ui/toaster.tsx：region「通知 …」裡的 listitem，「復原」是 button。
 import { expect, type Locator, type Page } from '@playwright/test';
+import { codeOf } from '../../helpers/table-codes';
 import { isMobileWidth } from './page-checks';
+
+// ---- 桌號
+
+/** 內部編號（1–30）或桌號（'A1'） */
+export type TableRef = number | string;
+/** 桌號，例如 1 → 'B1'、'A1' → 'A1' */
+export const codeFor = (t: TableRef): string => (typeof t === 'number' ? codeOf(t) : t);
+/** 標題與句子中的寫法，例如 1 → 'B1 桌' */
+export const titleFor = (t: TableRef): string => `${codeFor(t)} 桌`;
 
 // ---- 座位圖
 
 export const seatMap = (page: Page) => page.getByRole('region', { name: '座位圖', exact: true });
-export const mapTable = (page: Page, n: number) => seatMap(page).getByRole('group', { name: `第 ${n} 桌`, exact: true });
-export const tableButton = (page: Page, n: number) =>
-  mapTable(page, n).getByRole('button', { name: new RegExp(`^第 ${n} 桌`) });
-export const tableHandle = (page: Page, n: number) => mapTable(page, n).getByRole('button', { name: '拖移調換桌次' });
+export const mapTable = (page: Page, n: TableRef) => seatMap(page).getByRole('group', { name: titleFor(n), exact: true });
+export const tableButton = (page: Page, n: TableRef) =>
+  mapTable(page, n).getByRole('button', { name: new RegExp(`^${titleFor(n)}`) });
+export const tableHandle = (page: Page, n: TableRef) => mapTable(page, n).getByRole('button', { name: '拖移調換桌次' });
 export const staffTable = (page: Page) => seatMap(page).getByRole('group', { name: '工作人員桌', exact: true });
 export const staffTableButton = (page: Page) => staffTable(page).getByRole('button', { name: /^工作人員桌/ });
 /** 展開卡片的名單列 */
-export const cardRows = (page: Page, n: number) => mapTable(page, n).getByRole('listitem');
+export const cardRows = (page: Page, n: TableRef) => mapTable(page, n).getByRole('listitem');
 export const landmark = (page: Page, name: '舞台' | '領獎區' | '控台' | '出入口') =>
   seatMap(page).getByText(name, { exact: true });
 
 // ---- 桌次詳情與工作人員桌詳情
 
-export const tableDetail = (page: Page, n: number) =>
+export const tableDetail = (page: Page, n: TableRef) =>
   page
-    .getByRole('region', { name: `第 ${n} 桌`, exact: true })
-    .or(page.getByRole('dialog', { name: `第 ${n} 桌`, exact: true }));
+    .getByRole('region', { name: titleFor(n), exact: true })
+    .or(page.getByRole('dialog', { name: titleFor(n), exact: true }));
 export const staffDetail = (page: Page) =>
   page
     .getByRole('region', { name: '工作人員桌', exact: true })
@@ -45,7 +57,7 @@ export const detailRows = (detail: Locator) => detail.getByRole('list', { name: 
 export const rowWithName = (rows: Locator, page: Page, name: string) =>
   rows.filter({ has: page.getByText(name, { exact: true }) });
 
-export async function openTableDetail(page: Page, n: number): Promise<Locator> {
+export async function openTableDetail(page: Page, n: TableRef): Promise<Locator> {
   await tableButton(page, n).click();
   const detail = tableDetail(page, n);
   await expect(detail).toBeVisible();

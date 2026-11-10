@@ -69,7 +69,7 @@ describe('已登入', () => {
     expect(state.tables).toHaveLength(31);
   });
 
-  it('桌次是第 1–30 桌與工作人員桌（id 0），初始沒有備註名稱（SEAT-R01、SEAT-R05）', async () => {
+  it('桌次是內部編號 1–30 的 30 桌（畫面上的 A1～B15，D-019）與工作人員桌（id 0），初始沒有備註名稱（SEAT-R01、SEAT-R05）', async () => {
     const { tables } = await loadState();
     expect(tables.map((t) => t.id).sort((a, b) => a - b)).toEqual(Array.from({ length: 31 }, (_, i) => i));
     expect(tables.find((t) => t.id === STAFF_TABLE_ID)?.kind).toBe('STAFF');

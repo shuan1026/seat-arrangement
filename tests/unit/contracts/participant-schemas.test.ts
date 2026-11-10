@@ -1,7 +1,7 @@
 // 參與人員的輸入格式：docs/spec/participants.md PPL-R01（三種類別）、PPL-R05（稱謂選填）、PPL-R06、PPL-R51（外部貴賓姓名必填）、
 // PPL-R09（兒童椅、素食）、PPL-R10（工作人員）、PPL-R46（同時加一位眷屬）、PPL-R59（必填文案）、
 // PPL-R64（匯入改用 Google 表單報名表原檔，D-010）、PPL-Q07、PPL-Q08（編輯可變更類別與桌次，目前假設，D-008）、
-// PPL-AC40、PPL-AC54、PPL-AC55；EMP-R21（一次加入多位至少一位）；seating.md SEAT-R01（桌號 1–30）。
+// PPL-AC40、PPL-AC54、PPL-AC55；EMP-R21（一次加入多位至少一位）；seating.md SEAT-R01（API 的桌次是內部編號 1–30，D-019）。
 import { describe, expect, it } from 'vitest';
 import * as participantsContract from '@/contracts/participants';
 import { accepts, fieldErrors } from '../../helpers/schema';
@@ -108,7 +108,7 @@ describe('participantCreateSchema：類別與桌次', () => {
     expect(accepts(participantCreateSchema, { kind: 'GUEST', guestName: '林董', tableId })).toBe(true);
   });
 
-  it.each([0, 31, -1, 2.5])('桌次不能是 %s（工作人員桌用「工作人員」指定，不是桌號）', (tableId) => {
+  it.each([0, 31, -1, 2.5])('桌次不能是 %s（工作人員桌用「工作人員」指定，不是內部編號 0）', (tableId) => {
     expect(accepts(participantCreateSchema, { kind: 'GUEST', guestName: '林董', tableId })).toBe(false);
     expect(accepts(participantCreateSchema, { kind: 'EMPLOYEE', employeeId: 1, tableId })).toBe(false);
   });

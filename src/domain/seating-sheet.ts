@@ -9,7 +9,7 @@ import { STAFF_TABLE_ID, TABLE_CAPACITY, type AppState, type Participant } from 
 import { TABLE_MAX_SEATS } from '@/contracts/seating';
 import { participantComparator } from './participants';
 import { buildDirectory, displayName, tableDepartmentLabel, type Directory } from './display';
-import { TABLE_LAYOUT } from './layout';
+import { TABLE_LAYOUT, tableTitle } from './layout';
 
 /** 底色類別：標題格、貴賓、兒童椅、素食（EXP-R14、EXP-R21） */
 export type SheetFill = 'header' | 'guest' | 'childSeat' | 'vegetarian';
@@ -109,7 +109,8 @@ export function buildSeatingSheet(data: AppState): SeatingSheet {
     header(
       top,
       col,
-      [`第 ${placement.id} 桌`, ...(note ? [note] : []), tableDepartmentLabel(seated, dir), `(${seated.length})`],
+      // 第一行「{桌號} 桌」（EXP-R11、D-019）
+      [tableTitle(placement.id), ...(note ? [note] : []), tableDepartmentLabel(seated, dir), `(${seated.length})`],
       rows,
     );
     // 名單格是這一段的列數（十或十二格）

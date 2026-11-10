@@ -111,7 +111,7 @@ describe('autoArrange：套用與復原（ARR-R13、SEAT-R76、SEAT-R78）', () 
   });
 
   it('按一次「復原」就回到自動排座之前的全部座位，包含各桌的順序與被移到未入座的外部貴賓（ARR-R13、ARR-AC10）', async () => {
-    // 第 2 桌依序：貴賓、甲、乙；第 4 桌：丙；丁未入座。清空後重排：貴賓回到未入座，其他人重新排
+    // A1 桌（內部編號 2）依序：貴賓、甲、乙；B7 桌（4）：丙；丁未入座。清空後重排：貴賓回到未入座，其他人重新排
     const guest = await createGuest({ guestName: '測試貴賓', tableId: 2, seatOrder: 0 });
     const [jia, yi] = await seatNewEmployees(2, 2);
     const [bing] = await seatNewEmployees(4, 1);
@@ -173,7 +173,7 @@ describe('autoArrange：套用與復原（ARR-R13、SEAT-R76、SEAT-R78）', () 
     const [x] = await seatNewEmployees(3, 1);
     await newUnseated();
     const before = await allPositions();
-    // 假的 arranger 先把第 3 桌清空，結果卻一位都沒排進去
+    // 假的 arranger 先把 B4 桌（3）清空，結果卻一位都沒排進去
     arranger.mockReturnValue({
       changes: [{ participantId: x!, tableId: null, seatOrder: null }],
       summary: { placed: 0, tableIds: [], left: 1 },

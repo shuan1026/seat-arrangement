@@ -558,7 +558,7 @@ describe('PATCH /api/participants/{id}：工作人員（PPL-R10、PPL-R53～R55�
     await seatAt(3, wang.participant.id, dependent.id);
     const [last] = await fillTable(3, 1);
     const staff = await fillStaff(2);
-    // 第 3 桌：佔位甲、王小明、王小明_眷屬、佔位乙
+    // B4 桌（內部編號 3）：佔位甲、王小明、王小明_眷屬、佔位乙
 
     const { participants } = await okJson(await edit(wang.participant.id, { isStaff: true }), participantsResultSchema);
 
@@ -680,7 +680,7 @@ describe('PATCH /api/participants/{id}：桌次（PPL-Q08）', () => {
     expect(await snapshot()).toEqual(before);
   });
 
-  it('自己目前所在的桌次不算已滿：坐在已滿的第 4 桌，桌次仍是第 4 桌並改備註，可以儲存，位置不變', async () => {
+  it('自己目前所在的桌次不算已滿：坐在已滿的 B7 桌（內部編號 4），桌次仍是 B7 桌並改備註，可以儲存，位置不變', async () => {
     await fillTable(4, 3);
     const lin = await createGuest({ guestName: '林董' });
     await seatAt(4, lin.id);
@@ -932,7 +932,7 @@ describe('DELETE /api/participants/{id}', () => {
     const [b] = await fillTable(3, 1);
     await seatAt(3, dependent.id);
     const [c] = await fillTable(3, 1);
-    // 第 3 桌：甲、王小明、乙、王小明_眷屬、丙
+    // B4 桌（3）：甲、王小明、乙、王小明_眷屬、丙
 
     const result = await okJson(await remove(wang.participant.id), participantDeleteResultSchema);
 
@@ -992,7 +992,7 @@ describe('DELETE /api/participants/{id}', () => {
     const lin = await createGuest({ guestName: '林董' });
     await seatAt(5, lin.id);
     const [b, c] = await fillTable(5, 2);
-    // 第 5 桌：甲、林董、乙、丙
+    // B10 桌（5）：甲、林董、乙、丙
 
     const result = await okJson(await remove(lin.id), participantDeleteResultSchema);
 

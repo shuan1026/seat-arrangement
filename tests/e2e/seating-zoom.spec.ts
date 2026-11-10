@@ -183,7 +183,7 @@ test.describe('縮放（SEAT-R63、SEAT-R66、SEAT-R67）', () => {
     await page.mouse.move(point.x - 160, point.y - 120, { steps: 10 });
     await page.mouse.up();
     const t1After = await mapTable(page, 1).boundingBox();
-    if (!t1 || !t1After) throw new Error('量不到第 1 桌');
+    if (!t1 || !t1After) throw new Error('量不到 B1 桌');
     expect(Math.abs(t1After.x - t1.x) + Math.abs(t1After.y - t1.y)).toBeGreaterThan(50);
     expect(await page.evaluate(() => [window.scrollX, window.scrollY])).toEqual([0, 0]);
     await expectNoHorizontalScroll(page);
@@ -195,7 +195,8 @@ test.describe('精簡顯示（SEAT-R68、2.1.6、SEAT-AC70）', () => {
   async function expectDisplayFor(page: Page) {
     const value = await zoomValue(page);
     const compact = value < 80;
-    const number = await styleOfText(mapTable(page, 7), '7');
+    // 內部編號 7 是 B2 桌：桌號文字「B2」（D-019）
+    const number = await styleOfText(mapTable(page, 7), 'B2');
     expect(number?.fontSize, `${value}% 的桌號字級`).toBe(compact ? '36px' : '20px');
     const handle = await tableHandle(page, 7).evaluate((el) => getComputedStyle(el).width);
     expect(handle, `${value}% 的把手`).toBe(compact ? '36px' : '24px');
@@ -253,7 +254,8 @@ test.describe('全部展開與收合（SEAT-R69、SEAT-AC71）', () => {
     await expandAll(page);
     expect(await zoomValue(page)).toBe(100);
     for (const t of allTables(page)) await expect(t.getByRole('listitem')).toHaveCount(10);
-    await expect(mapTable(page, 7)).toContainText('第 7 桌');
+    // 展開卡片的標頭寫「{桌號} 桌」（2.1.7）
+    await expect(mapTable(page, 7)).toContainText('B2 桌');
     await expect(staffTable(page)).toContainText('工作人員桌');
 
     await toolbarButton(page, '全部收合').click();

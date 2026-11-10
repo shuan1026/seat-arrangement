@@ -9,6 +9,7 @@ import { useMemo, useState } from 'react';
 import { useAppStore } from '@/client/app-provider';
 import { STAFF_TABLE_ID, type Participant } from '@/contracts/entities';
 import { departmentOf, displayName } from '@/domain/display';
+import { tableCodeLabel, tableTitle } from '@/domain/layout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/cn';
@@ -81,7 +82,7 @@ export function PeoplePanel({ sorted, hidden, mobile, draggable, onCollapse }: P
       if (found.length === 1) {
         const p = found[0]!;
         const name = displayName(p, dir);
-        const title = p.tableId === STAFF_TABLE_ID ? `${name} 在工作人員桌。` : `${name} 已入座，在第 ${p.tableId} 桌。`;
+        const title = p.tableId === STAFF_TABLE_ID ? `${name} 在工作人員桌。` : `${name} 已入座，在 ${tableTitle(p.tableId ?? 0)}。`;
         return <EmptyState variant="inline" title={title} action={showAll} />;
       }
       if (found.length > 1) {
@@ -239,7 +240,7 @@ function PersonRow({ person, showSeat, draggable }: { person: Participant; showS
   );
 }
 
-/** 「全部」分頁第二行右側（SEAT-R57）：已入座「第 {n} 桌」（可按下標示那一桌）、未入座、工作人員 */
+/** 「全部」分頁第二行右側（SEAT-R57）：已入座「{桌號}」（可按下標示那一桌）、未入座、工作人員 */
 function SeatStatus({ person, onLocate }: { person: Participant; onLocate: (tableId: number) => void }) {
   if (person.tableId === STAFF_TABLE_ID) return <Badge variant="neutral">工作人員</Badge>;
   if (person.tableId === null) return <Badge variant="pending">未入座</Badge>;
@@ -247,7 +248,7 @@ function SeatStatus({ person, onLocate }: { person: Participant; onLocate: (tabl
   return (
     <Badge asChild variant="outline">
       <button type="button" onClick={() => onLocate(tableId)}>
-        第 {tableId} 桌
+        {tableCodeLabel(tableId)}
       </button>
     </Badge>
   );

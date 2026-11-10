@@ -4,12 +4,13 @@
 // 檢查實際跑起來的伺服器下載的檔案。E2E 的資料庫可能有其他測試留下的資料，所以只檢查和資料無關的部分；
 // D-018 起桌次的列位置會因為有沒有桌次超過 10 位而不同，所以先從檔案找出改為十二列的段，再照 EXP-R23 比對。
 // 沒登入回 401 在 auth-guard.spec.ts。
+// 桌號（D-019、EXP-R11）：標題格第一行寫「{桌號} 桌」；測試資料用內部編號（1 = B1、5 = B10）。
 import { expect, test } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { requireBaseURL } from './helpers/page-checks';
 import { seed } from './helpers/seating-data';
 import { dragAndDrop, expectToast, openSeating, personRow, tableButton, waitForOperation } from './helpers/seating-page';
-import { overflowLayout, segmentOf, tallSegmentsIn, TABLE_IDS, tableBlock } from '../helpers/export-sheet';
+import { headerTitle, overflowLayout, segmentOf, tallSegmentsIn, TABLE_IDS, tableBlock } from '../helpers/export-sheet';
 import {
   cellText,
   downloadFileName,
@@ -46,7 +47,7 @@ test.describe('GET /api/export/seating（已登入）', () => {
     expect(ws?.pageSetup.fitToHeight).toBe(0);
   });
 
-  test('30 桌的標題格在規格 3.3 節的位置（有段改為十二列時照 EXP-R23 往下移），工作人員區塊在右上角，圖例在 A3–A5', async ({
+  test('30 桌的標題格在規格 3.3 節的位置（有段改為十二列時照 EXP-R23 往下移），第一行是「{桌號} 桌」；工作人員區塊在右上角，圖例在 A3–A5', async ({
     context,
   }) => {
     const res = await context.request.get('/api/export/seating');
@@ -59,13 +60,13 @@ test.describe('GET /api/export/seating（已登入）', () => {
     const layout = overflowLayout(tallSegmentsIn(merges));
     for (const n of TABLE_IDS) {
       const b = layout.block(n);
-      expect(merges, `第 ${n} 桌`).toContain(b.range);
-      expect(cellText(ws.getCell(b.header)), `第 ${n} 桌`).toMatch(new RegExp(`^第 ${n} 桌\\n[^]*\\n\\(\\d+\\)$`));
+      expect(merges, headerTitle(n)).toContain(b.range);
+      expect(cellText(ws.getCell(b.header)), headerTitle(n)).toMatch(new RegExp(`^${headerTitle(n)}\\n[^]*\\n\\(\\d+\\)$`));
     }
     // 十列的段裡每一桌都不超過 10 位；改為十二列的段裡至少有一桌是 11、12 位
     const countOf = (n: number) => Number(/\((\d+)\)$/.exec(cellText(ws.getCell(layout.block(n).header)))?.[1] ?? -1);
     for (const n of TABLE_IDS) {
-      if (!layout.tall.includes(segmentOf(n))) expect(countOf(n), `第 ${n} 桌在十列的段`).toBeLessThanOrEqual(10);
+      if (!layout.tall.includes(segmentOf(n))) expect(countOf(n), `${headerTitle(n)}在十列的段`).toBeLessThanOrEqual(10);
     }
     for (const k of layout.tall) {
       const inSegment = TABLE_IDS.filter((n) => segmentOf(n) === k);
@@ -85,11 +86,16 @@ test.describe('GET /api/export/seating（已登入）', () => {
     const ws = (await loadWorkbook(await res.body())).worksheets[0];
     if (!ws) throw new Error('檔案裡沒有工作表');
     const merges = mergeRanges(ws);
-    for (const n of TABLE_IDS) expect(merges, `第 ${n} 桌`).toContain(tableBlock(n).range);
-    expect(cellText(ws.getCell('G1'))).toBe('第 1 桌\n總經理室\n(10)');
+    for (const n of TABLE_IDS) expect(merges, headerTitle(n)).toContain(tableBlock(n).range);
+    expect(cellText(ws.getCell('G1'))).toBe('B1 桌\n總經理室\n(10)');
+    expect(cellText(ws.getCell('I61'))).toBe('B10 桌\n業務部\n(3)');
+    // A1 桌（D1:D10）、A15 桌（D101）、B15 桌（G101）的標題格第一行
+    expect(cellText(ws.getCell('D1')).split('\n')[0]).toBe('A1 桌');
+    expect(cellText(ws.getCell('D101')).split('\n')[0]).toBe('A15 桌');
+    expect(cellText(ws.getCell('G101')).split('\n')[0]).toBe('B15 桌');
   });
 
-  test('EXP-AC22：把一位未入座的人拖到 10 位的第 1 桌（第 1 桌 11 位）→ 匯出 → 第 1 段十二列、第 1 桌「(11)」、第 12 格空白；下面各段與未入座區塊往下移兩列（EXP-R23）', async ({
+  test('EXP-AC22：把一位未入座的人拖到 10 位的 B1 桌（B1 桌 11 位）→ 匯出 → 第 1 段十二列、B1 桌「(11)」、第 12 格空白；下面各段與未入座區塊往下移兩列（EXP-R23）', async ({
     page,
     context,
   }) => {
@@ -104,7 +110,7 @@ test.describe('GET /api/export/seating（已登入）', () => {
     const saved = waitForOperation(page);
     await dragAndDrop(page, personRow(page, '未甲'), tableButton(page, 1));
     await saved;
-    await expectToast(page, '已把 未甲 安排到第 1 桌，這一桌已超過 10 位。', { undo: true });
+    await expectToast(page, '已把 未甲 安排到 B1 桌，這一桌已超過 10 位。', { undo: true });
 
     const res = await context.request.get('/api/export/seating');
     expect(res.status()).toBe(200);
@@ -115,12 +121,12 @@ test.describe('GET /api/export/seating（已登入）', () => {
     const layout = overflowLayout([1]);
 
     expect(tallSegmentsIn(merges)).toEqual([1]);
-    for (const n of TABLE_IDS) expect(merges, `第 ${n} 桌`).toContain(layout.block(n).range);
-    expect(text('G1')).toBe('第 1 桌\n主桌\n總經理室\n(11)');
+    for (const n of TABLE_IDS) expect(merges, headerTitle(n)).toContain(layout.block(n).range);
+    expect(text('G1')).toBe('B1 桌\n主桌\n總經理室\n(11)');
     expect(text('H11')).toBe('未甲');
     expect(text('H12')).toBe('');
     expect(merges).toContain('D1:D12');
-    expect(text('I63')).toBe('第 5 桌\n業務部\n(3)');
+    expect(text('I63')).toBe('B10 桌\n業務部\n(3)');
     expect(merges).toContain('K1:K10');
     expect(merges).toContain('B114:B123');
     expect(text('B114')).toBe('未入座\n(1)');

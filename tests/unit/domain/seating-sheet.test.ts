@@ -4,6 +4,9 @@
 // EXP-Q01 不放分機、EXP-Q02 只有 F 欄空白、EXP-Q03 工作人員超過十位往下延伸、EXP-Q05 框線範圍與未入座區塊的位置。
 // 位置、標題格、合併範圍逐格比對；色碼、粗體、欄寬、列印設定在 tests/unit/server/excel.test.ts 檢查 Excel 檔。
 // 姓名都是規格裡的虛構示範資料，或「員1」「未1」這類代號。
+// 桌號（D-019、EXP-R11）：標題格第一行寫「{桌號} 桌」，例如「A1 桌」；位置照 3.3 節，和改桌號前相同。
+// 測試資料用內部編號（tableId 1–30），標題格的預期文字用桌號（1 = B1、2 = A1、3 = B4、4 = B7、5 = B10、7 = B2、16 = B15、
+// 17 = A3、19 = A9、22 = A2、30 = A13；對應見 tests/helpers/table-codes.ts）。Excel 位址（例如 G1、B21）是儲存格，不是桌號。
 //
 // 假設的介面（src/domain/seating-sheet.ts，與 Excel 無關，實作照這裡）：
 //   export type SheetFill = 'header' | 'guest' | 'childSeat' | 'vegetarian';  // 標題格、貴賓、兒童椅、素食
@@ -26,17 +29,20 @@ import { buildDirectory, tableDepartmentLabel } from '@/domain/display';
 import { buildSeatingSheet } from '@/domain/seating-sheet';
 import {
   column,
+  headerTitle,
   LAST_COLUMN,
   overflowLayout,
   parseAddress,
   segmentOf,
   SheetReader,
   sortAddresses,
+  TABLE_BLOCKS_BY_CODE,
   TABLE_IDS,
   tableBlock,
   unseatedAddress,
 } from '../../helpers/export-sheet';
 import { sampleA, SheetData } from '../../helpers/export-state';
+import { CODES_IN_LIST_ORDER, idOfCode } from '../../helpers/table-codes';
 
 /** 產生版面模型，並檢查每一份模型都要成立的格式 */
 function read(data: SheetData, opts: { reversed?: boolean } = {}): SheetReader {
@@ -72,10 +78,10 @@ describe('資料甲（EXP-AC04～AC10）', () => {
     expect(sheet().name).toBe('座位表');
   });
 
-  it('EXP-AC04 第 1 桌：G1:G10 合併「第 1 桌↵主桌↵總經理室＋貴賓↵(3)」；H1、H2 沒有底色；H3 兒童椅底色；H4–H10 空白、有框線', () => {
+  it('EXP-AC04 B1 桌：G1:G10 合併「B1 桌↵主桌↵總經理室＋貴賓↵(3)」；H1、H2 沒有底色；H3 兒童椅底色；H4–H10 空白、有框線', () => {
     const s = sheet();
     expect(s.merge('G1')).toBe('G1:G10');
-    expect(s.text('G1')).toBe('第 1 桌\n主桌\n總經理室＋貴賓\n(3)');
+    expect(s.text('G1')).toBe('B1 桌\n主桌\n總經理室＋貴賓\n(3)');
     expect([s.text('H1'), s.fill('H1')]).toEqual(['王大同', null]);
     expect([s.text('H2'), s.fill('H2')]).toEqual(['李小華', null]);
     expect([s.text('H3'), s.fill('H3')]).toEqual(['周董事(+兒童椅)(素食)', 'childSeat']);
@@ -84,28 +90,28 @@ describe('資料甲（EXP-AC04～AC10）', () => {
     }
   });
 
-  it('EXP-AC05 第 5 桌：I61:I70「第 5 桌↵業務部↵(3)」沒有備註名稱那一行；J61 沒有底色、J62 兒童椅、J63 素食', () => {
+  it('EXP-AC05 B10 桌：I61:I70「B10 桌↵業務部↵(3)」沒有備註名稱那一行；J61 沒有底色、J62 兒童椅、J63 素食', () => {
     const s = sheet();
     expect(s.merge('I61')).toBe('I61:I70');
-    expect(s.text('I61')).toBe('第 5 桌\n業務部\n(3)');
+    expect(s.text('I61')).toBe('B10 桌\n業務部\n(3)');
     expect([s.text('J61'), s.fill('J61')]).toEqual(['陳志明', null]);
     expect([s.text('J62'), s.fill('J62')]).toEqual(['陳志明_眷屬(+兒童椅)', 'childSeat']);
     expect([s.text('J63'), s.fill('J63')]).toEqual(['林美玲(素食)', 'vegetarian']);
   });
 
-  it('EXP-AC06 第 22 桌：C11:C20「第 22 桌↵客戶貴賓↵貴賓↵(1)」；D11「吳協理」貴賓底色，不加文字', () => {
+  it('EXP-AC06 A2 桌：C11:C20「A2 桌↵客戶貴賓↵貴賓↵(1)」；D11「吳協理」貴賓底色，不加文字', () => {
     const s = sheet();
     expect(s.merge('C11')).toBe('C11:C20');
-    expect(s.text('C11')).toBe('第 22 桌\n客戶貴賓\n貴賓\n(1)');
+    expect(s.text('C11')).toBe('A2 桌\n客戶貴賓\n貴賓\n(1)');
     expect([s.text('D11'), s.fill('D11')]).toEqual(['吳協理', 'guest']);
   });
 
-  it('EXP-AC07 空桌：B81:B90「第 30 桌↵空桌↵(0)」、D21:D30「第 17 桌↵供應商↵空桌↵(0)」；名單格空白、有框線', () => {
+  it('EXP-AC07 空桌：B81:B90「A13 桌↵空桌↵(0)」、D21:D30「A3 桌↵供應商↵空桌↵(0)」；名單格空白、有框線', () => {
     const s = sheet();
     expect(s.merge('B81')).toBe('B81:B90');
-    expect(s.text('B81')).toBe('第 30 桌\n空桌\n(0)');
+    expect(s.text('B81')).toBe('A13 桌\n空桌\n(0)');
     expect(s.merge('D21')).toBe('D21:D30');
-    expect(s.text('D21')).toBe('第 17 桌\n供應商\n空桌\n(0)');
+    expect(s.text('D21')).toBe('A3 桌\n供應商\n空桌\n(0)');
     for (const a of [...column('C', 81, 90), ...column('E', 21, 30)]) {
       expect([a, s.text(a), s.fill(a), s.border(a)]).toEqual([a, '', null, true]);
     }
@@ -127,11 +133,17 @@ describe('資料甲（EXP-AC04～AC10）', () => {
     for (const a of column('L', 2, 10)) expect([a, s.text(a), s.fill(a)]).toEqual([a, '', null]);
   });
 
-  it('EXP-AC10 第 111 列以下沒有任何內容；F 欄沒有任何內容；沒有任何一格出現位置代碼（EXP-R08、EXP-R11、EXP-R19）', () => {
+  it('EXP-AC10 第 111 列以下沒有任何內容；F 欄沒有任何內容；桌號不寫成「A-1」、也沒有內部代碼 STAFF 或「第 n 桌」（EXP-R08、EXP-R11、EXP-R19）', () => {
     const s = sheet();
     expect(usedRows(s).filter((r) => r >= 111)).toEqual([]);
     expect(s.used().filter((a) => /^F\d+$/.test(a))).toEqual([]);
-    expect(s.texts().filter((t) => /[AB]-\d+|STAFF/.test(t))).toEqual([]);
+    expect(s.texts().filter((t) => /[AB]-\d+|STAFF|第\s*\d+\s*桌/.test(t))).toEqual([]);
+  });
+
+  it('30 桌的標題格第一行都是「{桌號} 桌」：A1～A15、B1～B15 各出現一次（EXP-R11、D-019）', () => {
+    const s = sheet();
+    const firstLines = TABLE_IDS.map((n) => s.text(tableBlock(n).header).split('\n')[0]);
+    expect(firstLines.slice().sort()).toEqual(CODES_IN_LIST_ORDER.map((c) => `${c} 桌`).sort());
   });
 
   it('只用到規格列出的格：30 桌各 1 格標題與 10 格名單、圖例 3 格、工作人員標題與 L1–L10；其他格都空白（EXP-R08）', () => {
@@ -170,26 +182,35 @@ describe('資料甲（EXP-AC04～AC10）', () => {
   });
 });
 
-describe('各桌位置（EXP-R09、EXP-R10、EXP-AC11）', () => {
+describe('各桌位置（EXP-R09、EXP-R10、EXP-R11、EXP-AC11）', () => {
+  // EXP-AC11：依 3.3 表的順序，每一桌只坐一位：A1 坐員1、A2 坐員2…A15 坐員15、B1 坐員16…B15 坐員30
+  const SEATING = CODES_IN_LIST_ORDER.map((code, i) => [code, `員${i + 1}`] as const);
   const sheet = lazy(() => {
     const data = new SheetData();
-    for (const n of TABLE_IDS) data.employee(`員${n}`, '業務部');
-    for (const n of TABLE_IDS) data.seat(n, [`員${n}`]);
+    for (const [, name] of SEATING) data.employee(name, '業務部');
+    for (const [code, name] of SEATING) data.seat(idOfCode(code), [name]);
     return read(data);
   });
 
-  it.each(TABLE_IDS)('第 %i 桌：標題格在規格 3.3 表的位置合併十列，名單第一格是員n，同一欄其餘九格空白', (n) => {
+  it.each(SEATING)('%s 桌：標題格在規格 3.3 表的位置合併十列，內容「{桌號} 桌↵業務部↵(1)」，名單第一格是%s，同一欄其餘九格空白', (code, name) => {
     const s = sheet();
-    const b = tableBlock(n);
+    const spec = TABLE_BLOCKS_BY_CODE.get(code);
+    const b = tableBlock(idOfCode(code));
+    expect(b.range).toBe(spec?.range);
     expect(s.merge(b.header)).toBe(b.range);
-    expect(s.text(b.header)).toBe(`第 ${n} 桌\n業務部\n(1)`);
+    expect(s.text(b.header)).toBe(`${code} 桌\n業務部\n(1)`);
     expect(s.fill(b.header)).toBe('header');
-    expect(s.text(b.list[0] ?? '')).toBe(`員${n}`);
+    expect(s.text(b.list[0] ?? '')).toBe(name);
     for (const a of b.list.slice(1)) expect([a, s.text(a), s.border(a)]).toEqual([a, '', true]);
   });
 
-  it('沒有任何一格出現位置代碼 A-1～A-15、B-1～B-15（EXP-R11）', () => {
-    expect(sheet().texts().filter((t) => /[AB]-\d+/.test(t))).toEqual([]);
+  it('標題格第一行寫「{桌號} 桌」，例如「A1 桌」；不寫成「A-1」或「第 n 桌」（EXP-R11）', () => {
+    const s = sheet();
+    expect(s.text('D1').split('\n')[0]).toBe('A1 桌');
+    expect(s.text('G1').split('\n')[0]).toBe('B1 桌');
+    expect(s.text('D101').split('\n')[0]).toBe('A15 桌');
+    expect(s.text('G101').split('\n')[0]).toBe('B15 桌');
+    expect(s.texts().filter((t) => /[AB]-\d+|第\s*\d+\s*桌/.test(t))).toEqual([]);
   });
 
   it('F 欄是走道，沒有任何內容（EXP-R08、EXP-Q02）', () => {
@@ -198,6 +219,7 @@ describe('各桌位置（EXP-R09、EXP-R10、EXP-AC11）', () => {
 });
 
 describe('桌次標題格（EXP-R12）', () => {
+  // 內部編號 3 是 B4 桌（I21:I30、名單 J21–J30）
   const T3 = tableBlock(3);
   const header3 = (data: SheetData) => read(data).text(T3.header);
 
@@ -209,7 +231,7 @@ describe('桌次標題格（EXP-R12）', () => {
       .employee('業乙', '業務部')
       .employee('業丙', '業務部')
       .seat(3, ['研甲', '研乙', '業甲', '業乙', '業丙']);
-    expect(header3(data)).toBe('第 3 桌\n業務部＋研發部\n(5)');
+    expect(header3(data)).toBe('B4 桌\n業務部＋研發部\n(5)');
   });
 
   it('和座位圖的桌次部門標示相同（seating.md SEAT-R07～R09，人數相同時的先後也一樣）', () => {
@@ -225,13 +247,13 @@ describe('桌次標題格（EXP-R12）', () => {
       .filter((p) => p.tableId === 3)
       .sort((a, b) => (a.seatOrder ?? 0) - (b.seatOrder ?? 0));
     const label = tableDepartmentLabel(seated, buildDirectory(state));
-    expect(header3(data)).toBe(`第 3 桌\n${label}\n(5)`);
+    expect(header3(data)).toBe(`B4 桌\n${label}\n(5)`);
     expect(label).toBe('研發部＋業務部＋行政部＋貴賓');
   });
 
   it('眷屬算所屬員工的部門，所屬員工不在這一桌也一樣', () => {
     const data = new SheetData().employee('業甲', '業務部').dependent('業甲').seat(3, ['業甲_眷屬']);
-    expect(header3(data)).toBe('第 3 桌\n業務部\n(1)');
+    expect(header3(data)).toBe('B4 桌\n業務部\n(1)');
   });
 
   it('有外部貴賓時最後加「貴賓」，人數含外部貴賓', () => {
@@ -240,24 +262,24 @@ describe('桌次標題格（EXP-R12）', () => {
       .guest('賓甲')
       .guest('賓乙')
       .seat(3, ['賓甲', '研甲', '賓乙']);
-    expect(header3(data)).toBe('第 3 桌\n研發部＋貴賓\n(3)');
+    expect(header3(data)).toBe('B4 桌\n研發部＋貴賓\n(3)');
   });
 
   it('只有外部貴賓時部門寫「貴賓」', () => {
     const data = new SheetData().guest('賓甲').seat(3, ['賓甲']);
-    expect(header3(data)).toBe('第 3 桌\n貴賓\n(1)');
+    expect(header3(data)).toBe('B4 桌\n貴賓\n(1)');
   });
 
   it('有備註名稱時第二行是備註名稱；有人時接著部門與人數', () => {
     const data = new SheetData().employee('研甲', '研發部').note(3, '董事貴賓').seat(3, ['研甲']);
-    expect(header3(data)).toBe('第 3 桌\n董事貴賓\n研發部\n(1)');
+    expect(header3(data)).toBe('B4 桌\n董事貴賓\n研發部\n(1)');
   });
 
-  it('有備註名稱、沒有人：「第 n 桌↵備註名稱↵空桌↵(0)」；沒有備註名稱的空桌不留空行', () => {
+  it('有備註名稱、沒有人：「{桌號} 桌↵備註名稱↵空桌↵(0)」；沒有備註名稱的空桌不留空行', () => {
     const data = new SheetData().note(3, '保留');
     const s = read(data);
-    expect(s.text(T3.header)).toBe('第 3 桌\n保留\n空桌\n(0)');
-    expect(s.text(tableBlock(4).header)).toBe('第 4 桌\n空桌\n(0)');
+    expect(s.text(T3.header)).toBe('B4 桌\n保留\n空桌\n(0)');
+    expect(s.text(tableBlock(4).header)).toBe('B7 桌\n空桌\n(0)');
   });
 
   it('坐滿 10 人時人數是 (10)，十格名單格由上往下都有人', () => {
@@ -265,14 +287,14 @@ describe('桌次標題格（EXP-R12）', () => {
     for (let i = 1; i <= 10; i++) data.employee(`員${i}`, '業務部');
     data.seat(3, Array.from({ length: 10 }, (_, i) => `員${i + 1}`));
     const s = read(data);
-    expect(s.text(T3.header)).toBe('第 3 桌\n業務部\n(10)');
+    expect(s.text(T3.header)).toBe('B4 桌\n業務部\n(10)');
     expect(T3.list.map((a) => s.text(a))).toEqual(Array.from({ length: 10 }, (_, i) => `員${i + 1}`));
   });
 
   it('工作人員不算在桌次的人數裡', () => {
     const s = read(sampleA());
-    expect(s.text(tableBlock(1).header)).toBe('第 1 桌\n主桌\n總經理室＋貴賓\n(3)');
-    expect(s.texts().filter((t) => t.startsWith('第 ') && t.includes('研發部'))).toEqual([]);
+    expect(s.text(tableBlock(1).header)).toBe('B1 桌\n主桌\n總經理室＋貴賓\n(3)');
+    expect(s.texts().filter((t) => /^[AB]\d{1,2} 桌\n/.test(t) && t.includes('研發部'))).toEqual([]);
   });
 });
 
@@ -287,7 +309,7 @@ describe('名單格（EXP-R10、EXP-R13、EXP-R14、EXP-Q01）', () => {
     expect(column('J', 21, 24).map((a) => s.text(a))).toEqual(['員丙', '員甲', '員乙', '']);
   });
 
-  // 第 3 桌依序坐這十位；J21–J30
+  // B4 桌（內部編號 3）依序坐這十位；J21–J30
   const CASES: [label: string, text: string, fill: string | null][] = [
     ['員工，沒有標記', '員甲', null],
     ['員工需要兒童椅', '員乙(+兒童椅)', 'childSeat'],
@@ -340,12 +362,12 @@ describe('工作人員區塊（EXP-R13、EXP-R14、EXP-R16、EXP-R20、EXP-Q03�
     return read(data.staff(names));
   };
 
-  it('EXP-AC12 沒有工作人員：K1:K10「工作人員↵(0)」，L1–L10 空白、有框線；張家豪坐在第 5 桌第 4 位', () => {
+  it('EXP-AC12 沒有工作人員：K1:K10「工作人員↵(0)」，L1–L10 空白、有框線；張家豪坐在 B10 桌第 4 位', () => {
     const s = read(sampleA().seat(5, ['張家豪']));
     expect(s.merge('K1')).toBe('K1:K10');
     expect(s.text('K1')).toBe('工作人員\n(0)');
     for (const a of column('L', 1, 10)) expect([a, s.text(a), s.border(a)]).toEqual([a, '', true]);
-    expect(s.text('I61')).toBe('第 5 桌\n業務部＋研發部\n(4)');
+    expect(s.text('I61')).toBe('B10 桌\n業務部＋研發部\n(4)');
     expect(s.text('J64')).toBe('張家豪');
   });
 
@@ -540,11 +562,11 @@ describe('未入座區塊（EXP-R17～R20、EXP-Q05 ①④）', () => {
 });
 
 describe('EXP-AC17 沒有任何參與人員', () => {
-  it('30 桌的標題格都是「第 n 桌↵空桌↵(0)」，位置照 3.3 節；K1:K10「工作人員↵(0)」；第 111 列以下沒有內容', () => {
+  it('30 桌的標題格都是「{桌號} 桌↵空桌↵(0)」，位置照 3.3 節；K1:K10「工作人員↵(0)」；第 111 列以下沒有內容', () => {
     const s = read(new SheetData());
     for (const n of TABLE_IDS) {
       const b = tableBlock(n);
-      expect([n, s.merge(b.header), s.text(b.header)]).toEqual([n, b.range, `第 ${n} 桌\n空桌\n(0)`]);
+      expect([n, s.merge(b.header), s.text(b.header)]).toEqual([n, b.range, `${headerTitle(n)}\n空桌\n(0)`]);
       for (const a of b.list) expect([a, s.text(a), s.border(a)]).toEqual([a, '', true]);
     }
     expect(s.merge('K1')).toBe('K1:K10');
@@ -563,7 +585,7 @@ describe('與頁面的搜尋、篩選、資料先後無關（EXP-R02、EXP-AC18�
 
 // ---- EXP-R23：有桌次 11、12 位（seating.md SEAT-R02，D-018） ----
 
-/** 加 count 位員工（姓名 prefix1…prefixN），依序坐第 table 桌；回傳姓名 */
+/** 加 count 位員工（姓名 prefix1…prefixN），依序坐內部編號 table 的桌；回傳姓名 */
 function seatNew(data: SheetData, table: number, prefix: string, count: number, department = '業務部'): string[] {
   const names = Array.from({ length: count }, (_, i) => `${prefix}${i + 1}`);
   for (const name of names) data.employee(name, department);
@@ -571,8 +593,8 @@ function seatNew(data: SheetData, table: number, prefix: string, count: number, 
   return names;
 }
 
-describe('EXP-AC22 資料甲，第 1 桌有 11 位（EXP-R23）', () => {
-  // 資料甲的第 1 桌原本 3 位；再坐 8 位總經理室的員工成為 11 位（等同把 1 位拖進 10 位的第 1 桌）。另有 1 位未入座的「未甲」。
+describe('EXP-AC22 資料甲，B1 桌有 11 位（EXP-R23）', () => {
+  // 資料甲的 B1 桌（內部編號 1）原本 3 位；再坐 8 位總經理室的員工成為 11 位（等同把 1 位拖進 10 位的 B1 桌）。另有 1 位未入座的「未甲」。
   const sheet = lazy(() => {
     const data = sampleA();
     seatNew(data, 1, '總', 8, '總經理室');
@@ -581,14 +603,14 @@ describe('EXP-AC22 資料甲，第 1 桌有 11 位（EXP-R23）', () => {
   });
   const layout = overflowLayout([1]);
 
-  it('第 1 桌在第 1 段：G1:G12 合併「第 1 桌↵主桌↵總經理室＋貴賓↵(11)」，人數照實寫，仍是標題底色', () => {
+  it('B1 桌在第 1 段：G1:G12 合併「B1 桌↵主桌↵總經理室＋貴賓↵(11)」，人數照實寫，仍是標題底色', () => {
     const s = sheet();
     expect(s.merge('G1')).toBe('G1:G12');
-    expect(s.text('G1')).toBe('第 1 桌\n主桌\n總經理室＋貴賓\n(11)');
+    expect(s.text('G1')).toBe('B1 桌\n主桌\n總經理室＋貴賓\n(11)');
     expect([s.fill('G1'), s.border('G1')]).toEqual(['header', true]);
   });
 
-  it('第 1 桌的名單放到第 11 位：H1–H11 依座位順序，H12 空白、有框線', () => {
+  it('B1 桌的名單放到第 11 位：H1–H11 依座位順序，H12 空白、有框線', () => {
     const s = sheet();
     expect(column('H', 1, 11).map((a) => s.text(a))).toEqual([
       '王大同',
@@ -601,21 +623,21 @@ describe('EXP-AC22 資料甲，第 1 桌有 11 位（EXP-R23）', () => {
     for (const a of column('H', 1, 12)) expect([a, s.border(a)]).toEqual([a, true]);
   });
 
-  it('同一段的第 2 桌也是十二列：D1:D12「第 2 桌↵空桌↵(0)」，E1–E12 空白、有框線', () => {
+  it('同一段的 A1 桌也是十二列：D1:D12「A1 桌↵空桌↵(0)」，E1–E12 空白、有框線', () => {
     const s = sheet();
     expect(s.merge('D1')).toBe('D1:D12');
-    expect(s.text('D1')).toBe('第 2 桌\n空桌\n(0)');
+    expect(s.text('D1')).toBe('A1 桌\n空桌\n(0)');
     for (const a of column('E', 1, 12)) expect([a, s.text(a), s.border(a)]).toEqual([a, '', true]);
   });
 
-  it('其他段仍是十列、往下移兩列：第 22 桌 C13:C22（D13 吳協理）、第 7 桌 H13:H22、第 5 桌 I63:I72、第 16 桌 G103:G112', () => {
+  it('其他段仍是十列、往下移兩列：A2 桌 C13:C22（D13 吳協理）、B2 桌 H13:H22、B10 桌 I63:I72、B15 桌 G103:G112', () => {
     const s = sheet();
     expect(s.merge('C13')).toBe('C13:C22');
-    expect(s.text('C13')).toBe('第 22 桌\n客戶貴賓\n貴賓\n(1)');
+    expect(s.text('C13')).toBe('A2 桌\n客戶貴賓\n貴賓\n(1)');
     expect([s.text('D13'), s.fill('D13')]).toEqual(['吳協理', 'guest']);
     expect(s.merge('H13')).toBe('H13:H22');
     expect(s.merge('I63')).toBe('I63:I72');
-    expect(s.text('I63')).toBe('第 5 桌\n業務部\n(3)');
+    expect(s.text('I63')).toBe('B10 桌\n業務部\n(3)');
     expect([s.text('J63'), s.text('J64'), s.text('J65')]).toEqual(['陳志明', '陳志明_眷屬(+兒童椅)', '林美玲(素食)']);
     expect(s.merge('G103')).toBe('G103:G112');
     expect(s.merge('D103')).toBe('D103:D112');
@@ -624,11 +646,11 @@ describe('EXP-AC22 資料甲，第 1 桌有 11 位（EXP-R23）', () => {
     expect(s.merge('I61')).toBeUndefined();
   });
 
-  it.each(TABLE_IDS)('第 %i 桌：標題格與合併範圍照 EXP-R23 移動，名單格都有框線', (n) => {
+  it.each(TABLE_IDS)('內部編號 %i 的桌：標題格與合併範圍照 EXP-R23 移動，第一行是桌號，名單格都有框線', (n) => {
     const s = sheet();
     const b = layout.block(n);
     expect([n, s.merge(b.header)]).toEqual([n, b.range]);
-    expect(s.text(b.header).startsWith(`第 ${n} 桌\n`)).toBe(true);
+    expect(s.text(b.header).startsWith(`${headerTitle(n)}\n`)).toBe(true);
     expect(s.fill(b.header)).toBe('header');
     expect(b.list).toHaveLength(segmentOf(n) === 1 ? 12 : 10);
     for (const a of b.list) expect([n, a, s.border(a)]).toEqual([n, a, true]);
@@ -680,20 +702,20 @@ describe('EXP-AC22 資料甲，第 1 桌有 11 位（EXP-R23）', () => {
 });
 
 describe('EXP-R23 各種超過的情況', () => {
-  it('第 1 桌 12 位：標題「(12)」，名單放到 H12', () => {
+  it('B1 桌 12 位：標題「(12)」，名單放到 H12', () => {
     const data = new SheetData();
     const names = seatNew(data, 1, '員', 12);
     const s = read(data);
     expect(s.merge('G1')).toBe('G1:G12');
-    expect(s.text('G1')).toBe('第 1 桌\n業務部\n(12)');
+    expect(s.text('G1')).toBe('B1 桌\n業務部\n(12)');
     expect(column('H', 1, 12).map((a) => s.text(a))).toEqual(names);
-    // 第 2 段從第 13 列開始：H13 是第 7 桌的標題格
+    // 第 2 段從第 13 列開始：H13 是 B2 桌（內部編號 7）的標題格
     expect(s.merge('H13')).toBe('H13:H22');
-    expect(s.text('H13')).toBe('第 7 桌\n空桌\n(0)');
+    expect(s.text('H13')).toBe('B2 桌\n空桌\n(0)');
     expect(s.merge('C13')).toBe('C13:C22');
   });
 
-  it('多段超過：第 3 段（第 3 桌 12 位）與第 7 段（第 19 桌 11 位）各改為十二列，下面的列各往下移兩列，共四列', () => {
+  it('多段超過：第 3 段（B4 桌 12 位）與第 7 段（A9 桌 11 位）各改為十二列，下面的列各往下移兩列，共四列', () => {
     const data = new SheetData();
     const t3 = seatNew(data, 3, '三', 12);
     const t19 = seatNew(data, 19, '十九', 11);
@@ -713,7 +735,7 @@ describe('EXP-R23 各種超過的情況', () => {
     expect(column('J', 21, 32).map((a) => s.text(a))).toEqual(t3);
     expect(column('E', 63, 73).map((a) => s.text(a))).toEqual(t19);
     expect([s.text('E74'), s.border('E74')]).toEqual(['', true]);
-    expect(s.text('D63')).toBe('第 19 桌\n業務部\n(11)');
+    expect(s.text('D63')).toBe('A9 桌\n業務部\n(11)');
 
     for (const n of TABLE_IDS) expect([n, s.merge(layout.block(n).header)]).toEqual([n, layout.block(n).range]);
     expect(layout.blankRow).toBe(115);
@@ -725,7 +747,7 @@ describe('EXP-R23 各種超過的情況', () => {
     expect(s.merge('C11')).toBe('C11:C20');
   });
 
-  it('同一段的兩桌都超過（第 1 桌 11 位、第 2 桌 12 位）：這一段只改為十二列一次，下面只往下移兩列', () => {
+  it('同一段的兩桌都超過（B1 桌 11 位、A1 桌 12 位）：這一段只改為十二列一次，下面只往下移兩列', () => {
     const data = new SheetData();
     seatNew(data, 1, '一', 11);
     seatNew(data, 2, '二', 12);
@@ -733,14 +755,14 @@ describe('EXP-R23 各種超過的情況', () => {
     const s = read(data);
     expect(s.merge('G1')).toBe('G1:G12');
     expect(s.merge('D1')).toBe('D1:D12');
-    expect(s.text('G1')).toBe('第 1 桌\n業務部\n(11)');
-    expect(s.text('D1')).toBe('第 2 桌\n業務部\n(12)');
+    expect(s.text('G1')).toBe('B1 桌\n業務部\n(11)');
+    expect(s.text('D1')).toBe('A1 桌\n業務部\n(12)');
     expect(s.merge('C13')).toBe('C13:C22');
     expect(s.merge('B114')).toBe('B114:B123');
     expect(s.text('C114')).toBe('未甲');
   });
 
-  it('超過的是最後一段（第 16 桌 11 位）：第 11 段 G101:G112、D101:D112；空白列 113，未入座區塊從第 114 列起（超過的段在未入座區塊之前）', () => {
+  it('超過的是最後一段（B15 桌 11 位）：第 11 段 G101:G112、D101:D112；空白列 113，未入座區塊從第 114 列起（超過的段在未入座區塊之前）', () => {
     const data = new SheetData();
     seatNew(data, 16, '十六', 11);
     data.employee('未甲', '業務部');
@@ -802,15 +824,15 @@ describe('EXP-R23 各種超過的情況', () => {
 });
 
 describe('EXP-AC23 沒有桌次超過 10 位：版面不變（EXP-R23）', () => {
-  it('第 1 桌剛好 10 位：仍是 G1:G10，第 2 段從第 11 列開始，未入座從第 112 列開始', () => {
+  it('B1 桌剛好 10 位：仍是 G1:G10，第 2 段從第 11 列開始，未入座從第 112 列開始', () => {
     const data = new SheetData();
     const names = seatNew(data, 1, '員', 10);
     data.employee('未甲', '業務部');
     const s = read(data);
     expect(s.merge('G1')).toBe('G1:G10');
-    expect(s.text('G1')).toBe('第 1 桌\n業務部\n(10)');
+    expect(s.text('G1')).toBe('B1 桌\n業務部\n(10)');
     expect(column('H', 1, 10).map((a) => s.text(a))).toEqual(names);
-    // 第 11 列已經是第 2 段：H11 是第 7 桌的標題格
+    // 第 11 列已經是第 2 段：H11 是 B2 桌（內部編號 7）的標題格
     expect(s.merge('H11')).toBe('H11:H20');
     expect(s.merge('C11')).toBe('C11:C20');
     expect(s.merge('B112')).toBe('B112:B121');

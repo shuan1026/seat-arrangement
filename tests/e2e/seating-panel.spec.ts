@@ -1,6 +1,7 @@
 // 人員面板與找人：docs/spec/seating.md 2.2、4.2；SEAT-R52～R62；SEAT-AC50～AC64；
 // docs/spec/README.md COM-R11、COM-R14、COM-AC14。
 // 面板的列表、搜尋、篩選、空狀態、列操作在桌面與手機（「人員」分頁）都測；找人與面板收合只在桌面測。
+// 桌號 A1～A15、B1～B15（D-019）：測試資料用內部編號（3 = B4、12 = B3），畫面上的字用桌號。
 import { expect, test, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
@@ -20,6 +21,7 @@ import {
   seatMap,
   showPeople,
   tableButton,
+  titleFor,
   toolbarButton,
 } from './helpers/seating-page';
 
@@ -63,17 +65,40 @@ test.describe('分頁（SEAT-R53、SEAT-R47）', () => {
     await expect(personRow(page, '工作甲')).toHaveCount(1);
   });
 
-  test('「全部」分頁第二行右側：已入座「第 {n} 桌」、未入座「未入座」、工作人員「工作人員」（SEAT-R57）', async ({ page }) => {
+  test('「全部」分頁第二行右側：已入座「{桌號}」（例如「B4」，不加「桌」）、未入座「未入座」、工作人員「工作人員」（SEAT-R57、SEAT-R04）', async ({
+    page,
+  }) => {
     await seed(async (s) => {
-      await s.employee('王小明', { tableId: 3 });
+      await s.employee('王小明', { tableId: 3 }); // B4 桌
       await s.employee('李小華');
       await s.staff('工作甲');
     });
     await open(page);
     await panelTab(page, '全部').click();
-    await expect(personRow(page, '王小明').getByRole('button', { name: '第 3 桌', exact: true })).toBeVisible();
+    const badge = personRow(page, '王小明').getByRole('button', { name: 'B4', exact: true });
+    await expect(badge).toBeVisible();
+    await expect(badge).toHaveText('B4');
     await expect(personRow(page, '李小華')).toContainText('未入座');
     await expect(personRow(page, '工作甲')).toContainText('工作人員');
+  });
+
+  test('桌號徽章：A1 與 A10～A15、B1 與 B10～B15 各自顯示自己的桌號（SEAT-R57、D-019）', async ({ page }) => {
+    await seed(async (s) => {
+      await s.employee('甲', { tableId: 2 }); // A1
+      await s.employee('乙', { tableId: 29 }); // A10
+      await s.employee('丙', { tableId: 1 }); // B1
+      await s.employee('丁', { tableId: 16 }); // B15
+    });
+    await open(page);
+    await panelTab(page, '全部').click();
+    for (const [name, code] of [
+      ['甲', 'A1'],
+      ['乙', 'A10'],
+      ['丙', 'B1'],
+      ['丁', 'B15'],
+    ] as const) {
+      await expect(personRow(page, name).getByRole('button', { name: code, exact: true }), `${name}：${code}`).toHaveText(code);
+    }
   });
 
   test('只列參與人員：員工名單上還沒報名的人不會出現（SEAT-R52）', async ({ page }) => {
@@ -219,16 +244,16 @@ test.describe('搜尋與篩選（SEAT-R54、SEAT-R55）', () => {
 });
 
 test.describe('空狀態（SEAT-R59、SEAT-R60）', () => {
-  test('「未入座」搜尋到 1 位已入座的人：「{顯示名稱} 已入座，在第 {n} 桌。」；按「在全部中查看」切到「全部」、保留搜尋字（SEAT-AC53）', async ({
+  test('「未入座」搜尋到 1 位已入座的人：「{顯示名稱} 已入座，在 {桌號} 桌。」；按「在全部中查看」切到「全部」、保留搜尋字（SEAT-AC53）', async ({
     page,
   }) => {
     await seed(async (s) => {
-      await s.employee('王小明', { tableId: 3 });
+      await s.employee('王小明', { tableId: 3 }); // B4 桌
       await s.employee('李小華');
     });
     await open(page);
     await panelSearch(page).fill('王小明');
-    await expect(peoplePanel(page).getByText('王小明 已入座，在第 3 桌。')).toBeVisible();
+    await expect(peoplePanel(page).getByText('王小明 已入座，在 B4 桌。')).toBeVisible();
     await peoplePanel(page).getByRole('button', { name: '在全部中查看' }).click();
     await expect(panelTab(page, '全部')).toHaveAttribute('aria-selected', 'true');
     await expect(panelSearch(page)).toHaveValue('王小明');
@@ -296,10 +321,10 @@ test.describe('空狀態（SEAT-R59、SEAT-R60）', () => {
     });
     await openSeating(page);
     await expectStats(page, { seated: 0, total: 0, unseated: 0, empty: 300, full: 0 });
-    for (let n = 1; n <= 30; n++) await expect(mapTable(page, n), `第 ${n} 桌`).toContainText('0/10');
+    for (let n = 1; n <= 30; n++) await expect(mapTable(page, n), titleFor(n)).toContainText('0/10');
     if (!isMobileWidth(page)) {
       await toolbarButton(page, '全部展開').click();
-      for (let n = 1; n <= 30; n++) await expect(mapTable(page, n), `第 ${n} 桌`).toContainText('空桌');
+      for (let n = 1; n <= 30; n++) await expect(mapTable(page, n), titleFor(n)).toContainText('空桌');
     }
 
     await showPeople(page);
@@ -325,33 +350,33 @@ test.describe('空狀態（SEAT-R59、SEAT-R60）', () => {
 });
 
 test.describe('找人（SEAT-R62）', () => {
-  test('按「全部」分頁的「第 12 桌」：座位圖捲到第 12 桌、2 px --accent 邊框 4 秒後恢復；詳情打開時第 12 桌不被蓋住（SEAT-AC60）', async ({
+  test('按「全部」分頁的「B3」：座位圖捲到 B3 桌、2 px --accent 邊框 4 秒後恢復；詳情打開時 B3 桌不被蓋住（SEAT-AC60）', async ({
     page,
   }) => {
     desktopOnly(page);
     await seed(async (s) => {
-      await s.employee('王小明', { tableId: 12 });
-      await s.fill(3, 1);
+      await s.employee('王小明', { tableId: 12 }); // B3 桌
+      await s.fill(3, 1); // B4 桌
     });
     await openSeating(page);
     for (let i = 0; i < 25; i++) await toolbarButton(page, '放大').click();
     await panelTab(page, '全部').click();
 
-    await personRow(page, '王小明').getByRole('button', { name: '第 12 桌', exact: true }).click();
+    await personRow(page, '王小明').getByRole('button', { name: 'B3', exact: true }).click();
     await expect.poll(() => isInside(mapTable(page, 12), seatMap(page))).toBe(true);
     await expect.poll(() => hasBorderColor(page, mapTable(page, 12), '--accent', '2px')).toBe(true);
     await expect.poll(() => hasBorderColor(page, mapTable(page, 12), '--accent', '2px'), { timeout: 7000 }).toBe(false);
 
     await openTableDetail(page, 3);
-    await personRow(page, '王小明').getByRole('button', { name: '第 12 桌', exact: true }).click();
+    await personRow(page, '王小明').getByRole('button', { name: 'B3', exact: true }).click();
     await expect.poll(() => isInside(mapTable(page, 12), seatMap(page))).toBe(true);
     const table = await mapTable(page, 12).boundingBox();
     const detail = await page
-      .getByRole('region', { name: '第 3 桌', exact: true })
-      .or(page.getByRole('dialog', { name: '第 3 桌', exact: true }))
+      .getByRole('region', { name: 'B4 桌', exact: true })
+      .or(page.getByRole('dialog', { name: 'B4 桌', exact: true }))
       .boundingBox();
-    if (!table || !detail) throw new Error('量不到第 12 桌或詳情');
-    expect(table.x + table.width <= detail.x || table.x >= detail.x + detail.width, '第 12 桌不被詳情蓋住').toBe(true);
+    if (!table || !detail) throw new Error('量不到 B3 桌或詳情');
+    expect(table.x + table.width <= detail.x || table.x >= detail.x + detail.width, 'B3 桌不被詳情蓋住').toBe(true);
   });
 });
 

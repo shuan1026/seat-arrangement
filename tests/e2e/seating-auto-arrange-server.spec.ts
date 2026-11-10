@@ -5,6 +5,8 @@
 // docs/spec/seating.md SEAT-R75（統計列）、SEAT-R76、SEAT-R78、SEAT-R85。
 // C 線原本用 page.route 攔截、回傳假結果的 E2E（seating-auto-arrange.spec.ts）保留不動；排座規則的細節在單元與整合測試。
 // 資料用 tests/e2e/helpers/seating-data.ts 直接寫進測試資料庫，都是虛構資料；員工名單順序就是建立的順序。
+// D-019：測試資料用內部編號（1 = B1、2 = A1、3 = B4、4 = B7、29 = A10、30 = A13），填桌順序就是內部編號的順序；
+// Sonner 寫桌數「已把 {n} 位安排到 {k} 桌。」（ARR-R14）。
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
@@ -59,7 +61,7 @@ async function seedTwoDepartments() {
 }
 
 test.describe('只排未入座（ARR-R03、ARR-R13、ARR-R14）', () => {
-  test('ARR-AC02：對話框「只排未入座的 14 位」→ 開始排座 → 第 1 桌業1–業7、研1–研3，第 2 桌研4–研7；Sonner「已把 14 位安排到第 1–2 桌。」帶「復原」；座位圖與統計列立即更新、重新整理後仍在', async ({
+  test('ARR-AC02：對話框「只排未入座的 14 位」→ 開始排座 → B1 桌業1–業7、研1–研3，A1 桌研4–研7；Sonner「已把 14 位安排到 2 桌。」帶「復原」；座位圖與統計列立即更新、重新整理後仍在', async ({
     page,
   }) => {
     await seedTwoDepartments();
@@ -71,7 +73,7 @@ test.describe('只排未入座（ARR-R03、ARR-R13、ARR-R14）', () => {
     await expect(dialog.getByRole('radio', { name: '清空後重排（有備註名稱的 0 桌不動）' })).toBeVisible();
     await start(page, dialog);
 
-    await expectToast(page, '已把 14 位安排到第 1–2 桌。', { undo: true });
+    await expectToast(page, '已把 14 位安排到 2 桌。', { undo: true });
     await expectStats(page, { seated: 14, total: 14, unseated: 0, empty: 286, full: 1 });
     await expect(mapTable(page, 1)).toContainText('已滿');
     await expect(mapTable(page, 2)).toContainText('4/10');
@@ -88,10 +90,10 @@ test.describe('只排未入座（ARR-R03、ARR-R13、ARR-R14）', () => {
     await seedTwoDepartments();
     await openSeating(page);
     await start(page, await openDialog(page));
-    await expectToast(page, '已把 14 位安排到第 1–2 桌。', { undo: true });
+    await expectToast(page, '已把 14 位安排到 2 桌。', { undo: true });
 
     const restored = waitForOperation(page);
-    await clickUndo(page, '已把 14 位安排到第 1–2 桌。');
+    await clickUndo(page, '已把 14 位安排到 2 桌。');
     expect((await restored).status()).toBe(200);
     await expectToast(page, '已復原。', { undo: false });
     await expectStats(page, { seated: 0, total: 14, unseated: 14, empty: 300, full: 0 });
@@ -100,7 +102,7 @@ test.describe('只排未入座（ARR-R03、ARR-R13、ARR-R14）', () => {
     expect(await rosterNames(2)).toEqual([]);
   });
 
-  test('ARR-AC08：主桌有外部貴賓、第 3 桌已坐滿 → 對話框「只排未入座的 3 位」「清空後重排（有備註名稱的 1 桌不動）」；排完第 2 桌研1–研8、業1、業2，第 4 桌業3，賓4 仍未入座；Sonner「已把 3 位安排到第 2–4 桌。」', async ({
+  test('ARR-AC08：主桌有外部貴賓、B4 桌已坐滿 → 對話框「只排未入座的 3 位」「清空後重排（有備註名稱的 1 桌不動）」；排完 A1 桌研1–研8、業1、業2，B7 桌業3，賓4 仍未入座；Sonner「已把 3 位安排到 2 桌。」', async ({
     page,
   }) => {
     desktopOnly(page);
@@ -119,7 +121,7 @@ test.describe('只排未入座（ARR-R03、ARR-R13、ARR-R14）', () => {
     await expect(dialog.getByRole('radio', { name: '清空後重排（有備註名稱的 1 桌不動）' })).toBeVisible();
     await start(page, dialog);
 
-    await expectToast(page, '已把 3 位安排到第 2–4 桌。', { undo: true });
+    await expectToast(page, '已把 3 位安排到 2 桌。', { undo: true });
     expect(await rosterNames(1)).toEqual(['賓1', '賓2', '賓3']);
     expect(await rosterNames(2)).toEqual([...range('研', 1, 8), '業1', '業2']);
     expect(await rosterNames(3)).toEqual(range('行', 1, 10));
@@ -128,7 +130,7 @@ test.describe('只排未入座（ARR-R03、ARR-R13、ARR-R14）', () => {
     expect(await noteNameOf(1)).toBe('主桌');
   });
 
-  test('ARR-AC13：空位不夠 → Sonner「已把 3 位安排到第 29–30 桌，還有 4 位排不下，留在未入座。」帶「復原」；研1–研4 留在未入座（ARR-R11、ARR-R14）', async ({
+  test('ARR-AC13：空位不夠 → Sonner「已把 3 位安排到 2 桌，還有 4 位排不下，留在未入座。」帶「復原」；研1–研4 留在未入座（ARR-R11、ARR-R14）', async ({
     page,
   }) => {
     desktopOnly(page);
@@ -142,7 +144,7 @@ test.describe('只排未入座（ARR-R03、ARR-R13、ARR-R14）', () => {
     await openSeating(page);
     await start(page, await openDialog(page));
 
-    await expectToast(page, '已把 3 位安排到第 29–30 桌，還有 4 位排不下，留在未入座。', { undo: true });
+    await expectToast(page, '已把 3 位安排到 2 桌，還有 4 位排不下，留在未入座。', { undo: true });
     expect(await rosterNames(29)).toEqual([...range('行', 1, 8), '業1', '業2']);
     expect(await rosterNames(30)).toEqual([...range('行', 9, 17), '業3']);
     await expectStats(page, { seated: 20, total: 24, unseated: 4, empty: 280, full: 2 });
@@ -162,20 +164,20 @@ test.describe('只排未入座（ARR-R03、ARR-R13、ARR-R14）', () => {
     expect(await rosterNames(1)).toEqual(range('佔1-', 1, 10));
   });
 
-  test('只排進一桌：Sonner「已把 2 位安排到第 1 桌。」（ARR-Q03 的目前假設、ARR-AC15）', async ({ page }) => {
+  test('只排進一桌：Sonner「已把 2 位安排到 1 桌。」（ARR-Q03 的目前假設、ARR-AC15）', async ({ page }) => {
     desktopOnly(page);
     await seed(async (s) => {
       await people(s, ['業1', '業2'], { department: '業務部' });
     });
     await openSeating(page);
     await start(page, await openDialog(page));
-    await expectToast(page, '已把 2 位安排到第 1 桌。', { undo: true });
+    await expectToast(page, '已把 2 位安排到 1 桌。', { undo: true });
     expect(await rosterNames(1)).toEqual(['業1', '業2']);
   });
 });
 
 test.describe('清空後重排（ARR-R04、ARR-R12）', () => {
-  /** ARR-AC09：第 1 桌「主桌」業1、業2、賓1；第 2 桌賓2、研1–研9；第 3 桌「供應商」沒有人；第 4 桌業3；研10 未入座 */
+  /** ARR-AC09：B1 桌（1）「主桌」業1、業2、賓1；A1 桌（2）賓2、研1–研9；B4 桌（3）「供應商」沒有人；B7 桌（4）業3；研10 未入座 */
   async function seedRebuild() {
     await seed(async (s) => {
       await s.noteName(1, '主桌');
@@ -190,7 +192,7 @@ test.describe('清空後重排（ARR-R04、ARR-R12）', () => {
     });
   }
 
-  test('ARR-AC09：對話框「只排未入座的 1 位」「清空後重排（有備註名稱的 2 桌不動）」；選「清空後重排」→ 第 1 桌不變、第 2 桌業3、研1–研9、第 4 桌研10、賓2 回到未入座；Sonner「已把 11 位安排到第 2–4 桌。」', async ({
+  test('ARR-AC09：對話框「只排未入座的 1 位」「清空後重排（有備註名稱的 2 桌不動）」；選「清空後重排」→ B1 桌不變、A1 桌業3、研1–研9、B7 桌研10、賓2 回到未入座；Sonner「已把 11 位安排到 2 桌。」', async ({
     page,
   }) => {
     desktopOnly(page);
@@ -203,7 +205,7 @@ test.describe('清空後重排（ARR-R04、ARR-R12）', () => {
     await rebuild.check();
     await start(page, dialog);
 
-    await expectToast(page, '已把 11 位安排到第 2–4 桌。', { undo: true });
+    await expectToast(page, '已把 11 位安排到 2 桌。', { undo: true });
     expect(await rosterNames(1)).toEqual(['業1', '業2', '賓1']);
     expect(await rosterNames(2)).toEqual(['業3', ...range('研', 1, 9)]);
     expect(await rosterNames(3)).toEqual([]);
@@ -213,7 +215,7 @@ test.describe('清空後重排（ARR-R04、ARR-R12）', () => {
     expect(await noteNameOf(2)).toBeNull();
   });
 
-  test('ARR-AC10：ARR-AC09 排完後按「復原」→ 第 2 桌回到賓2、研1–研9（順序和排座前相同），第 4 桌回到業3，研10 回到未入座；Sonner「已復原。」', async ({
+  test('ARR-AC10：ARR-AC09 排完後按「復原」→ A1 桌回到賓2、研1–研9（順序和排座前相同），B7 桌回到業3，研10 回到未入座；Sonner「已復原。」', async ({
     page,
   }) => {
     desktopOnly(page);
@@ -222,9 +224,9 @@ test.describe('清空後重排（ARR-R04、ARR-R12）', () => {
     const dialog = await openDialog(page);
     await dialog.getByRole('radio', { name: '清空後重排（有備註名稱的 2 桌不動）' }).check();
     await start(page, dialog);
-    await expectToast(page, '已把 11 位安排到第 2–4 桌。', { undo: true });
+    await expectToast(page, '已把 11 位安排到 2 桌。', { undo: true });
 
-    await clickUndo(page, '已把 11 位安排到第 2–4 桌。');
+    await clickUndo(page, '已把 11 位安排到 2 桌。');
     await expectToast(page, '已復原。', { undo: false });
     await expect.poll(() => rosterNames(2)).toEqual(['賓2', ...range('研', 1, 9)]);
     expect(await rosterNames(4)).toEqual(['業3']);
@@ -241,7 +243,7 @@ test.describe('手機（auto-arrange.md 2.4、ARR-AC18）', () => {
     await openSeating(page);
     await start(page, await openDialog(page));
 
-    await expectToast(page, '已把 14 位安排到第 1–2 桌。', { undo: true });
+    await expectToast(page, '已把 14 位安排到 2 桌。', { undo: true });
     expect(await rosterNames(1)).toEqual([...range('業', 1, 7), ...range('研', 1, 3)]);
     expect(await rosterNames(2)).toEqual(range('研', 4, 7));
   });

@@ -1,11 +1,14 @@
 // 自動排座的排座規則：docs/spec/auto-arrange.md 第 3 節（ARR-R01～ARR-R17；ARR-R17 每桌最多排到 10 位，D-018）與第 5.1 節小型資料的驗收條件
 // （ARR-AC01～AC09、AC11～AC16、AC21、AC22）。員工與眷屬一定同桌依 D-009；待確認依 D-008 照目前假設
-// （ARR-Q02 一位都沒排進去時座位都不變、ARR-Q03 只排進一桌、ARR-Q05 部門順序、ARR-Q06 只看桌號與空位）。
+// （ARR-Q02 一位都沒排進去時座位都不變、ARR-Q03 只排進一桌、ARR-Q05 部門順序、ARR-Q06 只看填桌順序與空位）。
 // 5.2 節的示範資料（ARR-AC19、AC20）在 auto-arrange-2026.test.ts。
 //
 // 不在這裡：第 2 節的對話框（ARR-AC16 的選項停用、AC17 取消、AC18 手機版面）、Sonner 的文字與「復原」（ARR-AC10、ARR-R13
-// 的復原由座位異動 API 的 restore 處理）。Sonner 文字由摘要組成，這裡驗摘要：summary.placed 是 {n}、tableIds 的最小與最大是
-// {a}、{b}、left 是 {m}；對話框的「只排未入座的 {n} 位」等於只排未入座時的 placed + left（ARR-R15）。
+// 的復原由座位異動 API 的 restore 處理）。Sonner 文字由摘要組成，這裡驗摘要：summary.placed 是 {n}、tableIds 的個數是
+// {k}（有排進人的桌數，D-019）、left 是 {m}；文字本身見 auto-arrange-message.test.ts。對話框的「只排未入座的 {n} 位」等於只排未入座時的
+// placed + left（ARR-R15）。
+// 桌次用內部編號：填桌順序就是內部編號 1、2、3…30 的順序（規格寫成 B1、A1、B4…A13，D-019），所以規格例子裡的
+// B1、A1、B4、B7 桌在這裡是 1、2、3、4（對應見 tests/helpers/table-codes.ts）。
 //
 // 受測介面與每次執行都檢查的共同條件見 tests/helpers/auto-arrange-scenario.ts。
 // 姓名都是虛構的代號（業1、研1、行1、賓1…），員工名單依加入的先後。
@@ -30,7 +33,7 @@ describe('第 5.1 節小型資料的驗收條件', () => {
     expect(o.summary).toEqual({ placed: 7, tableIds: [1], left: 0 });
   });
 
-  it('ARR-AC02 一個部門排完剩下的空位由後面部門的人併桌：「已把 14 位安排到第 1–2 桌。」（ARR-R05、R07、R10、R14）', () => {
+  it('ARR-AC02 一個部門排完剩下的空位由後面部門的人併桌：「已把 14 位安排到 2 桌。」（ARR-R05、R07、R10、R14）', () => {
     const s = new Scenario().addGroup('業務部', null, range('業', 1, 7)).addGroup('研發部', null, range('研', 1, 7));
 
     const o = s.run('unseatedOnly');
@@ -40,7 +43,7 @@ describe('第 5.1 節小型資料的驗收條件', () => {
     expect(o.summary).toEqual({ placed: 14, tableIds: [1, 2], left: 0 });
   });
 
-  it('ARR-AC03 一組 12 人超過一桌：拆成 10 人與 2 人，「已把 12 位安排到第 1–2 桌。」（ARR-R09、R14）', () => {
+  it('ARR-AC03 一組 12 人超過一桌：拆成 10 人與 2 人，「已把 12 位安排到 2 桌。」（ARR-R09、R14）', () => {
     const s = new Scenario().addGroup('研發部', '前端組', range('研', 1, 12));
 
     const o = s.run('unseatedOnly');
@@ -63,7 +66,7 @@ describe('第 5.1 節小型資料的驗收條件', () => {
     expect(o.summary).toEqual({ placed: 16, tableIds: [1, 2], left: 0 });
   });
 
-  it('ARR-AC05 同部門排得進的單位取順序上最近的；同部門沒有才取後面部門的，「已把 17 位安排到第 1–2 桌。」（ARR-R08）', () => {
+  it('ARR-AC05 同部門排得進的單位取順序上最近的；同部門沒有才取後面部門的，「已把 17 位安排到 2 桌。」（ARR-R08）', () => {
     const s = new Scenario()
       .addGroup('業務部', '北區組', range('北', 1, 6))
       .addGroup('業務部', '南區組', range('南', 1, 5))
@@ -78,7 +81,7 @@ describe('第 5.1 節小型資料的驗收條件', () => {
     expect(o.summary).toEqual({ placed: 17, tableIds: [1, 2], left: 0 });
   });
 
-  it('ARR-AC06 剩 1 個空位：員工與眷屬 2 人的單位排不進，由後面 1 人的單位補，「已把 3 位安排到第 1–2 桌。」（ARR-R05、R06、R08）', () => {
+  it('ARR-AC06 剩 1 個空位：員工與眷屬 2 人的單位排不進，由後面 1 人的單位補，「已把 3 位安排到 2 桌。」（ARR-R05、R06、R08）', () => {
     const s = new Scenario()
       .addGroup('行政部', null, range('行', 1, 9))
       .addEmployee('業1', '業務部', null, { dependent: true })
@@ -108,7 +111,7 @@ describe('第 5.1 節小型資料的驗收條件', () => {
     expect(o.summary).toEqual({ placed: 3, tableIds: [1, 2], left: 0 });
   });
 
-  it('ARR-AC08 只排未入座：有備註名稱的桌不用、坐滿的桌跳過、外部貴賓不排，「已把 3 位安排到第 2–4 桌。」（ARR-R01～R03、R09、R14、R15）', () => {
+  it('ARR-AC08 只排未入座：有備註名稱的桌不用、坐滿的桌跳過、外部貴賓不排，「已把 3 位安排到 2 桌。」（A1、B7 桌）（ARR-R01～R03、R09、R14、R15）', () => {
     const s = new Scenario()
       .addGroup('研發部', null, range('研', 1, 8))
       .addGroup('行政部', null, range('行', 1, 10))
@@ -135,7 +138,7 @@ describe('第 5.1 節小型資料的驗收條件', () => {
     expect(o.summary).toEqual({ placed: 3, tableIds: [2, 4], left: 0 });
   });
 
-  it('ARR-AC09 清空後重排：有備註名稱的桌與桌上的人不動，可用桌上的外部貴賓回到未入座，「已把 11 位安排到第 2–4 桌。」（ARR-R02、R04、R05、R12、R14）', () => {
+  it('ARR-AC09 清空後重排：有備註名稱的桌與桌上的人不動，可用桌上的外部貴賓回到未入座，「已把 11 位安排到 2 桌。」（A1、B7 桌）（ARR-R02、R04、R05、R12、R14）', () => {
     const s = new Scenario()
       .addGroup('業務部', null, range('業', 1, 3))
       .addGroup('研發部', null, range('研', 1, 10))
@@ -155,7 +158,7 @@ describe('第 5.1 節小型資料的驗收條件', () => {
     expect(o.table(4)).toEqual(['研10']);
     expect(o.position('賓2')).toEqual({ tableId: null, seatOrder: null });
     expect(o.summary).toEqual({ placed: 11, tableIds: [2, 4], left: 0 });
-    // 研1–研9 重排後仍在第 2 桌的同一個位子，不列在 changes；回到未入座的賓2 要列（復原時才回得去，ARR-R13、ARR-AC10）
+    // 研1–研9 重排後仍在 A1 桌（內部編號 2）的同一個位子，不列在 changes；回到未入座的賓2 要列（復原時才回得去，ARR-R13、ARR-AC10）
     expect(o.changedNames()).toEqual(['業3', '研10', '賓2']);
     expect(o.changes.find((c) => c.participantId === s.id('賓2'))).toEqual({
       participantId: s.id('賓2'),
@@ -164,7 +167,7 @@ describe('第 5.1 節小型資料的驗收條件', () => {
     });
   });
 
-  it('ARR-AC11 工作人員不排，工作人員的眷屬照常排；外部貴賓不排，「已把 2 位安排到第 1–2 桌。」（ARR-R01、R05、R06、R15）', () => {
+  it('ARR-AC11 工作人員不排，工作人員的眷屬照常排；外部貴賓不排，「已把 2 位安排到 2 桌。」（ARR-R01、R05、R06、R15）', () => {
     const s = new Scenario()
       .addGroup('行政部', null, range('行', 1, 9))
       .addEmployee('業1', '業務部', null, { dependent: true })
@@ -184,7 +187,7 @@ describe('第 5.1 節小型資料的驗收條件', () => {
     expect(o.summary).toEqual({ placed: 2, tableIds: [1, 2], left: 0 });
   });
 
-  it('ARR-AC12 ARR-AC11 的資料清空後重排：第 1 桌的人一起重排，工作人員與外部貴賓不動，「已把 11 位安排到第 1–2 桌。」（ARR-R01、R04）', () => {
+  it('ARR-AC12 ARR-AC11 的資料清空後重排：B1 桌的人一起重排，工作人員與外部貴賓不動，「已把 11 位安排到 2 桌。」（ARR-R01、R04）', () => {
     const s = new Scenario()
       .addGroup('行政部', null, range('行', 1, 9))
       .addEmployee('業1', '業務部', null, { dependent: true })
@@ -203,7 +206,7 @@ describe('第 5.1 節小型資料的驗收條件', () => {
     expect(o.changedNames()).toEqual([dep('業1'), '業2']);
   });
 
-  it('ARR-AC13 空位不夠：能排多少排多少，「已把 3 位安排到第 29–30 桌，還有 4 位排不下，留在未入座。」（ARR-R09、R11、R14）', () => {
+  it('ARR-AC13 空位不夠：能排多少排多少，「已把 3 位安排到 2 桌，還有 4 位排不下，留在未入座。」（A10、A13 桌，內部編號 29、30；ARR-R09、R11、R14）', () => {
     const s = new Scenario()
       .addGroup('行政部', null, range('行', 1, 17))
       .addGroup('業務部', '北區組', range('業', 1, 3))
@@ -230,7 +233,7 @@ describe('第 5.1 節小型資料的驗收條件', () => {
     expect(o.summary).toEqual({ placed: 0, tableIds: [], left: 1 });
   });
 
-  it('ARR-AC15 只排進一桌：摘要只有一個桌號，Sonner 寫「第 1 桌」（ARR-R14、ARR-Q03）', () => {
+  it('ARR-AC15 只排進一桌：摘要只有一桌，Sonner 寫「已把 7 位安排到 1 桌。」（ARR-R14、ARR-Q03）', () => {
     const s = new Scenario()
       .addEmployee('業1', '業務部', '二組')
       .addEmployee('業2', '業務部', '一組')
@@ -317,7 +320,7 @@ describe('ARR-R01 只排員工與眷屬', () => {
 });
 
 describe('ARR-R02 可用的桌', () => {
-  it('有備註名稱的桌即使是空桌也不用，依桌號由小到大使用沒有備註名稱的桌', () => {
+  it('有備註名稱的桌即使是空桌也不用，依填桌順序（內部編號由小到大）使用沒有備註名稱的桌', () => {
     const s = new Scenario().addGroup('業務部', null, range('業', 1, 12)).note(1, '主桌').note(2, '主桌').note(4, '供應商');
 
     const o = s.run('unseatedOnly');
@@ -339,7 +342,7 @@ describe('ARR-R02 可用的桌', () => {
     expect(o.summary).toEqual({ placed: 0, tableIds: [], left: 1 });
   });
 
-  it.each(ARRANGE_MODES)('%s：傳入的員工、參與人員、桌次陣列順序不影響結果（員工名單依 sortOrder、桌次依桌號）', (mode) => {
+  it.each(ARRANGE_MODES)('%s：傳入的員工、參與人員、桌次陣列順序不影響結果（員工名單依 sortOrder、桌次依填桌順序）', (mode) => {
     const build = () =>
       new Scenario()
         .addGroup('業務部', '北區組', range('北', 1, 6))
@@ -375,7 +378,7 @@ describe('ARR-R03 只排未入座', () => {
     expect(o.changedNames()).toEqual(['業1', '業2']);
   });
 
-  it('從桌號最小、還有空位的可用桌開始填，一桌填滿再下一桌', () => {
+  it('從填桌順序最前面（B1、A1、B4…）、還有空位的可用桌開始填，一桌填滿再下一桌', () => {
     const s = new Scenario()
       .addGroup('行政部', null, range('行', 1, 19))
       .addGroup('業務部', null, ['業1', '業2', '業3'])
@@ -390,7 +393,7 @@ describe('ARR-R03 只排未入座', () => {
     expect(o.summary).toEqual({ placed: 3, tableIds: [2, 3], left: 0 });
   });
 
-  it('不靠近已入座的同組同事或所屬員工，只看桌號與空位（ARR-Q06 的目前假設）', () => {
+  it('不靠近已入座的同組同事或所屬員工，只看填桌順序與空位（ARR-Q06 的目前假設）', () => {
     const s = new Scenario()
       .addGroup('業務部', '北區組', ['北1', '北2'], ['北1'])
       .seat(5, ['北1']);
@@ -525,7 +528,7 @@ describe('ARR-R05 排列順序', () => {
 
     const o = s.run('unseatedOnly');
 
-    // 北區組的候選人是北1、北2_眷屬、北3 共 3 人，剛好填滿第 1 桌剩下的 3 個空位
+    // 北區組的候選人是北1、北2_眷屬、北3 共 3 人，剛好填滿 B1 桌剩下的 3 個空位
     expect(o.table(1)).toEqual([...range('行', 1, 7), '北1', dep('北2'), '北3']);
     expect(o.table(2)).toEqual(['研1']);
   });
@@ -586,7 +589,7 @@ describe('ARR-R06 排座單位', () => {
 
     const o = s.run('unseatedOnly');
 
-    // 第 1 桌剩 4 位時南區組 5 人排不進；沒有組別的人不是一個 5 人的單位，而是 1、2、1、1 人的單位
+    // B1 桌剩 4 位時南區組 5 人排不進；沒有組別的人不是一個 5 人的單位，而是 1、2、1、1 人的單位
     expect(o.table(1)).toEqual([...range('北', 1, 6), '業A', '業B', dep('業B'), '業C']);
     expect(o.table(2)).toEqual([...range('南', 1, 5), '業D']);
   });
@@ -678,8 +681,8 @@ describe('ARR-R09 拆組', () => {
 
     const o = s.run('rebuild');
 
-    // 前端組 12 人；第 1 桌照空位取 10 位，第 10 位是帶眷屬的研10 → 研10 和眷屬移到第 2 桌最前面；
-    // 後面沒有其他單位可以補，第 1 桌留 1 個空位（ARR-R16）
+    // 前端組 12 人；B1 桌照空位取 10 位，第 10 位是帶眷屬的研10 → 研10 和眷屬移到 A1 桌最前面；
+    // 後面沒有其他單位可以補，B1 桌留 1 個空位（ARR-R16）
     expect(o.table(1)).toEqual(range('研', 1, 9));
     expect(o.table(2)).toEqual(['研10', dep('研10'), '研11']);
     expect(o.position('研10')).toEqual({ tableId: 2, seatOrder: 0 });
@@ -693,8 +696,8 @@ describe('ARR-R09 拆組', () => {
 
     const o = s.run('rebuild');
 
-    // 第 1 桌：前端組 12 人、後端組 12 人都排不進 10 個空位 → 拆前端組，研10 帶眷屬移走；後端組每位都帶眷屬，沒人可補
-    // 第 2 桌：研10、眷屬、研11 共 3 人 → 剩 7 位；後端組 12 人排不進 → 拆，第 7 位是帶眷屬的後4 → 後4 移走；沒人可補
+    // B1 桌：前端組 12 人、後端組 12 人都排不進 10 個空位 → 拆前端組，研10 帶眷屬移走；後端組每位都帶眷屬，沒人可補
+    // A1 桌：研10、眷屬、研11 共 3 人 → 剩 7 位；後端組 12 人排不進 → 拆，第 7 位是帶眷屬的後4 → 後4 移走；沒人可補
     expect(o.table(1)).toEqual(range('研', 1, 9));
     expect(o.table(2)).toEqual(['研10', dep('研10'), '研11', '後1', dep('後1'), '後2', dep('後2'), '後3', dep('後3')]);
     expect(o.table(3)).toEqual(['後4', dep('後4'), '後5', dep('後5'), '後6', dep('後6')]);
@@ -753,7 +756,7 @@ describe('ARR-R16 拆點空出的位子補位', () => {
 
     const o = s.run('unseatedOnly');
 
-    // 第 1 桌剩 2 位：北區組 3 人、前端組 4 人、檢驗組 4 人都排不進 → 拆北區組，業2 帶眷屬移走；
+    // B1 桌剩 2 位：北區組 3 人、前端組 4 人、檢驗組 4 人都排不進 → 拆北區組，業2 帶眷屬移走；
     // 業務部後面沒有單位；前端組每位都帶眷屬；檢驗組的品1 帶眷屬，第一位單獨的員工是品2
     expect(o.table(1)).toEqual([...range('行', 1, 8), '業1', '品2']);
     expect(o.table(2)).toEqual(['業2', dep('業2'), '研1', dep('研1'), '研2', dep('研2'), '品1', dep('品1'), '品3']);
@@ -839,7 +842,7 @@ describe('ARR-Q02 一位都沒排進去時（目前假設：座位都不變，�
 
 // D-018：承辦人拖移或「加入人員」可以讓一桌有 11、12 位（seating.md SEAT-R02、SEAT-R88），自動排座仍只排到 10 位。
 describe('ARR-R17 自動排座每桌最多只排到 10 位', () => {
-  it('只排未入座：沒有備註名稱的第 1 桌已有 11 位，算沒有空位，原本的人不動；新排的人從第 2 桌開始', () => {
+  it('只排未入座：沒有備註名稱的 B1 桌已有 11 位，算沒有空位，原本的人不動；新排的人從 A1 桌開始', () => {
     const s = new Scenario()
       .addGroup('行政部', null, range('行', 1, 11))
       .addGroup('業務部', null, ['業1', '業2'])
@@ -853,7 +856,7 @@ describe('ARR-R17 自動排座每桌最多只排到 10 位', () => {
     expect(o.summary).toEqual({ placed: 2, tableIds: [2], left: 0 });
   });
 
-  it('只排未入座：第 1 桌 12 位、第 2 桌 10 位，都算沒有空位；新排的人從第 3 桌開始', () => {
+  it('只排未入座：B1 桌 12 位、A1 桌 10 位，都算沒有空位；新排的人從 B4 桌開始', () => {
     const s = new Scenario()
       .addGroup('行政部', null, range('行', 1, 22))
       .addGroup('業務部', null, ['業1'])
@@ -868,7 +871,7 @@ describe('ARR-R17 自動排座每桌最多只排到 10 位', () => {
     expect(o.summary).toEqual({ placed: 1, tableIds: [3], left: 0 });
   });
 
-  it('只排未入座：第 1 桌 9 位、一組 3 人 → 第 1 桌只排到第 10 位，不用第 11、12 位；其餘的人到第 2 桌（ARR-R09）', () => {
+  it('只排未入座：B1 桌 9 位、一組 3 人 → B1 桌只排到第 10 位，不用第 11、12 位；其餘的人到 A1 桌（ARR-R09）', () => {
     const s = new Scenario()
       .addGroup('行政部', null, range('行', 1, 9))
       .addGroup('業務部', '北區組', ['業1', '業2', '業3'])
@@ -882,7 +885,7 @@ describe('ARR-R17 自動排座每桌最多只排到 10 位', () => {
     expect(o.summary).toEqual({ placed: 3, tableIds: [1, 2], left: 0 });
   });
 
-  it('清空後重排：沒有備註名稱的第 1 桌原本 11 位，清空後照常排，每桌最多 10 位（ARR-R04）', () => {
+  it('清空後重排：沒有備註名稱的 B1 桌原本 11 位，清空後照常排，每桌最多 10 位（ARR-R04）', () => {
     const s = new Scenario().addGroup('行政部', null, range('行', 1, 11)).seat(1, range('行', 1, 11));
 
     const o = s.run('rebuild');

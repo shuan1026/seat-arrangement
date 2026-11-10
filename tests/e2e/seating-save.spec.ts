@@ -1,6 +1,7 @@
 // 立即儲存、多人衝突與載入中（桌面）：docs/spec/seating.md SEAT-R85～R87、SEAT-AC87、SEAT-AC88、SEAT-AC90、SEAT-AC97（D-018）；
 // docs/spec/README.md COM-R01～R05、COM-R07、COM-R08、COM-AC01、COM-AC03、COM-AC04；docs/architecture.md 第 10.3 節。
 // 別人剛改過資料用直接寫資料庫模擬（畫面不會自動更新別人的改動，COM-R06）。
+// 桌號 A1～A15、B1～B15（D-019）：測試資料用內部編號（3 = B4、5 = B10、6 = B13、7 = B2），畫面上的字用桌號。
 import { expect, test, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
@@ -17,6 +18,7 @@ import {
   staffTable,
   staffTableButton,
   tableButton,
+  titleFor,
 } from './helpers/seating-page';
 
 test.beforeEach(async ({ context, baseURL, page }) => {
@@ -29,13 +31,13 @@ const saveStatus = (page: Page, text: string | RegExp) => page.getByText(text).f
 async function seatViaDialog(page: Page, name: string, table: number) {
   await rowAction(page, personRow(page, name), '入座…');
   const dialog = page.getByRole('dialog', { name: `安排 ${name} 入座`, exact: true });
-  await chooseOption(page, dialog, /^桌次/, new RegExp(`^第 ${table} 桌`));
+  await chooseOption(page, dialog, /^桌次/, new RegExp(`^${titleFor(table)}`));
   await dialog.getByRole('button', { name: '確認入座' }).click();
   // modal 關掉之後背景才不再是 aria-hidden，才能用角色查座位圖與人員面板
   await expect(dialog).toBeHidden();
 }
 
-test('把王小明安排到第 3 桌：Header 先「儲存中…」再「已儲存 {時:分}」；重新整理後仍在第 3 桌（SEAT-R85、SEAT-AC87、COM-AC01、COM-R05）', async ({
+test('把王小明安排到 B4 桌：Header 先「儲存中…」再「已儲存 {時:分}」；重新整理後仍在 B4 桌（SEAT-R85、SEAT-AC87、COM-AC01、COM-R05）', async ({
   page,
 }) => {
   const wang = await seed(async (s) => s.employee('王小明'));
@@ -58,7 +60,7 @@ test('把王小明安排到第 3 桌：Header 先「儲存中…」再「已儲�
 
   await openSeating(page);
   await panelTab(page, '全部').click();
-  await expect(personRow(page, '王小明').getByRole('button', { name: '第 3 桌', exact: true })).toBeVisible();
+  await expect(personRow(page, '王小明').getByRole('button', { name: 'B4', exact: true })).toBeVisible();
   expect(await seatOf(wang)).toEqual({ tableId: 3, seatOrder: 0 });
 });
 
@@ -79,7 +81,7 @@ test('網路中斷：畫面保留結果，Header「儲存失敗，請檢查網�
 });
 
 // D-018：拖移可以放到 12 位，原本「畫面 9 位、別人坐到 10 位後拖移擋下」改為「畫面 11 位、別人坐到 12 位後拖移擋下」（改過的 SEAT-AC88）
-test('畫面上第 5 桌 11 位、別人已把它坐到 12 位：拖王小明進去不儲存，重新載入最新資料，顯示「第 5 桌已達 12 位，請先移出一位。」（SEAT-R86、SEAT-AC88、COM-AC04）', async ({
+test('畫面上 B10 桌 11 位、別人已把它坐到 12 位：拖王小明進去不儲存，重新載入最新資料，顯示「B10 桌已達 12 位，請先移出一位。」（SEAT-R86、SEAT-AC88、COM-AC04）', async ({
   page,
 }) => {
   const wang = await seed(async (s) => {
@@ -94,7 +96,7 @@ test('畫面上第 5 桌 11 位、別人已把它坐到 12 位：拖王小明進
   });
 
   await dragAndDrop(page, personRow(page, '王小明'), tableButton(page, 5));
-  await expectToast(page, '第 5 桌已達 12 位，請先移出一位。', { undo: false });
+  await expectToast(page, 'B10 桌已達 12 位，請先移出一位。', { undo: false });
   await expect(personRow(page, '王小明')).toHaveCount(1);
   expect(await seatOf(wang)).toEqual({ tableId: null, seatOrder: null });
   expect(await rosterNames(5)).toContain('別人加的');
@@ -103,7 +105,7 @@ test('畫面上第 5 桌 11 位、別人已把它坐到 12 位：拖王小明進
   await expect(mapTable(page, 5)).toContainText('超過');
 });
 
-test('畫面上第 5 桌 9 位、別人已把它坐到 10 位：拖移的上限是 12 位，仍會儲存，王小明成為第 11 位（SEAT-R20、SEAT-R88、D-018）', async ({
+test('畫面上 B10 桌 9 位、別人已把它坐到 10 位：拖移的上限是 12 位，仍會儲存，王小明成為第 11 位（SEAT-R20、SEAT-R88、D-018）', async ({
   page,
 }) => {
   const wang = await seed(async (s) => {
@@ -120,8 +122,8 @@ test('畫面上第 5 桌 9 位、別人已把它坐到 10 位：拖移的上限�
   await dragAndDrop(page, personRow(page, '王小明'), tableButton(page, 5));
   await expect.poll(() => seatOf(wang)).toEqual({ tableId: 5, seatOrder: 10 });
   // 成功的 Sonner（畫面上的人數不含別人剛加的人，是否加上「這一桌已超過 10 位。」規格沒有寫，這裡不檢查）
-  await expectToast(page, '已把 王小明 安排到第 5 桌', { undo: true });
-  await expect(page.getByText('第 5 桌已達 12 位，請先移出一位。')).toHaveCount(0);
+  await expectToast(page, '已把 王小明 安排到 B10 桌', { undo: true });
+  await expect(page.getByText('B10 桌已達 12 位，請先移出一位。')).toHaveCount(0);
 });
 
 test('工作人員桌被別人放到 12 位：放進工作人員桌不儲存，重新載入，顯示「工作人員桌已達 12 位，請先移出一位。」（SEAT-R42、SEAT-R86）', async ({
@@ -142,7 +144,7 @@ test('工作人員桌被別人放到 12 位：放進工作人員桌不儲存，�
   expect(await seatOf(wang)).toEqual({ tableId: null, seatOrder: null });
 });
 
-test('從選擇桌次選第 6 桌時別人已把它坐到 10 位：不入座，重新載入，顯示「第 6 桌已滿，請先移出一位。」（SEAT-R86、SEAT-AC97）', async ({
+test('從選擇桌次選 B13 桌時別人已把它坐到 10 位：不入座，重新載入，顯示「B13 桌已滿，請先移出一位。」（SEAT-R86、SEAT-AC97）', async ({
   page,
 }) => {
   const wang = await seed(async (s) => {
@@ -154,14 +156,14 @@ test('從選擇桌次選第 6 桌時別人已把它坐到 10 位：不入座，�
 
   await rowAction(page, personRow(page, '王小明'), '入座…');
   const dialog = page.getByRole('dialog', { name: '安排 王小明 入座', exact: true });
-  await chooseOption(page, dialog, /^桌次/, /^第 6 桌/);
+  await chooseOption(page, dialog, /^桌次/, /^B13 桌/);
   await addMore(async (s) => {
     await s.employee('別人加的', { tableId: 6, seatOrder: 9 });
   });
   await dialog.getByRole('button', { name: '確認入座' }).click();
   await expect(dialog).toBeHidden();
 
-  await expectToast(page, '第 6 桌已滿，請先移出一位。', { undo: false });
+  await expectToast(page, 'B13 桌已滿，請先移出一位。', { undo: false });
   await expect(mapTable(page, 6)).toContainText('已滿');
   expect(await seatOf(wang)).toEqual({ tableId: null, seatOrder: null });
   expect(await rosterNames(6)).toHaveLength(10);

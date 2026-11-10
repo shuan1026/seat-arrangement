@@ -438,7 +438,7 @@ test.describe('刪除員工（EMP-R41～R43）', () => {
     await expect.poll(async () => (await employeeRows()).map((e) => e.name)).toEqual(['李小華']);
   });
 
-  test('EMP-AC53：李小華已報名、帶一位眷屬，兩人坐第 5 桌（8/10）→ 已報名的內文；按「刪除員工」→ 從員工名單與參與人員移除，眷屬也移除，第 5 桌 6/10（EMP-R41、R43）', async ({
+  test('EMP-AC53：李小華已報名、帶一位眷屬，兩人坐 B10 桌（內部編號 5，8/10）→ 已報名的內文；按「刪除員工」→ 從員工名單與參與人員移除，眷屬也移除，B10 桌 6/10（EMP-R41、R43）', async ({
     page,
   }) => {
     const ids = await insertEmployees([

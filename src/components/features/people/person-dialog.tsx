@@ -25,6 +25,7 @@ import type { ErrorCode } from '@/contracts/errors';
 import type { ParticipantCreateInput, ParticipantUpdateInput, ParticipantsResult } from '@/contracts/participants';
 import { displayName, employeeOf, employeeSecondLine, type Directory } from '@/domain/display';
 import { clearDeclinedOfRegistered } from '@/domain/employees';
+import { tableTitle } from '@/domain/layout';
 import {
   canMarkStaff,
   KIND_NAMES,
@@ -70,7 +71,7 @@ type FormState = {
   vegetarian: boolean;
   note: string;
   isStaff: boolean;
-  /** 1–30；null 是未入座 */
+  /** 內部編號 1–30；null 是未入座 */
   tableId: number | null;
   withDependent: boolean;
   dependentRelation: string | null;
@@ -189,7 +190,7 @@ function PersonForm({ onOpenChange, mode, participantId, employeeId, onSaved }: 
     { value: NO_TABLE, label: '未入座' },
     ...tableChoices(data.participants, self).map((c) => ({
       value: String(c.tableId),
-      label: `第 ${c.tableId} 桌（剩 ${Math.max(0, c.remaining)} 位）${c.disabled ? '・已滿' : ''}`,
+      label: `${tableTitle(c.tableId)}（剩 ${Math.max(0, c.remaining)} 位）${c.disabled ? '・已滿' : ''}`,
       disabled: c.disabled,
     })),
   ];
@@ -267,7 +268,7 @@ function PersonForm({ onOpenChange, mode, participantId, employeeId, onSaved }: 
       const toStaff = f.kind === 'EMPLOYEE' && f.isStaff && original?.tableId !== STAFF_TABLE_ID;
       return {
         // 改成工作人員時會從原本的桌次移到工作人員桌（PPL-R55）
-        success: toStaff && fromTable != null ? `已儲存，${originalName} 已從第 ${fromTable} 桌移到工作人員桌。` : '已儲存',
+        success: toStaff && fromTable != null ? `已儲存，${originalName} 已從 ${tableTitle(fromTable)}移到工作人員桌。` : '已儲存',
       };
     }
     if (f.kind === 'EMPLOYEE') {
@@ -278,7 +279,7 @@ function PersonForm({ onOpenChange, mode, participantId, employeeId, onSaved }: 
             : f.withDependent
               ? `已新增 ${employeeName} 與 1 位眷屬。`
               : `已新增 ${employeeName}。`,
-        dependentLeft: f.tableId != null ? `第 ${f.tableId} 桌只剩 1 位，${employeeName}_眷屬先留在未入座。` : '',
+        dependentLeft: f.tableId != null ? `${tableTitle(f.tableId)}只剩 1 位，${employeeName}_眷屬先留在未入座。` : '',
       };
     }
     if (f.kind === 'DEPENDENT') return { success: `已新增 ${f.hostId == null ? '' : hostName(f.hostId)}_眷屬。` };

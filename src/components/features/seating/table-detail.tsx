@@ -8,6 +8,7 @@ import { useId, useState, type ReactNode } from 'react';
 import { useAppStore } from '@/client/app-provider';
 import type { Participant } from '@/contracts/entities';
 import { displayName } from '@/domain/display';
+import { tableTitle } from '@/domain/layout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/cn';
@@ -42,7 +43,7 @@ export interface TableDetailProps {
 
 export function TableDetail(props: TableDetailProps) {
   const { info } = props;
-  const title = info.isStaff ? '工作人員桌' : `第 ${info.id} 桌`;
+  const title = info.isStaff ? '工作人員桌' : tableTitle(info.id);
   // 副標照實寫人數，例如「11/10 人」（SEAT-R11）
   const subtitle = `${info.count}/${CAPACITY} 人`;
   const body = info.isStaff ? <StaffBody {...props} /> : <TableBody {...props} />;

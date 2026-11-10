@@ -20,6 +20,7 @@ import {
   teamOf,
   type Directory,
 } from '@/domain/display';
+import { tableTitle } from '@/domain/layout';
 import { sortParticipants } from '@/domain/participants';
 import { tableStatus, type TableStatus } from '@/domain/seating-rules';
 
@@ -136,17 +137,18 @@ export const tableTooltip = (t: TableInfo): string => (t.noteName ? `${t.noteNam
 // ---- 文案（docs/spec/seating.md 第 4 節）
 
 export const msg = {
-  seated: (name: string, n: number) => `已把 ${name} 安排到第 ${n} 桌。`,
-  moved: (name: string, from: number, to: number) => `已把 ${name} 從第 ${from} 桌移到第 ${to} 桌。`,
-  staffToTable: (name: string, to: number) => `已把 ${name} 從工作人員桌移到第 ${to} 桌。`,
-  unseated: (name: string, n: number) => `已把 ${name} 移出第 ${n} 桌。`,
-  reordered: (n: number) => `已調整第 ${n} 桌的座位順序。`,
+  // 參數是內部編號；文案用「{桌號} 桌」（D-019，README 第 12 節）
+  seated: (name: string, n: number) => `已把 ${name} 安排到 ${tableTitle(n)}。`,
+  moved: (name: string, from: number, to: number) => `已把 ${name} 從 ${tableTitle(from)}移到 ${tableTitle(to)}。`,
+  staffToTable: (name: string, to: number) => `已把 ${name} 從工作人員桌移到 ${tableTitle(to)}。`,
+  unseated: (name: string, n: number) => `已把 ${name} 移出 ${tableTitle(n)}。`,
+  reordered: (n: number) => `已調整 ${tableTitle(n)}的座位順序。`,
   toStaff: (name: string) => `已把 ${name} 放進工作人員桌。`,
-  tableToStaff: (name: string, from: number) => `已把 ${name} 從第 ${from} 桌移到工作人員桌。`,
+  tableToStaff: (name: string, from: number) => `已把 ${name} 從 ${tableTitle(from)}移到工作人員桌。`,
   unstaffed: (name: string) => `已把 ${name} 移出工作人員桌。`,
-  swapped: (a: number, b: number) => `已把第 ${a} 桌和第 ${b} 桌對調。`,
-  cleared: (n: number) => `已清空第 ${n} 桌。`,
-  added: (x: number, n: number) => `已把 ${x} 位人員加入第 ${n} 桌。`,
+  swapped: (a: number, b: number) => `已把 ${tableTitle(a)}和 ${tableTitle(b)}對調。`,
+  cleared: (n: number) => `已清空 ${tableTitle(n)}。`,
+  added: (x: number, n: number) => `已把 ${x} 位人員加入 ${tableTitle(n)}。`,
   addedStaff: (x: number) => `已把 ${x} 位人員放進工作人員桌。`,
   staffFull: '工作人員桌已滿，請先移出一位。',
   staffLimit: '工作人員桌已達 12 位，請先移出一位。',

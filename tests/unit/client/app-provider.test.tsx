@@ -66,7 +66,7 @@ function setup(send: () => Promise<unknown>, conflictMessage?: ConflictMessage) 
   return { notify, fetchMock };
 }
 
-/** 座位安排拖人進第 5 桌時帶的既有提示（SEAT-R86） */
+/** 座位安排拖人進 B10 桌（內部編號 5）時帶的既有提示（SEAT-R86） */
 const seatIntoTable5: ConflictMessage = (code) => (code === 'TABLE_FULL' ? tableFullMessage(5) : undefined);
 
 afterEach(() => {
@@ -117,7 +117,7 @@ describe('AppProvider 與 useMutation', () => {
     },
   );
 
-  it('桌次被別人坐滿：重新載入並顯示這次操作的既有提示「第 5 桌已滿，請先移出一位。」（COM-R08、SEAT-R86、COM-AC04、SEAT-AC88）', async () => {
+  it('桌次被別人坐滿：重新載入並顯示這次操作的既有提示「B10 桌已滿，請先移出一位。」（COM-R08、SEAT-R86、COM-AC04、SEAT-AC88）', async () => {
     const { fetchMock, notify } = setup(
       () => Promise.reject(new ApiFailure('TABLE_FULL', 409, 'table full')),
       seatIntoTable5,
@@ -127,7 +127,7 @@ describe('AppProvider 與 useMutation', () => {
 
     await waitFor(() => expect(screen.getByTestId('names').textContent).toBe('王小明、李美華'));
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(notify).toHaveBeenCalledWith('第 5 桌已滿，請先移出一位。'));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('B10 桌已滿，請先移出一位。'));
     expect(notify).toHaveBeenCalledTimes(1);
   });
 

@@ -5,6 +5,7 @@
 // SEAT-R80（新增、編輯、刪除人員、取消報名不能復原）；participants.md 第 2.2、2.3 節、第 4.1、4.2 節文案、PPL-R14、PPL-R15、PPL-R37、
 // PPL-R38、PPL-R53、PPL-R56、PPL-R60；待確認 PPL-Q08（編輯時可以改桌次）照目前假設。
 // 資料用 tests/e2e/helpers/seating-data.ts 直接寫進測試資料庫，都是虛構資料。
+// 桌號 A1～A15、B1～B15（D-019）：測試資料用內部編號（3 = B4、5 = B10、7 = B2），畫面上的字用桌號。
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
@@ -54,7 +55,7 @@ async function panelAction(page: Page, name: string, action: string, tab: '未�
 const findPerson = (name: string) => withDb((db) => db.find(name));
 
 test.describe('頁首「新增人員」（seating.md 2.1.1）', () => {
-  test('新增外部貴賓林董並選第 7 桌 → Sonner「已新增 林董。」沒有「復原」；第 7 桌變成 3/10、統計列與人員面板立即更新；資料庫有這一位', async ({
+  test('新增外部貴賓林董並選 B2 桌 → Sonner「已新增 林董。」沒有「復原」；B2 桌變成 3/10、統計列與人員面板立即更新；資料庫有這一位', async ({
     page,
   }) => {
     desktopOnly(page);
@@ -68,7 +69,7 @@ test.describe('頁首「新增人員」（seating.md 2.1.1）', () => {
     const dialog = await openAddPerson(page);
     await chooseField(page, selectField(dialog, '類別'), '外部貴賓');
     await textField(dialog, '姓名').fill('林董');
-    await chooseField(page, selectField(dialog, '桌次'), /^第 7 桌/);
+    await chooseField(page, selectField(dialog, '桌次'), /^B2 桌/);
     await dialog.getByRole('button', { name: '新增人員', exact: true }).click();
 
     await expect(dialog).toBeHidden();
@@ -76,7 +77,7 @@ test.describe('頁首「新增人員」（seating.md 2.1.1）', () => {
     await expect(mapTable(page, 7)).toContainText('3/10');
     await expectStats(page, { seated: 3, total: 4, unseated: 1, empty: 297, full: 0 });
     await panelTab(page, '全部').click();
-    await expect(personRow(page, '林董').getByRole('button', { name: '第 7 桌', exact: true })).toBeVisible();
+    await expect(personRow(page, '林董').getByRole('button', { name: 'B2', exact: true })).toBeVisible();
     await expect.poll(() => rosterNames(7)).toEqual(['七1', '七2', '林董']);
   });
 
@@ -135,7 +136,7 @@ test.describe('頁首「新增人員」（seating.md 2.1.1）', () => {
 });
 
 test.describe('「編輯」開啟編輯人員對話框（seating.md 2.2.3、2.3.2）', () => {
-  test('人員面板的「編輯」：林董坐第 3 桌，勾「素食」並儲存 → Sonner「已儲存」沒有「復原」；第 3 桌詳情的「素食 1 位」立即更新（SEAT-R11、SEAT-R74、SEAT-R80）', async ({
+  test('人員面板的「編輯」：林董坐 B4 桌，勾「素食」並儲存 → Sonner「已儲存」沒有「復原」；B4 桌詳情的「素食 1 位」立即更新（SEAT-R11、SEAT-R74、SEAT-R80）', async ({
     page,
   }) => {
     desktopOnly(page);
@@ -160,7 +161,7 @@ test.describe('「編輯」開啟編輯人員對話框（seating.md 2.2.3、2.3.
     expect(await rosterNames(3)).toEqual(['三1', '三2', '林董']);
   });
 
-  test('桌次詳情名單列的「編輯」：王小明在第 3 桌，桌次改成第 7 桌並儲存 → 第 3 桌詳情不再有王小明，座位圖第 3、7 桌的人數立即更新（PPL-Q08 目前假設、SEAT-R74）', async ({
+  test('桌次詳情名單列的「編輯」：王小明在 B4 桌，桌次改成 B2 桌並儲存 → B4 桌詳情不再有王小明，座位圖 B4、B2 桌的人數立即更新（PPL-Q08 目前假設、SEAT-R74）', async ({
     page,
   }) => {
     desktopOnly(page);
@@ -174,7 +175,7 @@ test.describe('「編輯」開啟編輯人員對話框（seating.md 2.2.3、2.3.
     await rowAction(page, rowWithName(detailRows(detail), page, '王小明'), '編輯');
     const dialog = page.getByRole('dialog', { name: '編輯人員' });
     await expect(dialog).toBeVisible();
-    await chooseField(page, selectField(dialog, '桌次'), /^第 7 桌/);
+    await chooseField(page, selectField(dialog, '桌次'), /^B2 桌/);
     await dialog.getByRole('button', { name: '儲存', exact: true }).click();
 
     await expect(dialog).toBeHidden();
@@ -220,7 +221,7 @@ test.describe('「編輯」開啟編輯人員對話框（seating.md 2.2.3、2.3.
 });
 
 test.describe('人員面板的「取消報名」（PPL-R14、PPL-R37）', () => {
-  test('王小明與眷屬都在第 3 桌 →「取消報名」的確認對話框 →「確認取消報名」→ 兩人都從人員面板與座位圖消失，第 3 桌少 2 人；Sonner「已取消 王小明 的報名。」沒有「復原」；統計列更新', async ({
+  test('王小明與眷屬都在 B4 桌 →「取消報名」的確認對話框 →「確認取消報名」→ 兩人都從人員面板與座位圖消失，B4 桌少 2 人；Sonner「已取消 王小明 的報名。」沒有「復原」；統計列更新', async ({
     page,
   }) => {
     desktopOnly(page);
@@ -284,7 +285,7 @@ test.describe('人員面板的「取消報名」（PPL-R14、PPL-R37）', () => 
 });
 
 test.describe('人員面板的「刪除」（PPL-R15、PPL-R38）', () => {
-  test('第 5 桌依序是甲、林董、乙 →「刪除」林董並按「刪除人員」→ 林董從人員面板與第 5 桌消失，同桌其他人順序不變；Sonner「已刪除 林董。」沒有「復原」', async ({
+  test('B10 桌依序是甲、林董、乙 →「刪除」林董並按「刪除人員」→ 林董從人員面板與 B10 桌消失，同桌其他人順序不變；Sonner「已刪除 林董。」沒有「復原」', async ({
     page,
   }) => {
     desktopOnly(page);
@@ -341,7 +342,7 @@ test.describe('人員面板的「刪除」（PPL-R15、PPL-R38）', () => {
 });
 
 test.describe('手機（767 px 以下）', () => {
-  test('「人員」分頁的列操作「取消報名」：確認後人員面板更新；切回「座位圖」第 3 桌人數也更新；確認對話框按鈕滿版堆疊、確認在上', async ({
+  test('「人員」分頁的列操作「取消報名」：確認後人員面板更新；切回「座位圖」B4 桌人數也更新；確認對話框按鈕滿版堆疊、確認在上', async ({
     page,
   }) => {
     test.skip(!isMobileWidth(page), '手機寬度');

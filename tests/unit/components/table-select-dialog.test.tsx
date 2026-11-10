@@ -3,6 +3,9 @@
 // SEAT-R88、SEAT-AC94、SEAT-AC97（D-018：選單類入口仍到 10 位為止，10 位以上的桌停用並標示「已滿」）；
 // docs/spec/README.md COM-R07、COM-R08、第 14 節「已復原。」。
 // 這個對話框也給參與人員頁（B 線）的列操作使用（SEAT-AC12），所以單獨測元件。
+// 桌號（D-019）：選項與 Sonner 用桌號 A1～A15、B1～B15，選項依 A1～A15、B1～B15 排列（SEAT-R04、SEAT-R23）；
+// 送出的指令仍用內部編號 tableId（docs/architecture.md）。測試資料用內部編號，對應見 tests/helpers/table-codes.ts
+// （3 = B4、5 = B10、6 = B13、7 = B2、8 = B5、9 = B8、12 = B3）。
 //
 // 假設的元件介面（src/components/features/seating/table-select-dialog.tsx）：
 //   export function TableSelectDialog(props: { open: boolean; onOpenChange: (open: boolean) => void; participantId: number }): JSX.Element;
@@ -19,6 +22,7 @@ import { STAFF_TABLE_ID, type AppState, type Participant } from '@/contracts/ent
 import type { SeatingSnapshot } from '@/contracts/seating';
 import { allTables, asEmployee, asGuest, employee } from '../../helpers/seating-fixtures';
 import { installDomPolyfills } from '../../helpers/seating-dom';
+import { CODES_IN_LIST_ORDER, codeOf } from '../../helpers/table-codes';
 
 beforeAll(() => {
   installDomPolyfills();
@@ -32,8 +36,8 @@ const USER = { name: '測試承辦人', email: 'tester@program.com.tw' };
 const WANG = 1;
 
 /**
- * 王小明（研發一部、前端組）未入座或坐第 3 桌；
- * 第 7 桌備註名稱「主桌」4 位；第 8 桌 2 位研發一部；第 5 桌 10 位業務部（已滿）；第 12 桌 2 位外部貴賓；
+ * 王小明（研發一部、前端組）未入座或坐 B4 桌（內部編號 3）；
+ * B2 桌（7）備註名稱「主桌」4 位；B5 桌（8）2 位研發一部；B10 桌（5）10 位業務部（已滿）；B3 桌（12）2 位外部貴賓；
  * 工作人員桌 1 位；其他桌是空桌。
  */
 function buildState(wangTable: number | null): AppState {
@@ -130,6 +134,9 @@ async function openOptions(user: ReturnType<typeof userEvent.setup>) {
 
 const labelOf = (el: HTMLElement) => (el.textContent ?? '').trim();
 
+/** 選項開頭的桌號，例如「B2 桌（剩 6 位）・主桌」→ 'B2' */
+const codeInLabel = (el: HTMLElement) => /^([AB]\d{1,2}) 桌/.exec(labelOf(el))?.[1];
+
 describe('未入座的人：入座…（SEAT-R22、SEAT-R25、SEAT-AC08）', () => {
   it('標題「安排 {顯示名稱} 入座」，欄位「桌次」，按鈕「確認入座」與「取消」', () => {
     renderDialog(buildState(null));
@@ -144,33 +151,48 @@ describe('未入座的人：入座…（SEAT-R22、SEAT-R25、SEAT-AC08）', () 
     const options = await openOptions(user);
     expect(options).toHaveLength(30);
     for (let n = 1; n <= 30; n++) {
-      expect(options.filter((o) => labelOf(o).startsWith(`第 ${n} 桌`)), `第 ${n} 桌`).toHaveLength(1);
+      expect(options.filter((o) => labelOf(o).startsWith(`${codeOf(n)} 桌`)), `${codeOf(n)} 桌`).toHaveLength(1);
     }
     expect(options.some((o) => labelOf(o).includes('工作人員'))).toBe(false);
   });
 
-  it('選項格式「第 {n} 桌（剩 {k} 位）・{備註名稱或部門}」：有備註名稱用備註名稱，沒有時用部門（SEAT-R23、SEAT-AC10）', async () => {
+  it('選項依 A1～A15、B1～B15 的順序排列（SEAT-R04、SEAT-R23、D-019）', async () => {
     const { user } = renderDialog(buildState(null));
     const options = await openOptions(user);
-    const byTable = (n: number) => options.find((o) => labelOf(o).startsWith(`第 ${n} 桌（`))!;
-    expect(labelOf(byTable(7))).toBe('第 7 桌（剩 6 位）・主桌');
-    expect(labelOf(byTable(8))).toBe('第 8 桌（剩 8 位）・研發一部');
-    expect(labelOf(byTable(12))).toBe('第 12 桌（剩 8 位）・貴賓');
+    expect(options.map(codeInLabel)).toEqual(CODES_IN_LIST_ORDER);
+  });
+
+  it('選項不用「第 n 桌」，也不寫成「A-1」（README 第 13 節用語表）', async () => {
+    const { user } = renderDialog(buildState(null));
+    const options = await openOptions(user);
+    for (const o of options) {
+      expect(labelOf(o), labelOf(o)).not.toMatch(/第\s*\d+\s*桌/);
+      expect(labelOf(o), labelOf(o)).not.toMatch(/[AB]-\d/);
+    }
+  });
+
+  it('選項格式「{桌號} 桌（剩 {k} 位）・{備註名稱或部門}」：有備註名稱用備註名稱，沒有時用部門（SEAT-R23、SEAT-AC10）', async () => {
+    const { user } = renderDialog(buildState(null));
+    const options = await openOptions(user);
+    const byTable = (n: number) => options.find((o) => labelOf(o).startsWith(`${codeOf(n)} 桌（`))!;
+    expect(labelOf(byTable(7))).toBe('B2 桌（剩 6 位）・主桌');
+    expect(labelOf(byTable(8))).toBe('B5 桌（剩 8 位）・研發一部');
+    expect(labelOf(byTable(12))).toBe('B3 桌（剩 8 位）・貴賓');
   });
 
   it('空桌又沒有備註名稱：省略「・{部門}」（SEAT-Q05 的目前假設）', async () => {
     const { user } = renderDialog(buildState(null));
     const options = await openOptions(user);
-    expect(labelOf(options.find((o) => labelOf(o).startsWith('第 9 桌（'))!)).toBe('第 9 桌（剩 10 位）');
+    expect(labelOf(options.find((o) => labelOf(o).startsWith('B8 桌（'))!)).toBe('B8 桌（剩 10 位）');
   });
 
   it('已滿的桌次停用並標示「已滿」，選不到（SEAT-R23、SEAT-AC17）', async () => {
     const { user, operations } = renderDialog(buildState(null));
     const options = await openOptions(user);
-    const full = options.find((o) => labelOf(o).startsWith('第 5 桌'))!;
+    const full = options.find((o) => labelOf(o).startsWith('B10 桌'))!;
     expect(full.getAttribute('aria-disabled')).toBe('true');
     expect(labelOf(full)).toContain('已滿');
-    for (const o of options.filter((x) => !labelOf(x).startsWith('第 5 桌'))) {
+    for (const o of options.filter((x) => !labelOf(x).startsWith('B10 桌'))) {
       expect(o.getAttribute('aria-disabled'), labelOf(o)).not.toBe('true');
     }
 
@@ -190,10 +212,10 @@ describe('未入座的人：入座…（SEAT-R22、SEAT-R25、SEAT-AC08）', () 
     expect(operations()).toHaveLength(0);
   });
 
-  it('選第 7 桌確認：送出入座指令（排到名單最後），對話框關閉，顯示 Sonner 與「復原」（SEAT-R18、SEAT-R25、SEAT-AC08）', async () => {
+  it('選 B2 桌確認：送出入座指令（內部編號 7，排到名單最後），對話框關閉，顯示 Sonner 與「復原」（SEAT-R18、SEAT-R25、SEAT-AC08）', async () => {
     const { user, onOpenChange, operations } = renderDialog(buildState(null));
     await openOptions(user);
-    await user.click(screen.getByRole('option', { name: /^第 7 桌/ }));
+    await user.click(screen.getByRole('option', { name: /^B2 桌/ }));
     await user.click(screen.getByRole('button', { name: '確認入座' }));
 
     await waitFor(() => expect(operations()).toHaveLength(1));
@@ -205,14 +227,14 @@ describe('未入座的人：入座…（SEAT-R22、SEAT-R25、SEAT-AC08）', () 
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '安排 王小明 入座' })).toBeNull());
-    expect(await screen.findByText('已把 王小明 安排到第 7 桌。')).toBeTruthy();
+    expect(await screen.findByText('已把 王小明 安排到 B2 桌。')).toBeTruthy();
     expect(screen.getByRole('button', { name: '復原' })).toBeTruthy();
   });
 
   it('按 Sonner 的「復原」：把這次的 undo 送回 restore，顯示「已復原。」（SEAT-R76、SEAT-R78、SEAT-R79）', async () => {
     const { user, operations } = renderDialog(buildState(null));
     await openOptions(user);
-    await user.click(screen.getByRole('option', { name: /^第 7 桌/ }));
+    await user.click(screen.getByRole('option', { name: /^B2 桌/ }));
     await user.click(screen.getByRole('button', { name: '確認入座' }));
     await user.click(await screen.findByRole('button', { name: '復原' }));
 
@@ -231,18 +253,18 @@ describe('未入座的人：入座…（SEAT-R22、SEAT-R25、SEAT-AC08）', () 
     expect(operations()).toHaveLength(0);
   });
 
-  it('桌次已被別人坐滿：重新載入最新資料，顯示「第 7 桌已滿，請先移出一位。」（SEAT-R86、COM-R07、COM-R08、SEAT-AC97）', async () => {
+  it('桌次已被別人坐滿：重新載入最新資料，顯示「B2 桌已滿，請先移出一位。」（SEAT-R86、COM-R07、COM-R08、SEAT-AC97）', async () => {
     const { user, notify, sent } = renderDialog(buildState(null), () => ({
       status: 409,
       body: { error: { code: 'TABLE_FULL', message: 'table full' } },
     }));
     await openOptions(user);
-    await user.click(screen.getByRole('option', { name: /^第 7 桌/ }));
+    await user.click(screen.getByRole('option', { name: /^B2 桌/ }));
     await user.click(screen.getByRole('button', { name: '確認入座' }));
 
-    await waitFor(() => expect(notify).toHaveBeenCalledWith('第 7 桌已滿，請先移出一位。'));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('B2 桌已滿，請先移出一位。'));
     expect(sent.some((s) => s.url === '/api/state')).toBe(true);
-    expect(screen.queryByText('已把 王小明 安排到第 7 桌。')).toBeNull();
+    expect(screen.queryByText('已把 王小明 安排到 B2 桌。')).toBeNull();
   });
 
   it('只用鍵盤就能選桌次並確認（SEAT-R84）', async () => {
@@ -255,8 +277,8 @@ describe('未入座的人：入座…（SEAT-R22、SEAT-R25、SEAT-AC08）', () 
       const id = document.activeElement?.getAttribute('aria-activedescendant');
       return id ? (document.getElementById(id)?.textContent ?? '') : '';
     };
-    for (let i = 0; i < 40 && !activeLabel().startsWith('第 7 桌'); i++) await user.keyboard('{ArrowDown}');
-    expect(activeLabel().startsWith('第 7 桌')).toBe(true);
+    for (let i = 0; i < 40 && !activeLabel().startsWith('B2 桌'); i++) await user.keyboard('{ArrowDown}');
+    expect(activeLabel().startsWith('B2 桌')).toBe(true);
     await user.keyboard('{Enter}');
 
     const confirm = screen.getByRole('button', { name: '確認入座' });
@@ -271,7 +293,7 @@ describe('未入座的人：入座…（SEAT-R22、SEAT-R25、SEAT-AC08）', () 
 
 /**
  * D-018：拖移或「加入人員」可以讓一桌有 11、12 位；選擇桌次對話框仍到 10 位為止（SEAT-R23、SEAT-R88）。
- * 王小明未入座或坐第 3 桌；第 5 桌 10 位、第 6 桌 11 位、第 9 桌 12 位（都是業務部）、第 7 桌 9 位。
+ * 王小明未入座或坐 B4 桌（3）；B10 桌（5）10 位、B13 桌（6）11 位、B8 桌（9）12 位（都是業務部）、B2 桌（7）9 位。
  */
 function buildOverflowState(wangTable: number | null): AppState {
   const people: [table: number, count: number, firstId: number][] = [
@@ -292,10 +314,10 @@ function buildOverflowState(wangTable: number | null): AppState {
 }
 
 describe('D-018 選單類入口仍到 10 位為止（SEAT-R23、SEAT-R88、SEAT-AC94）', () => {
-  it.each([5, 6, 9])('第 %i 桌（10 位以上）停用並標示「已滿」，選不到', async (n) => {
+  it.each([5, 6, 9])('內部編號 %i 的桌（10 位以上）停用並標示「已滿」，選不到', async (n) => {
     const { user, operations } = renderDialog(buildOverflowState(null));
     const options = await openOptions(user);
-    const full = options.find((o) => labelOf(o).startsWith(`第 ${n} 桌`))!;
+    const full = options.find((o) => labelOf(o).startsWith(`${codeOf(n)} 桌`))!;
     expect(full.getAttribute('aria-disabled')).toBe('true');
     expect(labelOf(full)).toContain('已滿');
 
@@ -306,15 +328,15 @@ describe('D-018 選單類入口仍到 10 位為止（SEAT-R23、SEAT-R88、SEAT-
     expect(operations()).toHaveLength(0);
   });
 
-  it('只有 10 位以上的桌停用：9 位的第 7 桌「剩 1 位」可以選', async () => {
+  it('只有 10 位以上的桌停用：9 位的 B2 桌「剩 1 位」可以選', async () => {
     const { user } = renderDialog(buildOverflowState(null));
     const options = await openOptions(user);
     const disabled = options
       .filter((o) => o.getAttribute('aria-disabled') === 'true')
-      .map((o) => /^第 \d+ 桌/.exec(labelOf(o))?.[0]);
-    expect(disabled.sort()).toEqual(['第 5 桌', '第 6 桌', '第 9 桌'].sort());
-    const seven = options.find((o) => labelOf(o).startsWith('第 7 桌（'))!;
-    expect(labelOf(seven)).toBe('第 7 桌（剩 1 位）・業務部');
+      .map((o) => /^[AB]\d{1,2} 桌/.exec(labelOf(o))?.[0]);
+    expect(disabled.sort()).toEqual(['B10 桌', 'B13 桌', 'B8 桌'].sort());
+    const seven = options.find((o) => labelOf(o).startsWith('B2 桌（'))!;
+    expect(labelOf(seven)).toBe('B2 桌（剩 1 位）・業務部');
   });
 
   it('11、12 位的桌的選項不會出現負的剩餘位數（「剩 -1 位」）', async () => {
@@ -326,7 +348,7 @@ describe('D-018 選單類入口仍到 10 位為止（SEAT-R23、SEAT-R88、SEAT-
   it('從選單入座送出的指令不帶 allowOverflow（上限 10 位，docs/architecture.md 第 8.1 節）', async () => {
     const { user, operations } = renderDialog(buildOverflowState(null));
     await openOptions(user);
-    await user.click(screen.getByRole('option', { name: /^第 7 桌/ }));
+    await user.click(screen.getByRole('option', { name: /^B2 桌/ }));
     await user.click(screen.getByRole('button', { name: '確認入座' }));
 
     await waitFor(() => expect(operations()).toHaveLength(1));
@@ -339,35 +361,41 @@ describe('D-018 選單類入口仍到 10 位為止（SEAT-R23、SEAT-R88、SEAT-
     const { user } = renderDialog(buildOverflowState(3));
     const options = await openOptions(user);
     for (const n of [6, 9]) {
-      const o = options.find((x) => labelOf(x).startsWith(`第 ${n} 桌`))!;
+      const o = options.find((x) => labelOf(x).startsWith(`${codeOf(n)} 桌`))!;
       expect(o.getAttribute('aria-disabled')).toBe('true');
       expect(labelOf(o)).toContain('已滿');
     }
   });
 
-  it('確認時第 7 桌已被別人坐到 10 位：回 409 TABLE_FULL，重新載入並顯示「第 7 桌已滿，請先移出一位。」（SEAT-R86、SEAT-AC97）', async () => {
+  it('確認時 B2 桌已被別人坐到 10 位：回 409 TABLE_FULL，重新載入並顯示「B2 桌已滿，請先移出一位。」（SEAT-R86、SEAT-AC97）', async () => {
     const { user, notify, sent } = renderDialog(buildOverflowState(null), () => ({
       status: 409,
       body: { error: { code: 'TABLE_FULL', message: 'table full' } },
     }));
     await openOptions(user);
-    await user.click(screen.getByRole('option', { name: /^第 7 桌/ }));
+    await user.click(screen.getByRole('option', { name: /^B2 桌/ }));
     await user.click(screen.getByRole('button', { name: '確認入座' }));
 
-    await waitFor(() => expect(notify).toHaveBeenCalledWith('第 7 桌已滿，請先移出一位。'));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('B2 桌已滿，請先移出一位。'));
     expect(sent.some((s) => s.url === '/api/state')).toBe(true);
-    expect(notify).not.toHaveBeenCalledWith('第 7 桌已達 12 位，請先移出一位。');
+    expect(notify).not.toHaveBeenCalledWith('B2 桌已達 12 位，請先移出一位。');
   });
 });
 
 describe('已入座的人：移至其他桌次…（SEAT-R22、SEAT-R23、SEAT-R25、SEAT-AC09）', () => {
-  it('標題「把 {顯示名稱} 移到其他桌次」，按鈕「確認移動」；目前所在的第 3 桌不列出', async () => {
+  it('標題「把 {顯示名稱} 移到其他桌次」，按鈕「確認移動」；目前所在的 B4 桌不列出', async () => {
     const { user } = renderDialog(buildState(3));
     expect(screen.getByRole('dialog', { name: '把 王小明 移到其他桌次' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '確認移動' })).toBeTruthy();
     const options = await openOptions(user);
     expect(options).toHaveLength(29);
-    expect(options.some((o) => labelOf(o).startsWith('第 3 桌'))).toBe(false);
+    expect(options.some((o) => labelOf(o).startsWith('B4 桌'))).toBe(false);
+  });
+
+  it('其餘 29 桌仍依 A1～A15、B1～B15 的順序排列（SEAT-R23、D-019）', async () => {
+    const { user } = renderDialog(buildState(3));
+    const options = await openOptions(user);
+    expect(options.map(codeInLabel)).toEqual(CODES_IN_LIST_ORDER.filter((c) => c !== 'B4'));
   });
 
   it('沒選桌次就按「確認移動」：顯示「請選擇桌次。」，不移動（SEAT-R24）', async () => {
@@ -377,15 +405,15 @@ describe('已入座的人：移至其他桌次…（SEAT-R22、SEAT-R23、SEAT-R
     expect(operations()).toHaveLength(0);
   });
 
-  it('選第 7 桌確認：送出搬移，顯示「已把 王小明 從第 3 桌移到第 7 桌。」與「復原」（SEAT-R19、SEAT-R25）', async () => {
+  it('選 B2 桌確認：送出搬移（內部編號 7），顯示「已把 王小明 從 B4 桌移到 B2 桌。」與「復原」（SEAT-R19、SEAT-R25）', async () => {
     const { user, operations } = renderDialog(buildState(3));
     await openOptions(user);
-    await user.click(screen.getByRole('option', { name: /^第 7 桌/ }));
+    await user.click(screen.getByRole('option', { name: /^B2 桌/ }));
     await user.click(screen.getByRole('button', { name: '確認移動' }));
 
     await waitFor(() => expect(operations()).toHaveLength(1));
     expect(operations()[0]!.body).toMatchObject({ type: 'seat', participantId: WANG, tableId: 7 });
-    expect(await screen.findByText('已把 王小明 從第 3 桌移到第 7 桌。')).toBeTruthy();
+    expect(await screen.findByText('已把 王小明 從 B4 桌移到 B2 桌。')).toBeTruthy();
     expect(screen.getByRole('button', { name: '復原' })).toBeTruthy();
   });
 });

@@ -18,7 +18,7 @@ import { toEmployee, toParticipant } from './state';
 
 // 參與人員的寫入（docs/spec/participants.md；docs/architecture.md 第 7、8、11.2 節）。
 // 每個寫入在一個交易內完成：
-// - 先依桌號由小到大鎖住涉及的桌次列，再鎖員工或參與人員列（和座位異動同一個順序，避免死結），鎖住後才計算人數（第 7.2 節）。
+// - 先依內部編號由小到大鎖住涉及的桌次列，再鎖員工或參與人員列（和座位異動同一個順序，避免死結），鎖住後才計算人數（第 7.2 節）。
 // - 交易用 READ COMMITTED：拿到鎖之後的讀取都看得到別人剛提交的資料（REPEATABLE READ 會停在第一次讀取的快照）。
 // - 每次異動後把涉及的桌次重排為 0..n-1，回傳這次新增或改變的人讓前端校正。
 // - 員工加入尾牙（新增、一次加入多位、改成員工、匯入報名表）時清掉不參加的標記（EMP-R64、D-014）。
@@ -67,7 +67,7 @@ async function inTransaction<T>(fn: (tx: Db) => Promise<T>): Promise<T> {
 const sortedUnique = (ids: readonly (number | null | undefined)[]) =>
   [...new Set(ids.filter((id): id is number => id != null))].sort((a, b) => a - b);
 
-/** 依桌號由小到大鎖住桌次列（docs/architecture.md 第 7.2 節） */
+/** 依內部編號由小到大鎖住桌次列（docs/architecture.md 第 7.2 節） */
 async function lockTables(tx: Db, tableIds: readonly (number | null | undefined)[]): Promise<number[]> {
   const ids = sortedUnique(tableIds);
   if (ids.length) await tx.$queryRaw`SELECT id FROM SeatTable WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;

@@ -63,7 +63,7 @@ export async function setEmployeeDeclined(id: number, declined: boolean): Promis
   }, WRITE_TX);
 }
 
-/** 依桌號由小到大鎖住桌次列，和座位異動用同一個順序，避免死結（docs/architecture.md 第 7.2 節） */
+/** 依內部編號由小到大鎖住桌次列，和座位異動用同一個順序，避免死結（docs/architecture.md 第 7.2 節） */
 async function lockTables(tx: Db, tableIds: readonly number[]): Promise<void> {
   if (tableIds.length === 0) return;
   const ids = [...new Set(tableIds)].sort((a, b) => a - b);

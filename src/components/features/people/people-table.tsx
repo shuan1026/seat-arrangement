@@ -11,6 +11,7 @@ import { ActionMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/component
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { Participant } from '@/contracts/entities';
 import { displayName, extensionOf } from '@/domain/display';
+import { tableCodeLabel } from '@/domain/layout';
 import { kindLabel, rowActions, seatState, unitLabel, type RowAction } from '@/domain/participants';
 
 export type RowCommand = RowAction;
@@ -26,14 +27,15 @@ const COMMANDS: Record<RowAction, { label: string; icon: ReactNode; destructive?
 
 const Empty = () => <span className="text-muted-foreground">—</span>;
 
-/** 桌次欄（PPL-R33）：「第 {n} 桌」連到座位安排並標示那一桌；未入座是待處理徽章；工作人員是中性徽章、不能按（PPL-Q18） */
+/** 桌次欄（PPL-R33）：「{桌號}」連到座位安排（/?table={桌號}）並標示那一桌；未入座是待處理徽章；工作人員是中性徽章、不能按（PPL-Q18） */
 function SeatBadge({ p }: { p: Participant }) {
   const state = seatState(p);
   if (state === 'staff') return <Badge variant="neutral">工作人員</Badge>;
   if (state === 'unseated') return <Badge variant="pending">未入座</Badge>;
+  const code = tableCodeLabel(p.tableId ?? 0);
   return (
     <Badge variant="outline" asChild>
-      <Link href={`/?table=${p.tableId}`}>第 {p.tableId} 桌</Link>
+      <Link href={`/?table=${code}`}>{code}</Link>
     </Badge>
   );
 }

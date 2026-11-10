@@ -69,7 +69,7 @@ export async function noteNameOf(tableId: number): Promise<string | null> {
   return t.noteName;
 }
 
-/** 第 1–30 桌的 seatOrder 都是 0..n-1 連續；未入座的人沒有座號（docs/architecture.md 第 7.2 節） */
+/** 內部編號 1–30 的桌 seatOrder 都是 0..n-1 連續；未入座的人沒有座號（docs/architecture.md 第 7.2 節） */
 export async function expectAllContiguous() {
   const rows = await prisma.participant.findMany({ orderBy: [{ tableId: 'asc' }, { seatOrder: 'asc' }] });
   for (let t = 1; t <= 30; t++) {
@@ -77,7 +77,7 @@ export async function expectAllContiguous() {
       .filter((p) => p.tableId === t)
       .map((p) => p.seatOrder)
       .sort((a, b) => (a ?? -1) - (b ?? -1));
-    expect(orders, `第 ${t} 桌的座號`).toEqual(orders.map((_, i) => i));
+    expect(orders, `內部編號 ${t} 的桌的座號`).toEqual(orders.map((_, i) => i));
   }
   for (const p of rows) if (p.tableId === null) expect(p.seatOrder, `未入座的 ${p.id}`).toBeNull();
 }

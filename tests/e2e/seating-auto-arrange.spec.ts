@@ -2,11 +2,23 @@
 // ARR-AC16～AC18、ARR-Q02～Q04（目前假設）；docs/spec/seating.md 2.1.3、SEAT-R76、SEAT-R78。
 // 排座規則由 D 線的 src/domain/auto-arrange.ts 測；階段 2 伺服器還沒登記排座函式，
 // 所以這裡用 page.route 攔下 autoArrange 指令，回傳假的排座結果（等於假的 arranger）；復原也攔下，回傳快照裡的位置。
+// D-019：指令與摘要的桌次用內部編號（1 = B1、2 = A1、3 = B4、4 = B7、29 = A10、30 = A13）；
+// Sonner 寫桌數「已把 {n} 位安排到 {k} 桌。」，{k} 是摘要 tableIds 的個數（ARR-R14）。
 import { expect, test, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
 import { rosterNames, seed } from './helpers/seating-data';
-import { clickUndo, expectNoToast, expectStats, expectToast, mapTable, openSeating, showMap, toolbarButton } from './helpers/seating-page';
+import {
+  clickUndo,
+  expectNoToast,
+  expectStats,
+  expectToast,
+  mapTable,
+  openSeating,
+  showMap,
+  toast,
+  toolbarButton,
+} from './helpers/seating-page';
 
 test.beforeEach(async ({ context, baseURL }) => {
   await signIn(context, requireBaseURL(baseURL));
@@ -73,7 +85,7 @@ async function fakeArranger(page: Page, plan: Plan) {
 }
 
 /**
- * 第 1 桌「主桌」坐賓1、賓2；第 2 桌坐研發部 8 位；第 3 桌「供應商」沒有人；
+ * B1 桌（1）「主桌」坐賓1、賓2；A1 桌（2）坐研發部 8 位；B4 桌（3）「供應商」沒有人；
  * 未入座：業1–業3（業務部）、外部貴賓賓4、工作甲的眷屬；工作甲是工作人員。
  * → 「只排未入座的 4 位」（業1–業3 與工作甲_眷屬）、「有備註名稱的 2 桌」。
  */
@@ -99,6 +111,7 @@ async function openDialog(page: Page) {
   return dialog;
 }
 
+/** 排進 A1 桌（2）與 B7 桌（4）兩桌 →「已把 4 位安排到 2 桌。」 */
 const PLAN_FOUR: Plan = {
   changes: [
     { name: '業1', tableId: 2, seatOrder: 8 },
@@ -158,7 +171,7 @@ test.describe('入口與範圍對話框（auto-arrange.md 2.1、2.2、ARR-R15）
 });
 
 test.describe('開始排座與結果提示（ARR-R13、ARR-R14）', () => {
-  test('按「開始排座」：關閉對話框、送出「只排未入座」、直接套用；Sonner「已把 4 位安排到第 2–4 桌。」帶「復原」；按「復原」一次回到排座前（ARR-R13、ARR-R14、SEAT-R76、SEAT-R78）', async ({
+  test('按「開始排座」：關閉對話框、送出「只排未入座」、直接套用；Sonner「已把 4 位安排到 2 桌。」帶「復原」；按「復原」一次回到排座前（ARR-R13、ARR-R14、SEAT-R76、SEAT-R78）', async ({
     page,
   }) => {
     await seedArrangeable();
@@ -169,13 +182,13 @@ test.describe('開始排座與結果提示（ARR-R13、ARR-R14）', () => {
     const dialog = await openDialog(page);
     await dialog.getByRole('button', { name: '開始排座' }).click();
     await expect(dialog).toBeHidden();
-    await expectToast(page, '已把 4 位安排到第 2–4 桌。', { undo: true });
+    await expectToast(page, '已把 4 位安排到 2 桌。', { undo: true });
     expect(sent[0]).toEqual({ type: 'autoArrange', mode: 'unseatedOnly' });
     await expect(mapTable(page, 2)).toContainText('已滿');
     await expect(mapTable(page, 4)).toContainText('2/10');
     await expectStats(page, { seated: 14, total: 15, unseated: 1, empty: 286, full: 1 });
 
-    await clickUndo(page, '已把 4 位安排到第 2–4 桌。');
+    await clickUndo(page, '已把 4 位安排到 2 桌。');
     await expectToast(page, '已復原。', { undo: false });
     const restore = sent.find((s) => s.type === 'restore');
     expect(restore?.snapshot?.participants).toHaveLength(4);
@@ -191,11 +204,11 @@ test.describe('開始排座與結果提示（ARR-R13、ARR-R14）', () => {
     const dialog = await openDialog(page);
     await dialog.getByRole('radio', { name: '清空後重排（有備註名稱的 2 桌不動）' }).check();
     await dialog.getByRole('button', { name: '開始排座' }).click();
-    await expectToast(page, '已把 4 位安排到第 2–4 桌。', { undo: true });
+    await expectToast(page, '已把 4 位安排到 2 桌。', { undo: true });
     expect(sent[0]).toEqual({ type: 'autoArrange', mode: 'rebuild' });
   });
 
-  test('有人排不下：Sonner「已把 {n} 位安排到第 {a}–{b} 桌，還有 {m} 位排不下，留在未入座。」帶「復原」（ARR-R14）', async ({ page }) => {
+  test('有人排不下：Sonner「已把 {n} 位安排到 {k} 桌，還有 {m} 位排不下，留在未入座。」帶「復原」（ARR-R14）', async ({ page }) => {
     await seedArrangeable();
     await openSeating(page);
     await fakeArranger(page, {
@@ -208,10 +221,10 @@ test.describe('開始排座與結果提示（ARR-R13、ARR-R14）', () => {
     });
     const dialog = await openDialog(page);
     await dialog.getByRole('button', { name: '開始排座' }).click();
-    await expectToast(page, '已把 3 位安排到第 29–30 桌，還有 1 位排不下，留在未入座。', { undo: true });
+    await expectToast(page, '已把 3 位安排到 2 桌，還有 1 位排不下，留在未入座。', { undo: true });
   });
 
-  test('只排進一桌：Sonner「已把 {n} 位安排到第 {a} 桌。」（ARR-Q03 的目前假設）', async ({ page }) => {
+  test('只排進一桌：Sonner「已把 {n} 位安排到 1 桌。」（ARR-Q03 的目前假設）', async ({ page }) => {
     await seedArrangeable();
     await openSeating(page);
     await fakeArranger(page, {
@@ -223,7 +236,26 @@ test.describe('開始排座與結果提示（ARR-R13、ARR-R14）', () => {
     });
     const dialog = await openDialog(page);
     await dialog.getByRole('button', { name: '開始排座' }).click();
-    await expectToast(page, '已把 2 位安排到第 2 桌。', { undo: true });
+    await expectToast(page, '已把 2 位安排到 1 桌。', { undo: true });
+  });
+
+  test('{k} 是有排進人的桌數，不是桌號範圍：排進 B1、B10、A13 三桌 →「已把 3 位安排到 3 桌。」，不寫桌號（ARR-R14、D-019）', async ({
+    page,
+  }) => {
+    await seedArrangeable();
+    await openSeating(page);
+    await fakeArranger(page, {
+      changes: [
+        { name: '業1', tableId: 5, seatOrder: 0 },
+        { name: '業2', tableId: 29, seatOrder: 0 },
+        { name: '業3', tableId: 30, seatOrder: 0 },
+      ],
+      summary: { placed: 3, tableIds: [5, 29, 30], left: 1 },
+    });
+    const dialog = await openDialog(page);
+    await dialog.getByRole('button', { name: '開始排座' }).click();
+    await expectToast(page, '已把 3 位安排到 3 桌，還有 1 位排不下，留在未入座。', { undo: true });
+    await expect(toast(page, '已把 3 位')).not.toContainText(/第\s*\d+|[AB]\d{1,2}/);
   });
 
   test('一位都沒排進去：座位都不變，警告 Sonner「沒有可以排的員工與眷屬。」不帶「復原」（ARR-Q02 的目前假設、ARR-AC14）', async ({ page }) => {
@@ -252,6 +284,6 @@ test.describe('手機（auto-arrange.md 2.4、ARR-AC18）', () => {
     expect(Math.abs(start.width - cancel.width)).toBeLessThanOrEqual(1);
 
     await dialog.getByRole('button', { name: '開始排座' }).click();
-    await expectToast(page, '已把 4 位安排到第 2–4 桌。', { undo: true });
+    await expectToast(page, '已把 4 位安排到 2 桌。', { undo: true });
   });
 });

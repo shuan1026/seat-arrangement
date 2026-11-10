@@ -279,7 +279,7 @@ describe('seatMany 帶 allowOverflow（加入人員）：最多到這一桌 12 �
 });
 
 describe('restore、swap 上限 12 位（SEAT-R88、SEAT-AC98）', () => {
-  it('11 位的第 5 桌移出一位後按「復原」：回到 11 位、原本的座號（SEAT-AC98）', async () => {
+  it('11 位的 B10 桌（內部編號 5）移出一位後按「復原」：回到 11 位、原本的座號（SEAT-AC98）', async () => {
     const table5 = await seatNewEmployees(5, 11);
     const removed = await operate({ type: 'unseat', participantId: table5[4] });
     expect(await roster(5)).toHaveLength(10);
@@ -288,7 +288,7 @@ describe('restore、swap 上限 12 位（SEAT-R88、SEAT-AC98）', () => {
     expect(await positionOf(table5[4]!)).toEqual({ tableId: 5, seatOrder: 4 });
   });
 
-  it('11 位的第 5 桌和 9 位的第 6 桌對調：名單整組交換，第 6 桌變成 11 位；復原後回到對調前（SEAT-R35、SEAT-AC98）', async () => {
+  it('11 位的 B10 桌（5）和 9 位的 B13 桌（6）對調：名單整組交換，B13 桌變成 11 位；復原後回到對調前（SEAT-R35、SEAT-AC98）', async () => {
     const table5 = await seatNewEmployees(5, 11);
     const table6 = await seatNewEmployees(6, 9);
     const result = await operate({ type: 'swap', tableA: 5, tableB: 6 });
@@ -319,7 +319,7 @@ describe('restore、swap 上限 12 位（SEAT-R88、SEAT-AC98）', () => {
 });
 
 describe('autoArrange 每桌只排到 10 位（ARR-R17）', () => {
-  it('只排未入座：第 1 桌 11 位算沒有空位、不再排人；第 2 桌 9 位只排到第 10 位，其餘排到第 3 桌', async () => {
+  it('只排未入座：B1 桌（1）11 位算沒有空位、不再排人；A1 桌（2）9 位只排到第 10 位，其餘排到 B4 桌（3）（填桌順序）', async () => {
     const table1 = await seatNewEmployees(1, 11);
     const table2 = await seatNewEmployees(2, 9);
     const ids = await unseatedMany(3);
@@ -360,7 +360,7 @@ describe('autoArrange 每桌只排到 10 位（ARR-R17）', () => {
 });
 
 describe('別人剛改過資料（SEAT-R86、SEAT-AC88、SEAT-AC97）', () => {
-  it('畫面上第 5 桌 11 位、別人已把它坐到 12 位：拖移 409 TABLE_LIMIT，這次不儲存（SEAT-AC88）', async () => {
+  it('畫面上 B10 桌 11 位、別人已把它坐到 12 位：拖移 409 TABLE_LIMIT，這次不儲存（SEAT-AC88）', async () => {
     await seatNewEmployees(5, 11);
     const wang = await newUnseated({ name: '王小明' });
     // 別人剛把第 12 位坐進去
@@ -376,7 +376,7 @@ describe('別人剛改過資料（SEAT-R86、SEAT-AC88、SEAT-AC97）', () => {
     expect(await roster(5)).toContain(other.id);
   });
 
-  it('從選擇桌次選第 6 桌時別人已把第 6 桌坐到 10 位：不帶 allowOverflow，409 TABLE_FULL（SEAT-AC97）', async () => {
+  it('從選擇桌次選 B13 桌時別人已把 B13 桌（6）坐到 10 位：不帶 allowOverflow，409 TABLE_FULL（SEAT-AC97）', async () => {
     await seatNewEmployees(6, 10);
     const wang = await newUnseated();
     await expectError(await postOperation({ type: 'seat', participantId: wang, tableId: 6 }), 409, 'TABLE_FULL');

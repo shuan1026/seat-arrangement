@@ -158,7 +158,7 @@ test.describe('單筆「加入尾牙」開啟新增人員對話框（EMP-R28、P
     await expect(menu.getByRole('menuitem', { name: '加入尾牙', exact: true })).toHaveCount(0);
   });
 
-  test('PPL-AC59：第 3 桌剩 5 位，勾「同時加一位眷屬」、桌次選第 3 桌 → 陳大文與陳大文_眷屬都新增，都在第 3 桌、排在原本的人後面（PPL-R46、PPL-R56、PPL-R57）', async ({
+  test('PPL-AC59：B4 桌（內部編號 3）剩 5 位，勾「同時加一位眷屬」、桌次選 B4 桌 → 陳大文與陳大文_眷屬都新增，都在 B4 桌、排在原本的人後面（PPL-R46、PPL-R56、PPL-R57）', async ({
     page,
   }) => {
     desktopOnly(page);
@@ -169,7 +169,7 @@ test.describe('單筆「加入尾牙」開啟新增人員對話框（EMP-R28、P
 
     const dialog = await openJoinDialog(page, '陳大文');
     await checkbox(dialog, '同時加一位眷屬').check();
-    await chooseOption(page, selectField(dialog, '桌次'), /^第 3 桌（剩 5 位）/);
+    await chooseOption(page, selectField(dialog, '桌次'), /^B4 桌（剩 5 位）/);
     await joinButton(dialog).click();
 
     await expect(dialog).toBeHidden();
@@ -181,7 +181,7 @@ test.describe('單筆「加入尾牙」開啟新增人員對話框（EMP-R28、P
     expect(dependentsOf(rows, host!.id)).toEqual([expect.objectContaining({ tableId: 3, seatOrder: 6 })]);
   });
 
-  test('第 3 桌只剩 1 位：陳大文入座、眷屬留在未入座，Sonner「第 3 桌只剩 1 位，陳大文_眷屬先留在未入座。」（PPL-R57）', async ({ page }) => {
+  test('B4 桌只剩 1 位：陳大文入座、眷屬留在未入座，Sonner「B4 桌只剩 1 位，陳大文_眷屬先留在未入座。」（PPL-R57）', async ({ page }) => {
     desktopOnly(page);
     const ids = await insertEmployees([...numbered(9, '三桌員工', '業務部'), { name: '陳大文', department: '研發一部' }]);
     const chen = ids[9]!;
@@ -190,10 +190,10 @@ test.describe('單筆「加入尾牙」開啟新增人員對話框（EMP-R28、P
 
     const dialog = await openJoinDialog(page, '陳大文');
     await checkbox(dialog, '同時加一位眷屬').check();
-    await chooseOption(page, selectField(dialog, '桌次'), /^第 3 桌（剩 1 位）/);
+    await chooseOption(page, selectField(dialog, '桌次'), /^B4 桌（剩 1 位）/);
     await joinButton(dialog).click();
 
-    await expectToast(page, '第 3 桌只剩 1 位，陳大文_眷屬先留在未入座。');
+    await expectToast(page, 'B4 桌只剩 1 位，陳大文_眷屬先留在未入座。');
     await expect.poll(() => seatedCount(3)).toBe(10);
     const rows = await participantRows();
     const [host] = registrationOf(rows, chen);
@@ -368,7 +368,7 @@ test.describe('一次加入多位走真的伺服器（EMP-R22～R24、PPL-R63）
 });
 
 test.describe('取消報名走真的伺服器（EMP-R30、EMP-R31）', () => {
-  test('EMP-AC36：李小華帶眷屬坐第 5 桌 → 確認取消報名 → 資料庫移除李小華與眷屬，第 5 桌空出 2 個位子；李小華仍在員工名單、顯示「未報名」；Sonner「已取消 李小華 的報名。」沒有「復原」；之後可以再加入', async ({
+  test('EMP-AC36：李小華帶眷屬坐 B10 桌（內部編號 5）→ 確認取消報名 → 資料庫移除李小華與眷屬，B10 桌空出 2 個位子；李小華仍在員工名單、顯示「未報名」；Sonner「已取消 李小華 的報名。」沒有「復原」；之後可以再加入', async ({
     page,
   }) => {
     const li = await insertEmployee({ name: '李小華', department: '研發部' });
@@ -427,7 +427,7 @@ test.describe('查看參與資料（EMP-R29、EMP-Q07）', () => {
     await expect(page.getByRole('heading', { level: 1, name: '參與人員' })).toBeVisible();
     await expect(peopleSearchBox(page)).toHaveValue('李小華');
     await expect(personRow(page, '李小華')).toHaveCount(1);
-    await expect(personRow(page, '李小華')).toContainText('第 5 桌');
+    await expect(personRow(page, '李小華')).toContainText('B10');
     await expect(personRow(page, '李小華_眷屬')).toHaveCount(1);
     await expect(personRow(page, '王小明')).toHaveCount(0);
   });

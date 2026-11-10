@@ -6,8 +6,9 @@
 // 選單類入口仍到 10 位為止（SEAT-R88、D-018）：10 位以上的桌停用並標示「已滿」，送出的指令不帶 allowOverflow。
 import { useMemo, useState } from 'react';
 import { useAppStore } from '@/client/app-provider';
-import { STAFF_TABLE_ID, TABLE_COUNT } from '@/contracts/entities';
+import { STAFF_TABLE_ID } from '@/contracts/entities';
 import { displayName } from '@/domain/display';
+import { TABLE_IDS_IN_ORDER, tableTitle } from '@/domain/layout';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogBody, DialogContent, DialogFooter } from '@/components/ui/dialog';
 import { Select } from '@/components/ui/select';
@@ -33,14 +34,15 @@ export function TableSelectDialog({ open, onOpenChange, participantId }: TableSe
 
   const options = useMemo(() => {
     const out = [];
-    for (let n = 1; n <= TABLE_COUNT; n++) {
+    // 依 A1～A15、B1～B15 排列（SEAT-R04、SEAT-R23）；value 仍是內部編號
+    for (const n of TABLE_IDS_IN_ORDER) {
       if (n === person?.tableId) continue;
       const t = tables.get(n)!;
       const desc = tableDesc(t);
       out.push({
         value: String(n),
         // 剩餘位數最少 0：拖移或「加入人員」可以讓一桌有 11、12 位
-        label: `第 ${n} 桌（剩 ${Math.max(0, CAPACITY - t.count)} 位）${desc ? `・${desc}` : ''}`,
+        label: `${tableTitle(n)}（剩 ${Math.max(0, CAPACITY - t.count)} 位）${desc ? `・${desc}` : ''}`,
         disabled: t.full,
         disabledReason: t.full ? '已滿' : undefined,
       });

@@ -4,7 +4,10 @@
 // D-018：「加入人員」最多勾到這一桌 12 位（SEAT-R30）；超過 10 位的其他情況見 seating-overflow.spec.ts。
 // 參與人員頁的「入座…」（SEAT-AC12）用同一個 TableSelectDialog，元件本身見 tests/unit/components/table-select-dialog.test.tsx；
 // 參與人員頁入口的 E2E 在 people-seating.spec.ts。
+// 桌號 A1～A15、B1～B15（D-019）：測試資料用內部編號（3 = B4、4 = B7、5 = B10、7 = B2、8 = B5、9 = B8），
+// 畫面上的字用桌號；選項依 A1～A15、B1～B15 排列（SEAT-R04）。對應見 tests/helpers/table-codes.ts。
 import { expect, test, type Page } from '@playwright/test';
+import { CODES_IN_LIST_ORDER } from '../helpers/table-codes';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
 import { noteNameOf, participantCount, rosterNames, seatOf, seed } from './helpers/seating-data';
@@ -36,8 +39,11 @@ test.beforeEach(async ({ context, baseURL, page }) => {
 
 const selectDialog = (page: Page, title: string) => page.getByRole('dialog', { name: title, exact: true });
 
+/** 選項開頭的桌號，例如「B2 桌（剩 6 位）・主桌」→ 'B2' */
+const codeInLabel = (label: string) => /^([AB]\d{1,2}) 桌/.exec(label)?.[1];
+
 test.describe('選擇桌次對話框（2.4、SEAT-R22～R25）', () => {
-  test('未入座：人員面板列操作「入座…」，標題「安排 {顯示名稱} 入座」；選第 7 桌按「確認入座」，排到最後並顯示 Sonner（SEAT-AC08）', async ({
+  test('未入座：人員面板列操作「入座…」，標題「安排 {顯示名稱} 入座」；選 B2 桌按「確認入座」，排到最後並顯示 Sonner（SEAT-AC08）', async ({
     page,
   }) => {
     await seed(async (s) => {
@@ -50,17 +56,17 @@ test.describe('選擇桌次對話框（2.4、SEAT-R22～R25）', () => {
     const dialog = selectDialog(page, '安排 王小明 入座');
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('combobox', { name: /^桌次/ })).toBeVisible();
-    await chooseOption(page, dialog, /^桌次/, /^第 7 桌/);
+    await chooseOption(page, dialog, /^桌次/, /^B2 桌/);
     const saved = waitForOperation(page);
     await dialog.getByRole('button', { name: '確認入座' }).click();
     await saved;
 
     await expect(dialog).toBeHidden();
-    await expectToast(page, '已把 王小明 安排到第 7 桌。', { undo: true });
+    await expectToast(page, '已把 王小明 安排到 B2 桌。', { undo: true });
     expect(await rosterNames(7)).toEqual(['七1', '七2', '王小明']);
   });
 
-  test('已入座：列操作「移至其他桌次…」，標題「把 {顯示名稱} 移到其他桌次」，選項不含目前的桌；確認後搬到第 7 桌（SEAT-AC09）', async ({
+  test('已入座：列操作「移至其他桌次…」，標題「把 {顯示名稱} 移到其他桌次」，選項不含目前的桌；確認後搬到 B2 桌（SEAT-AC09）', async ({
     page,
   }) => {
     await seed(async (s) => {
@@ -74,16 +80,18 @@ test.describe('選擇桌次對話框（2.4、SEAT-R22～R25）', () => {
     await expect(dialog).toBeVisible();
     const labels = await optionLabels(page, dialog, /^桌次/);
     expect(labels).toHaveLength(29);
-    expect(labels.some((l) => l.startsWith('第 3 桌'))).toBe(false);
-    await page.getByRole('option', { name: /^第 7 桌/ }).click();
+    expect(labels.some((l) => l.startsWith('B4 桌'))).toBe(false);
+    // 其餘 29 桌依 A1～A15、B1～B15 排列（SEAT-R23、D-019）
+    expect(labels.map(codeInLabel)).toEqual(CODES_IN_LIST_ORDER.filter((c) => c !== 'B4'));
+    await page.getByRole('option', { name: /^B2 桌/ }).click();
     await dialog.getByRole('button', { name: '確認移動' }).click();
 
-    await expectToast(page, '已把 王小明 從第 3 桌移到第 7 桌。', { undo: true });
+    await expectToast(page, '已把 王小明 從 B4 桌移到 B2 桌。', { undo: true });
     await expect.poll(() => rosterNames(7)).toEqual(['王小明']);
     expect(await rosterNames(3)).toEqual([]);
   });
 
-  test('選項「第 {n} 桌（剩 {k} 位）・{備註名稱或部門}」，不列工作人員桌；空桌沒有備註名稱時省略「・」（SEAT-R23、SEAT-AC10、SEAT-Q05）', async ({
+  test('選項「{桌號} 桌（剩 {k} 位）・{備註名稱或部門}」，不列工作人員桌；空桌沒有備註名稱時省略「・」（SEAT-R23、SEAT-AC10、SEAT-Q05）', async ({
     page,
   }) => {
     await seed(async (s) => {
@@ -98,10 +106,20 @@ test.describe('選擇桌次對話框（2.4、SEAT-R22～R25）', () => {
     const labels = await optionLabels(page, selectDialog(page, '安排 王小明 入座'), /^桌次/);
 
     expect(labels).toHaveLength(30);
-    expect(labels).toContain('第 7 桌（剩 6 位）・主桌');
-    expect(labels).toContain('第 8 桌（剩 8 位）・研發一部');
-    expect(labels).toContain('第 9 桌（剩 10 位）');
+    expect(labels).toContain('B2 桌（剩 6 位）・主桌');
+    expect(labels).toContain('B5 桌（剩 8 位）・研發一部');
+    expect(labels).toContain('B8 桌（剩 10 位）');
     expect(labels.some((l) => l.includes('工作人員'))).toBe(false);
+  });
+
+  test('選項依 A1～A15、B1～B15 的順序排列（SEAT-R04、SEAT-R23、D-019）', async ({ page }) => {
+    await seed(async (s) => {
+      await s.employee('王小明');
+    });
+    await openSeating(page);
+    await rowAction(page, personRow(page, '王小明'), '入座…');
+    const labels = await optionLabels(page, selectDialog(page, '安排 王小明 入座'), /^桌次/);
+    expect(labels.map(codeInLabel)).toEqual(CODES_IN_LIST_ORDER);
   });
 
   test('已滿的桌次停用並標示「已滿」，不能選（SEAT-R23、SEAT-AC17）', async ({ page }) => {
@@ -113,7 +131,7 @@ test.describe('選擇桌次對話框（2.4、SEAT-R22～R25）', () => {
     await rowAction(page, personRow(page, '王小明'), '入座…');
     const dialog = selectDialog(page, '安排 王小明 入座');
     await dialog.getByRole('combobox', { name: /^桌次/ }).click();
-    const full = page.getByRole('option', { name: /^第 5 桌/ });
+    const full = page.getByRole('option', { name: /^B10 桌/ });
     await expect(full).toHaveAttribute('aria-disabled', 'true');
     await expect(full).toContainText('已滿');
     await full.click({ force: true });
@@ -159,9 +177,9 @@ test.describe('選擇桌次對話框（2.4、SEAT-R22～R25）', () => {
     const detail = await openTableDetail(page, 3);
     await rowAction(page, rowWithName(detailRows(detail), page, '王小明'), '移至其他桌次…');
     const dialog = selectDialog(page, '把 王小明 移到其他桌次');
-    await chooseOption(page, dialog, /^桌次/, /^第 8 桌/);
+    await chooseOption(page, dialog, /^桌次/, /^B5 桌/);
     await dialog.getByRole('button', { name: '確認移動' }).click();
-    await expectToast(page, '已把 王小明 從第 3 桌移到第 8 桌。', { undo: true });
+    await expectToast(page, '已把 王小明 從 B4 桌移到 B5 桌。', { undo: true });
     await expect(detail).toContainText('0/10 人');
   });
 
@@ -173,7 +191,7 @@ test.describe('選擇桌次對話框（2.4、SEAT-R22～R25）', () => {
     await openSeating(page);
     const detail = await openTableDetail(page, 3);
     await rowAction(page, rowWithName(detailRows(detail), page, '王小明'), '移出桌次');
-    await expectToast(page, '已把 王小明 移出第 3 桌。', { undo: true });
+    await expectToast(page, '已把 王小明 移出 B4 桌。', { undo: true });
     await expectRoster(detailRows(detail), ['甲']);
     await expect(personRow(page, '王小明')).toHaveCount(1);
   });
@@ -187,7 +205,7 @@ test.describe('選擇桌次對話框（2.4、SEAT-R22～R25）', () => {
     await openSeating(page);
     await panelTab(page, '全部').click();
     await rowAction(page, personRow(page, '王小明'), '移出桌次');
-    await expectToast(page, '已把 王小明 移出第 3 桌。', { undo: true });
+    await expectToast(page, '已把 王小明 移出 B4 桌。', { undo: true });
     await expect(personRow(page, '王小明')).toContainText('未入座');
     await panelTab(page, '未入座').click();
     await expect(personRow(page, '王小明')).toHaveCount(1);
@@ -210,7 +228,7 @@ test.describe('加入人員到桌次（2.3.4、SEAT-R30、SEAT-R31）', () => {
     const detail = await openTableDetail(page, 3);
     await detail.getByRole('button', { name: '加入人員', exact: true }).click();
 
-    const dialog = selectDialog(page, '加入人員到第 3 桌');
+    const dialog = selectDialog(page, '加入人員到 B4 桌');
     await expect(dialog).toContainText('還有 3 個空位。');
     await expect(dialog.getByPlaceholder('搜尋姓名、分機、部門或單位')).toBeVisible();
     await expect(dialog.getByRole('button', { name: '加入 0 位' })).toBeDisabled();
@@ -226,7 +244,7 @@ test.describe('加入人員到桌次（2.3.4、SEAT-R30、SEAT-R31）', () => {
 
     await dialog.getByRole('button', { name: '加入 3 位' }).click();
     await expect(dialog).toBeHidden();
-    await expectToast(page, '已把 3 位人員加入第 3 桌。', { undo: true });
+    await expectToast(page, '已把 3 位人員加入 B4 桌。', { undo: true });
     // 依勾選順序排入（SEAT-Q06 的目前假設）
     await expect.poll(async () => (await rosterNames(3)).slice(7)).toEqual(['丙', '甲', '戊']);
     await expect(mapTable(page, 3)).toContainText('已滿');
@@ -245,7 +263,7 @@ test.describe('加入人員到桌次（2.3.4、SEAT-R30、SEAT-R31）', () => {
     await openSeating(page);
     const detail = await openTableDetail(page, 3);
     await detail.getByRole('button', { name: '加入人員', exact: true }).click();
-    const dialog = selectDialog(page, '加入人員到第 3 桌');
+    const dialog = selectDialog(page, '加入人員到 B4 桌');
 
     await expect(dialog.getByRole('checkbox')).toHaveCount(2);
     await expect(dialog).not.toContainText('已坐甲');
@@ -265,7 +283,7 @@ test.describe('加入人員到桌次（2.3.4、SEAT-R30、SEAT-R31）', () => {
     await openSeating(page);
     const detail = await openTableDetail(page, 3);
     await detail.getByRole('button', { name: '加入人員', exact: true }).click();
-    await expect(selectDialog(page, '加入人員到第 3 桌')).toContainText('所有人都已入座。');
+    await expect(selectDialog(page, '加入人員到 B4 桌')).toContainText('所有人都已入座。');
   });
 
   test('一般桌次已滿時「加入人員」不停用（SEAT-Q06 的目前假設）', async ({ page }) => {
@@ -279,7 +297,7 @@ test.describe('加入人員到桌次（2.3.4、SEAT-R30、SEAT-R31）', () => {
 });
 
 test.describe('調換桌次對話框（2.3.3、SEAT-R39）', () => {
-  test('標題「把第 3 桌和哪一桌對調？」；選項不含自己、已滿的第 7 桌「第 7 桌（10/10）・{部門}」可以選；沒選就確認顯示「請選擇桌次。」；確認後對調（SEAT-AC35）', async ({
+  test('標題「把 B4 桌和哪一桌對調？」；選項不含自己、已滿的 B2 桌「B2 桌（10/10）・{部門}」可以選；沒選就確認顯示「請選擇桌次。」；確認後對調（SEAT-AC35）', async ({
     page,
   }) => {
     await seed(async (s) => {
@@ -291,7 +309,7 @@ test.describe('調換桌次對話框（2.3.3、SEAT-R39）', () => {
     await openSeating(page);
     const detail = await openTableDetail(page, 3);
     await detail.getByRole('button', { name: '調換桌次…', exact: true }).click();
-    const dialog = selectDialog(page, '把第 3 桌和哪一桌對調？');
+    const dialog = selectDialog(page, '把 B4 桌和哪一桌對調？');
     await expect(dialog).toBeVisible();
 
     await dialog.getByRole('button', { name: '確認對調' }).click();
@@ -300,20 +318,31 @@ test.describe('調換桌次對話框（2.3.3、SEAT-R39）', () => {
 
     const labels = await optionLabels(page, dialog, /^桌次/);
     expect(labels).toHaveLength(29);
-    expect(labels.some((l) => l.startsWith('第 3 桌'))).toBe(false);
-    expect(labels).toContain('第 7 桌（10/10）・研發一部');
-    expect(labels).toContain('第 8 桌（2/10）・業務部');
-    expect(labels).toContain('第 9 桌（0/10）');
-    const seven = page.getByRole('option', { name: /^第 7 桌/ });
+    expect(labels.some((l) => l.startsWith('B4 桌'))).toBe(false);
+    expect(labels).toContain('B2 桌（10/10）・研發一部');
+    expect(labels).toContain('B5 桌（2/10）・業務部');
+    expect(labels).toContain('B8 桌（0/10）');
+    const seven = page.getByRole('option', { name: /^B2 桌/ });
     await expect(seven).not.toHaveAttribute('aria-disabled', 'true');
     await seven.click();
     await dialog.getByRole('button', { name: '確認對調' }).click();
 
-    await expectToast(page, '已把第 3 桌和第 7 桌對調。', { undo: true });
+    await expectToast(page, '已把 B4 桌和 B2 桌對調。', { undo: true });
     await expect.poll(() => rosterNames(7)).toEqual(['甲', '乙']);
     expect(await rosterNames(3)).toHaveLength(10);
     expect(await noteNameOf(7)).toBe('主桌');
     expect(await noteNameOf(3)).toBeNull();
+  });
+
+  test('選項依 A1～A15、B1～B15 的順序列出自己以外的 29 桌（SEAT-R39、D-019）', async ({ page }) => {
+    await seed(async (s) => {
+      await s.employee('甲', { tableId: 3 });
+    });
+    await openSeating(page);
+    const detail = await openTableDetail(page, 3);
+    await detail.getByRole('button', { name: '調換桌次…', exact: true }).click();
+    const labels = await optionLabels(page, selectDialog(page, '把 B4 桌和哪一桌對調？'), /^桌次/);
+    expect(labels.map(codeInLabel)).toEqual(CODES_IN_LIST_ORDER.filter((c) => c !== 'B4'));
   });
 
   test('按「取消」：關閉，不對調', async ({ page }) => {
@@ -323,8 +352,8 @@ test.describe('調換桌次對話框（2.3.3、SEAT-R39）', () => {
     await openSeating(page);
     const detail = await openTableDetail(page, 3);
     await detail.getByRole('button', { name: '調換桌次…', exact: true }).click();
-    const dialog = selectDialog(page, '把第 3 桌和哪一桌對調？');
-    await chooseOption(page, dialog, /^桌次/, /^第 7 桌/);
+    const dialog = selectDialog(page, '把 B4 桌和哪一桌對調？');
+    await chooseOption(page, dialog, /^桌次/, /^B2 桌/);
     await dialog.getByRole('button', { name: '取消' }).click();
     await expect(dialog).toBeHidden();
     expect(await rosterNames(3)).toEqual(['甲']);
@@ -332,7 +361,7 @@ test.describe('調換桌次對話框（2.3.3、SEAT-R39）', () => {
 });
 
 test.describe('清空桌次（2.3.5、SEAT-R28、SEAT-R29）', () => {
-  test('Alert Dialog「要清空第 3 桌嗎？」「6 位人員會變成未入座，名單不會刪除。」；確認後空桌、備註名稱保留、6 位回到「未入座」、總數不變（SEAT-AC36）', async ({
+  test('Alert Dialog「要清空 B4 桌嗎？」「6 位人員會變成未入座，名單不會刪除。」；確認後空桌、備註名稱保留、6 位回到「未入座」、總數不變（SEAT-AC36）', async ({
     page,
   }) => {
     await seed(async (s) => {
@@ -344,7 +373,7 @@ test.describe('清空桌次（2.3.5、SEAT-R28、SEAT-R29）', () => {
     const detail = await openTableDetail(page, 3);
     await detail.getByRole('button', { name: '清空桌次', exact: true }).click();
 
-    const alert = page.getByRole('alertdialog', { name: '要清空第 3 桌嗎？' });
+    const alert = page.getByRole('alertdialog', { name: '要清空 B4 桌嗎？' });
     await expect(alert).toBeVisible();
     await expect(alert).toContainText('6 位人員會變成未入座，名單不會刪除。');
     // 桌面：取消在左、確認在右
@@ -354,7 +383,7 @@ test.describe('清空桌次（2.3.5、SEAT-R28、SEAT-R29）', () => {
     expect(cancel.x).toBeLessThan(confirm.x);
 
     await alert.getByRole('button', { name: '清空桌次' }).click();
-    await expectToast(page, '已清空第 3 桌。', { undo: true });
+    await expectToast(page, '已清空 B4 桌。', { undo: true });
     await expect.poll(() => rosterNames(3)).toEqual([]);
     expect(await noteNameOf(3)).toBe('主桌');
     expect(await participantCount()).toBe(total);
@@ -369,7 +398,7 @@ test.describe('清空桌次（2.3.5、SEAT-R28、SEAT-R29）', () => {
     await openSeating(page);
     const detail = await openTableDetail(page, 3);
     await detail.getByRole('button', { name: '清空桌次', exact: true }).click();
-    const alert = page.getByRole('alertdialog', { name: '要清空第 3 桌嗎？' });
+    const alert = page.getByRole('alertdialog', { name: '要清空 B4 桌嗎？' });
     await alert.getByRole('button', { name: '取消' }).click();
     await expect(alert).toBeHidden();
     expect(await rosterNames(3)).toEqual(['清1', '清2']);
@@ -384,7 +413,7 @@ test.describe('清空桌次（2.3.5、SEAT-R28、SEAT-R29）', () => {
 });
 
 test.describe('只用鍵盤（SEAT-R72、SEAT-R84、SEAT-AC86）', () => {
-  test('Tab 聚焦到第 3 桌（焦點 --shadow-focus-ring）按 Enter 開詳情，用「調換桌次…」只用鍵盤和第 7 桌對調', async ({ page }) => {
+  test('Tab 聚焦到 B4 桌（焦點 --shadow-focus-ring）按 Enter 開詳情，用「調換桌次…」只用鍵盤和 B2 桌對調', async ({ page }) => {
     await seed(async (s) => {
       for (const name of ['甲', '乙']) await s.employee(name, { tableId: 3 });
       await s.employee('丙', { tableId: 7 });
@@ -402,18 +431,18 @@ test.describe('只用鍵盤（SEAT-R72、SEAT-R84、SEAT-AC86）', () => {
 
     await tabUntilFocused(page, detail.getByRole('button', { name: '調換桌次…', exact: true }), 80);
     await page.keyboard.press('Enter');
-    const dialog = selectDialog(page, '把第 3 桌和哪一桌對調？');
+    const dialog = selectDialog(page, '把 B4 桌和哪一桌對調？');
     await expect(dialog).toBeVisible();
 
     await tabUntilFocused(page, dialog.getByRole('combobox', { name: /^桌次/ }), 10);
     await page.keyboard.press('ArrowDown');
     await expect(page.getByRole('option').first()).toBeVisible();
-    await arrowToOption(page, '第 7 桌');
+    await arrowToOption(page, 'B2 桌');
     await page.keyboard.press('Enter');
     await tabUntilFocused(page, dialog.getByRole('button', { name: '確認對調' }), 10);
     await page.keyboard.press('Enter');
 
-    await expectToast(page, '已把第 3 桌和第 7 桌對調。', { undo: true });
+    await expectToast(page, '已把 B4 桌和 B2 桌對調。', { undo: true });
     await expect.poll(() => rosterNames(7)).toEqual(['甲', '乙']);
   });
 
@@ -434,12 +463,12 @@ test.describe('只用鍵盤（SEAT-R72、SEAT-R84、SEAT-AC86）', () => {
 
     await tabUntilFocused(page, dialog.getByRole('combobox', { name: /^桌次/ }), 10);
     await page.keyboard.press('ArrowDown');
-    await arrowToOption(page, '第 4 桌');
+    await arrowToOption(page, 'B7 桌');
     await page.keyboard.press('Enter');
     await tabUntilFocused(page, dialog.getByRole('button', { name: '確認入座' }), 10);
     await page.keyboard.press('Enter');
 
-    await expectToast(page, '已把 王小明 安排到第 4 桌。', { undo: true });
+    await expectToast(page, '已把 王小明 安排到 B7 桌。', { undo: true });
     await expect.poll(() => rosterNames(4)).toEqual(['王小明']);
   });
 });

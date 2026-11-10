@@ -446,8 +446,9 @@ describe('衝突時用這次操作自己的既有提示（COM-R08、SEAT-R86、C
 
     expect(conflictMessage).toHaveBeenCalledWith('TABLE_FULL');
     expect(onConflict).toHaveBeenCalledWith('TABLE_FULL');
-    expect(seen).toEqual(['第 5 桌已滿，請先移出一位。']);
-    expect(queue.lastConflictMessage).toBe('第 5 桌已滿，請先移出一位。');
+    // tableFullMessage 的參數是內部編號，5 是 B10 桌（D-019）
+    expect(seen).toEqual(['B10 桌已滿，請先移出一位。']);
+    expect(queue.lastConflictMessage).toBe('B10 桌已滿，請先移出一位。');
   });
 
   it('既有提示對這個 code 沒有文案時，lastConflictMessage 是空的（改用共用文案）', async () => {
@@ -477,7 +478,7 @@ describe('衝突時用這次操作自己的既有提示（COM-R08、SEAT-R86、C
     second.fail(apiError('NOT_FOUND', 404));
     await flush();
 
-    expect(seen).toEqual(['第 5 桌已滿，請先移出一位。', undefined]);
+    expect(seen).toEqual(['B10 桌已滿，請先移出一位。', undefined]);
   });
 
   it('只用失敗的那一次操作的提示，被取消的後續操作不算', async () => {
