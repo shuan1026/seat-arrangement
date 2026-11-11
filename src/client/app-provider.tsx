@@ -3,6 +3,7 @@
 // 把伺服器端載入的資料交給前端 store，並建立唯一的儲存佇列。
 // 各功能用 useAppStore 讀資料、用 useMutation 做「先改畫面、再依序儲存」。
 // 權限（D-021）：store 的 isEditor 決定各頁是否顯示會修改資料的入口（COM-R19）；重新載入時以 GET /api/state 的 me.isEditor 為準。
+import { useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useState } from 'react';
 import { useStore } from 'zustand';
 import type { AppState, SessionUser } from '@/contracts/entities';
@@ -30,6 +31,8 @@ export type AppProviderProps = {
 };
 
 export function AppProvider({ initialData, user, isEditor, seatsPublished, notify, children }: AppProviderProps) {
+  // App Router 的 router 物件在整個 App 裡是同一個，佇列建立時取用即可
+  const router = useRouter();
   const [ctx] = useState<Ctx>(() => {
     const store = createAppStore({ data: initialData, user, isEditor, seatsPublished });
     const reload = async () => {
@@ -56,6 +59,12 @@ export function AppProvider({ initialData, user, isEditor, seatsPublished, notif
         store.getState().setIsEditor(false);
         void reload().finally(() => notify?.(NOT_EDITOR_MESSAGE));
       },
+      // 權限被移除（AUTH-R17、D-026）：還沒存的操作已由佇列取消；重新取得伺服器端的畫面，
+      // (main)/layout.tsx 會在同一個網址改畫「沒有權限」頁（App Shell 與開著的對話框一併拿掉），不顯示 Sonner
+      onNoAccess: () => router.refresh(),
+
+
+
     });
     return { store, queue, reload };
   });

@@ -1,18 +1,20 @@
-// 編輯者 email 的規則：docs/spec/permissions.md PRM-R02（INITIAL_EDITOR_EMAILS 以逗號分隔，不是公司網域或格式不對的略過）、
-// PRM-R03（去掉前後空白、轉小寫後再比對與儲存）、PRM-R08（空白、格式、非公司網域的欄位錯誤文案）、第 4.1 節文案；
-// PRM-AC01、PRM-AC06、PRM-AC07；docs/architecture.md 第 11.5 節（domain/editors.ts：前端欄位驗證、API 的 zod schema 與
-// INITIAL_EDITOR_EMAILS 的解析共用）。
+// 權限名單 email 與權限的規則（D-021、D-026；src/domain/members.ts）：
+// docs/spec/permissions.md PRM-R02（INITIAL_EDITOR_EMAILS 以逗號分隔，不是公司網域或格式不對的略過）、PRM-R03（去掉前後空白、轉小寫後再比對與儲存）、
+// PRM-R08（空白、格式、非公司網域的欄位錯誤文案；已經在名單上「{email} 已經是{權限}。」）、第 4.1 節文案；PRM-AC01、PRM-AC06、PRM-AC07、PRM-AC08；
+// docs/architecture.md 第 11.5 節（domain/members.ts：email 正規化、格式與公司網域檢查、兩種權限與顯示名稱「編輯者」「檢視者」，
+// 前端欄位驗證、API 的 zod schema 與 INITIAL_EDITOR_EMAILS 的解析共用）。
 //
-// 假設的介面（src/domain/editors.ts，純函式，不讀環境變數）：
-//   export function normalizeEmail(raw: string): string;
-//     去掉前後空白（含全形空白）、英文字母轉小寫。
-//   export function editorEmailError(raw: string, domain: string): string | null;
+// 假設的介面（src/domain/members.ts，純函式，不讀環境變數）：
+//   export function normalizeEmail(raw: string): string;                       // 去掉前後空白（含全形空白）、英文字母轉小寫
+//   export function memberEmailError(raw: string, domain: string): string | null;
 //     依序檢查：空白 →「請輸入 email。」；不是 email 格式 →「請輸入正確的 email。」；網域不是 domain →「只能新增公司帳號（@program.com.tw）。」；
-//     都通過回 null。比對前先 normalizeEmail，所以網域不分大小寫。domain 是 ALLOWED_EMAIL_DOMAIN（program.com.tw）。
+//     都通過回 null。比對前先 normalizeEmail，所以網域不分大小寫。
+//   export function roleLabel(role: 'EDITOR' | 'VIEWER'): string;              // 「編輯者」「檢視者」
+//   export function alreadyMemberMessage(email: string, role: 'EDITOR' | 'VIEWER'): string;  // 「{email} 已經是{權限}。」，email 先正規化
 //   export function parseInitialEditorEmails(raw: string | undefined, domain: string): string[];
 //     以逗號分隔，每一個 normalizeEmail 後只留格式正確、網域等於 domain 的；去掉重複，保留第一次出現的順序。
 import { describe, expect, it } from 'vitest';
-import { editorEmailError, normalizeEmail, parseInitialEditorEmails } from '@/domain/editors';
+import { alreadyMemberMessage, memberEmailError, normalizeEmail, parseInitialEditorEmails, roleLabel } from '@/domain/members';
 
 const DOMAIN = 'program.com.tw';
 const REQUIRED = '請輸入 email。';
@@ -35,34 +37,53 @@ describe('normalizeEmail（PRM-R03）', () => {
   });
 });
 
-describe('editorEmailError：新增編輯者的欄位錯誤（PRM-R08、PRM-AC06）', () => {
+describe('memberEmailError：新增帳號的欄位錯誤（PRM-R08、PRM-AC06）', () => {
   it.each(['', '   ', '　'])('空白「%s」→「請輸入 email。」', (raw) => {
-    expect(editorEmailError(raw, DOMAIN)).toBe(REQUIRED);
+    expect(memberEmailError(raw, DOMAIN)).toBe(REQUIRED);
   });
 
   it.each(['abc', 'abc@', '@program.com.tw', 'a b@program.com.tw', 'jia@@program.com.tw', 'jia.program.com.tw'])(
     '不是 email 格式「%s」→「請輸入正確的 email。」',
     (raw) => {
-      expect(editorEmailError(raw, DOMAIN)).toBe(FORMAT);
+      expect(memberEmailError(raw, DOMAIN)).toBe(FORMAT);
     },
   );
 
   it.each(['c@gmail.com', 'jia@sub.program.com.tw', 'jia@program.com.tw.example.com', 'jia@evilprogram.com.tw'])(
     '網域不是公司網域「%s」→「只能新增公司帳號（@program.com.tw）。」',
     (raw) => {
-      expect(editorEmailError(raw, DOMAIN)).toBe(NOT_COMPANY);
+      expect(memberEmailError(raw, DOMAIN)).toBe(NOT_COMPANY);
     },
   );
 
   it.each(['jia@program.com.tw', ' Jia@PROGRAM.com.tw ', 'first.last@program.com.tw', 'BING@Program.Com.Tw'])(
     '公司帳號「%s」沒有錯誤（網域不分大小寫，前後空白不算）',
     (raw) => {
-      expect(editorEmailError(raw, DOMAIN)).toBeNull();
+      expect(memberEmailError(raw, DOMAIN)).toBeNull();
     },
   );
 
   it('驗收條件 PRM-AC06 的順序：空白、「abc」、「c@gmail.com」各顯示對應的錯誤', () => {
-    expect(['', 'abc', 'c@gmail.com'].map((raw) => editorEmailError(raw, DOMAIN))).toEqual([REQUIRED, FORMAT, NOT_COMPANY]);
+    expect(['', 'abc', 'c@gmail.com'].map((raw) => memberEmailError(raw, DOMAIN))).toEqual([REQUIRED, FORMAT, NOT_COMPANY]);
+  });
+});
+
+describe('兩種權限的名稱與「已經在名單上」的提示（第 4.1 節、PRM-R08、PRM-R10）', () => {
+  it('EDITOR 是「編輯者」、VIEWER 是「檢視者」', () => {
+    expect(roleLabel('EDITOR')).toBe('編輯者');
+    expect(roleLabel('VIEWER')).toBe('檢視者');
+  });
+
+  it('PRM-AC07：「 Yi@Program.com.tw 」是檢視者 →「yi@program.com.tw 已經是檢視者。」', () => {
+    expect(alreadyMemberMessage(' Yi@Program.com.tw ', 'VIEWER')).toBe('yi@program.com.tw 已經是檢視者。');
+  });
+
+  it('編輯者 →「{email} 已經是編輯者。」', () => {
+    expect(alreadyMemberMessage('jia@program.com.tw', 'EDITOR')).toBe('jia@program.com.tw 已經是編輯者。');
+  });
+
+  it('PRM-AC08：丙是檢視者 →「bing@program.com.tw 已經是檢視者。」', () => {
+    expect(alreadyMemberMessage('bing@program.com.tw', 'VIEWER')).toBe('bing@program.com.tw 已經是檢視者。');
   });
 });
 

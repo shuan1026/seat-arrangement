@@ -1,26 +1,30 @@
 // 階段 3 整體驗證：多人衝突，兩個瀏覽器同時操作同一桌（docs/plan/implementation-plan.md 第 6 節第 2 項）。
 // 甲、乙是 docs/spec/permissions.md 第 5 節的虛構帳號，兩人都是編輯者，各用自己的 browser context（各自的 cookie 與畫面），
 // 操作都走真的伺服器，不攔截請求。
-// 依據：docs/spec/README.md 第 7 節 COM-R06～R09、COM-AC04～AC07；第 8.3 節 AUTH-R11、AUTH-R13、AUTH-AC17；
+// 依據：docs/spec/README.md 第 7 節 COM-R06～R09、COM-AC04～AC07；第 8.3 節 AUTH-R11、AUTH-R13、AUTH-R17、AUTH-AC17、AUTH-AC26；
 // docs/spec/seating.md SEAT-R12、SEAT-R20、SEAT-R23、SEAT-R86、SEAT-R88、SEAT-R89、SEAT-R90、SEAT-AC97、SEAT-AC105；
-// docs/spec/employees.md EMP-R41、EMP-R43；docs/spec/permissions.md PRM-R05、PRM-R11。
+// docs/spec/employees.md EMP-R41、EMP-R43；docs/spec/permissions.md PRM-R05、PRM-R11、PRM-R35（D-026）。
 // 伺服器端同時寫入的鎖與交易在 tests/integration/api/seating-concurrency.test.ts；這裡驗證兩個真的畫面各自看到的結果。
-// 每個測試開頭自己清空資料、把編輯者名單設成甲、乙（helpers/scenario.ts 的 resetEverything），不依賴其他測試留下的狀態。
+// 每個測試開頭自己清空資料、把權限名單設成甲、乙兩位編輯者（helpers/scenario.ts 的 resetEverything），不依賴其他測試留下的狀態。
 // 桌號（D-019）：資料庫用內部編號（3 = B4、4 = B7、5 = B10、6 = B13），畫面上用桌號。
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
 import { JIA, signIn, YI } from './helpers/auth';
 import * as employeesPage from './helpers/employees-page';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
 import { withDb } from './helpers/participants-db';
-import { editorEmails } from './helpers/permissions-db';
+import { memberList } from './helpers/permissions-db';
 import {
+  changedToast,
   CONFLICT_TOAST,
-  expectEditorList,
+  demoteAndConfirm,
+  expectMemberList,
+  expectNoAccessPage,
   gotoPermissions,
   navNames,
   NOT_EDITOR_TOAST,
   openNav,
   removeAndConfirm,
+  removedToast,
   viewOnlyBadge,
 } from './helpers/permissions-page';
 import { openEditorBrowser, resetEverything, waitForTablePatch } from './helpers/scenario';
@@ -252,8 +256,8 @@ test.describe('資料已被別人刪除（COM-R07、COM-R08）', () => {
   });
 });
 
-test.describe('編輯權限在畫面開著時被移除（AUTH-R11、AUTH-R13、PRM-R05）', () => {
-  test('乙開著座位安排；甲在權限頁移除乙 → 乙的畫面不會自己改變；乙下一次「入座…」不儲存，重新載入並顯示「你沒有編輯權限，已重新載入。」，畫面變成只能檢視', async ({
+test.describe('畫面開著時被改為檢視者（AUTH-R11、AUTH-R13、PRM-R05、PRM-R35）', () => {
+  test('乙開著座位安排；甲在權限頁把乙改為檢視者 → 乙的畫面不會自己改變；乙下一次「入座…」不儲存，重新載入並顯示「你沒有編輯權限，已重新載入。」，畫面變成只能檢視', async ({
     page,
     browser,
     baseURL,
@@ -269,13 +273,22 @@ test.describe('編輯權限在畫面開著時被移除（AUTH-R11、AUTH-R13、P
       await expect(yi.getByRole('button', { name: '新增人員', exact: true }).first()).toBeVisible();
       await expect(viewOnlyBadge(yi)).toHaveCount(0);
 
-      // 甲在權限頁移除乙
+      // 甲在權限頁把乙改為檢視者
       await gotoPermissions(jia);
-      await expectEditorList(jia, [JIA.email, YI.email]);
-      await removeAndConfirm(jia, YI.email);
-      await expectToast(jia, `已移除 ${YI.email} 的編輯權限。`, { undo: false });
-      await expectEditorList(jia, [JIA.email]);
-      await expect.poll(() => editorEmails()).toEqual([JIA.email]);
+      await expectMemberList(jia, [
+        { email: JIA.email, role: 'EDITOR' },
+        { email: YI.email, role: 'EDITOR' },
+      ]);
+      await demoteAndConfirm(jia, YI.email);
+      await expectToast(jia, changedToast(YI.email, 'VIEWER'), { undo: false });
+      await expectMemberList(jia, [
+        { email: JIA.email, role: 'EDITOR' },
+        { email: YI.email, role: 'VIEWER' },
+      ]);
+      await expect.poll(() => memberList()).toEqual([
+        { email: JIA.email, role: 'EDITOR' },
+        { email: YI.email, role: 'VIEWER' },
+      ]);
 
       // 乙的畫面不會自動更新（COM-R06）：仍有編輯操作
       await expect(viewOnlyBadge(yi)).toHaveCount(0);
@@ -302,6 +315,54 @@ test.describe('編輯權限在畫面開著時被移除（AUTH-R11、AUTH-R13、P
       await openSeating(jia);
       await expect(viewOnlyBadge(jia)).toHaveCount(0);
       await expect(toolbarButton(jia, '自動排座')).toBeVisible();
+    });
+  });
+});
+
+test.describe('畫面開著時被移除權限（AUTH-R11、AUTH-R17、AUTH-AC26、PRM-R11、D-026）', () => {
+  test('乙開著座位安排；甲在權限頁移除乙 → 乙的畫面不會自己改變；乙下一次「入座…」不儲存，對話框關閉，畫面換成「沒有權限」頁，沒有 Sonner', async ({
+    page,
+    browser,
+    baseURL,
+  }) => {
+    const jia = page; // 預設的 page 是甲
+    const { lee } = await seed(async (s) => {
+      await s.employee('王大同', { department: '研發部', tableId: B4 });
+      return { lee: await s.employee('李美華', { department: '業務部' }) };
+    });
+
+    await withYi(browser, baseURL, jia, async (yi) => {
+      await openSeating(yi);
+      await expect(yi.getByRole('button', { name: '新增人員', exact: true }).first()).toBeVisible();
+
+      // 甲在權限頁移除乙
+      await gotoPermissions(jia);
+      await removeAndConfirm(jia, YI.email);
+      await expectToast(jia, removedToast(YI.email), { undo: false });
+      await expectMemberList(jia, [{ email: JIA.email, role: 'EDITOR' }]);
+      await expect.poll(() => memberList()).toEqual([{ email: JIA.email, role: 'EDITOR' }]);
+
+      // 乙的畫面不會自動更新（COM-R06）：仍是座位安排、仍有編輯操作
+      await expect(yi.getByRole('heading', { level: 1, name: '座位安排' })).toBeVisible();
+      await expect(toolbarButton(yi, '自動排座')).toBeVisible();
+
+      // 乙的下一次操作
+      const dialog = await pickTable(yi, '李美華', B4, '剩 9 位');
+      const saved = waitForOperation(yi);
+      await dialog.getByRole('button', { name: '確認入座' }).click();
+      expect((await saved).status(), '乙的入座被拒（403 NO_ACCESS）').toBe(403);
+      await expect(dialog).toBeHidden();
+
+      await expectNoAccessPage(yi, YI.email);
+      await yi.waitForTimeout(500);
+      await expect(toast(yi, '已把 李美華 安排到 B4 桌。')).toHaveCount(0);
+      await expect(toast(yi, NOT_EDITOR_TOAST)).toHaveCount(0);
+      await expect(toast(yi, CONFLICT_TOAST)).toHaveCount(0);
+      expect(await seatOf(lee)).toEqual({ tableId: null, seatOrder: null });
+
+      // 甲仍是編輯者
+      await openSeating(jia);
+      await expect(viewOnlyBadge(jia)).toHaveCount(0);
     });
   });
 });

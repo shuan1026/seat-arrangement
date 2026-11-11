@@ -9,6 +9,9 @@
 // - store（useAppStore）多 isEditor: boolean 與 seatsPublished: boolean；重新載入（GET /api/state）時依回應的 me.isEditor、seatsPublished 更新。
 // - 儲存佇列收到 403 NOT_EDITOR 時（tests/unit/client/save-queue-not-editor.test.ts），AppProvider 重新載入 GET /api/state，
 //   用 notify 顯示「你沒有編輯權限，已重新載入。」。
+// - 儲存佇列收到 403 NO_ACCESS 時（權限被移除，AUTH-R17、D-026；tests/unit/client/save-queue-no-access.test.ts），AppProvider 關閉開著的對話框、
+//   呼叫 next/navigation 的 router.refresh()，讓 (main)/layout.tsx 在同一個網址改畫「沒有權限」頁；不顯示 Sonner
+//   （docs/architecture.md 第 8.2 節、第 10.3 節第 8 點）。
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -16,6 +19,23 @@ import type { AppState, Employee } from '@/contracts/entities';
 import { ApiFailure } from '@/client/api';
 import { AppProvider, useAppStore, useMutation } from '@/client/app-provider';
 import { saveStatusText } from '@/client/save-time';
+
+const router = vi.hoisted(() => ({
+  push: vi.fn(),
+  replace: vi.fn(),
+  refresh: vi.fn(),
+  back: vi.fn(),
+  forward: vi.fn(),
+  prefetch: vi.fn(),
+}));
+vi.mock('next/navigation', () => ({
+  useRouter: () => router,
+  usePathname: () => '/',
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+  redirect: vi.fn(),
+  notFound: vi.fn(),
+}));
 
 const employee = (id: number, name: string): Employee => ({
   id,
@@ -82,6 +102,7 @@ function setup(props: { isEditor?: boolean; seatsPublished?: boolean }, sends: (
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  for (const fn of Object.values(router)) fn.mockReset();
 });
 
 describe('一開始的權限（COM-R19、docs/architecture.md 第 9.3 節）', () => {
@@ -106,7 +127,7 @@ describe('一開始的權限（COM-R19、docs/architecture.md 第 9.3 節）', (
   });
 });
 
-describe('編輯權限被移除後的下一次操作（AUTH-R13、AUTH-AC17）', () => {
+describe('被改為檢視者後的下一次操作（AUTH-R13、AUTH-AC17）', () => {
   it('403 NOT_EDITOR：重新載入 GET /api/state，畫面換成最新資料並切換成只能檢視；Sonner「你沒有編輯權限，已重新載入。」', async () => {
     const { notify, fetchMock } = setup({ isEditor: true }, [() => Promise.reject(new ApiFailure('NOT_EDITOR', 403, 'not editor'))]);
 
@@ -150,5 +171,46 @@ describe('編輯權限被移除後的下一次操作（AUTH-R13、AUTH-AC17）',
     await userEvent.click(screen.getByRole('button', { name: '做操作' }));
 
     await waitFor(() => expect(screen.getByTestId('published').textContent).toBe('已發布'));
+  });
+});
+
+describe('權限被移除後的下一次操作（AUTH-R17、AUTH-AC26、PRM-AC43）', () => {
+  /** 給畫面一點時間：確認之後沒有遲到的 Sonner */
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+
+  it('403 NO_ACCESS：呼叫 router.refresh()（同一個網址改畫「沒有權限」頁）；不顯示任何 Sonner，Header 不是「儲存失敗」', async () => {
+    const { notify } = setup({ isEditor: true }, [() => Promise.reject(new ApiFailure('NO_ACCESS', 403, 'no access'))]);
+
+    await userEvent.click(screen.getByRole('button', { name: '做操作' }));
+
+    await waitFor(() => expect(router.refresh).toHaveBeenCalledTimes(1));
+    await settle();
+    expect(notify).not.toHaveBeenCalled();
+    expect(router.push).not.toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(screen.getByTestId('save').textContent).not.toBe('儲存失敗，請檢查網路後再試一次。');
+  });
+
+  it('接著馬上做的第二個操作也不送出（還沒存的後續操作一併取消）', async () => {
+    const first = vi.fn(() => Promise.reject(new ApiFailure('NO_ACCESS', 403, 'no access')));
+    const second = vi.fn(() => Promise.resolve({}));
+    const { notify } = setup({ isEditor: true }, [first, second]);
+
+    await userEvent.click(screen.getByRole('button', { name: '做操作' }));
+
+    await waitFor(() => expect(router.refresh).toHaveBeenCalledTimes(1));
+    await settle();
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('不會顯示「資料已被其他人更新，已重新載入。」或「你沒有編輯權限，已重新載入。」', async () => {
+    const { notify } = setup({ isEditor: true }, [() => Promise.reject(new ApiFailure('NO_ACCESS', 403, 'no access'))]);
+    await userEvent.click(screen.getByRole('button', { name: '做操作' }));
+    await waitFor(() => expect(router.refresh).toHaveBeenCalled());
+    await settle();
+    expect(notify).not.toHaveBeenCalledWith('資料已被其他人更新，已重新載入。');
+    expect(notify).not.toHaveBeenCalledWith(NOT_EDITOR_TEXT);
   });
 });

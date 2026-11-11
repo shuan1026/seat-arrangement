@@ -1,5 +1,6 @@
 // 發布設定與發布頁的資料：PUT /api/publish（{ published: boolean }，回傳目前狀態）、GET /api/seats（未發布時只有 { published: false }；
-// 已發布時每桌的桌次、備註名稱、部門標示與名單的顯示名稱，兩種權限都能呼叫）——docs/architecture.md 第 8 節、第 11.5 節
+// 已發布時每桌的桌次、備註名稱、部門標示與名單的顯示名稱；只要登入就能呼叫，編輯者、檢視者與沒有權限的人拿到的相同，D-026）——
+// docs/architecture.md 第 8 節、第 9.3 節（GET /api/seats 以 anyLogin 不看權限名單；PUT /api/publish 檢視者 NOT_EDITOR、沒有權限 NO_ACCESS）、第 11.5 節
 // （PublishedSeating：tables[{ id, noteName, departmentLabel, people[{ displayName, group }] }]，group 是部門、外部貴賓是「貴賓」；
 // 不含分機、素食、兒童椅、備註、稱謂、組別、單位／頭銜、參與人員與員工的 id，也不含未入座的人；未發布時不查座位）、
 // 第 10.2 節（/seats 的伺服器端元件呼叫 getPublishedSeating()）。
@@ -14,7 +15,7 @@ import { GET as getState } from '@/app/api/state/route';
 import { STAFF_TABLE_ID } from '@/contracts/entities';
 import { getPublishedSeating } from '@/server/services/publish';
 import { prisma, resetData } from '../../helpers/db';
-import { EDITOR, isPublished, JIA, setPublished, VIEWER, YI, type TestUser } from '../../helpers/editors';
+import { DING, EDITOR, isPublished, JIA, setPublished, VIEWER, YI, type TestUser } from '../../helpers/editors';
 import { createDependent, createEmployee, createGuest, createRegisteredEmployee } from '../../helpers/factory';
 
 const { currentUser } = vi.hoisted(() => ({ currentUser: vi.fn<() => Promise<TestUser | null>>() }));
@@ -148,11 +149,19 @@ describe('PUT /api/publish（PRM-R17、PRM-R19、PRM-AC18）', () => {
     expect(await isPublished()).toBe(true);
   });
 
-  it('只能檢視：403 NOT_EDITOR，發布狀態不變（PRM-R16、PRM-AC20、AUTH-R12）', async () => {
+  it('檢視者：403 NOT_EDITOR，發布狀態不變（PRM-R16、PRM-AC20、AUTH-R12）', async () => {
     currentUser.mockResolvedValue(VIEWER);
     const res = await putPublish({ published: true });
     expect(res.status).toBe(403);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe('NOT_EDITOR');
+    expect(await isPublished()).toBe(false);
+  });
+
+  it('沒有權限（丁）：403 NO_ACCESS，發布狀態不變（AUTH-R16、docs/architecture.md 第 9.3 節）', async () => {
+    currentUser.mockResolvedValue(DING);
+    const res = await putPublish({ published: true });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('NO_ACCESS');
     expect(await isPublished()).toBe(false);
   });
 
@@ -166,7 +175,8 @@ describe('PUT /api/publish（PRM-R17、PRM-R19、PRM-AC18）', () => {
 describe('GET /api/seats：未發布（PRM-R22、PRM-AC23）', () => {
   it.each([
     ['編輯者', EDITOR],
-    ['只能檢視', VIEWER],
+    ['檢視者', VIEWER],
+    ['沒有權限（丁）', DING],
   ] as const)('%s：200，回應只有 { published: false }，不含任何座位資料', async (_label, user) => {
     await seedSample();
     currentUser.mockResolvedValue(user);
@@ -233,12 +243,15 @@ describe('GET /api/seats：已發布（PRM-R21、PRM-R24、PRM-R26、PRM-R27、P
     expect(everyone).not.toContain('李未報名');
   });
 
-  it('編輯者與只能檢視的人拿到的內容相同（PRM-R21）', async () => {
+  it('編輯者、檢視者與沒有權限的人拿到的內容相同（PRM-R21、PRM-AC24）', async () => {
     await seedSample();
     const asEditor = (await publishedSeating()).body;
     currentUser.mockResolvedValue(VIEWER);
     const asViewer = (await publishedSeating()).body;
+    currentUser.mockResolvedValue(DING);
+    const asNoAccess = (await publishedSeating()).body;
     expect(asViewer).toEqual(asEditor);
+    expect(asNoAccess).toEqual(asEditor);
   });
 
   it('getPublishedSeating() 和 GET /api/seats 的內容相同', async () => {

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { errorStatus, type ErrorCode } from '@/contracts/errors';
 import { currentUser } from './auth';
 import { logError, logInfo } from './log';
-import { isEditor } from './services/editors';
+import { getRole } from './services/members';
 
 // Route Handler 的共用外殼（docs/architecture.md 第 8 節）：確認登入、檢查編輯權限、記錄請求、把錯誤轉成統一格式。
 // 業務規則放 domain，資料存取放 services；handler 只做「解析輸入 → 呼叫服務 → 回 JSON」。
@@ -38,11 +38,16 @@ type RouteArgs<P> = { params: Promise<P> };
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 export type RouteOptions = {
-  /** 讀取也只給編輯者（GET /api/editors，PRM-R06）；寫入方法不必設，一律檢查 */
+  /** 讀取也只給編輯者（GET /api/members，PRM-R06）；寫入方法不必設，一律檢查 */
   editorOnly?: boolean;
+  /** 讀取只要登入、不看權限名單（GET /api/seats：沒有權限的人也能看發布頁，D-026）；寫入方法不受影響 */
+  anyLogin?: boolean;
 };
 
-/** 包一個需要登入的 Route Handler；寫入方法另外要是編輯者 */
+/**
+ * 包一個需要登入的 Route Handler（docs/architecture.md 第 9.3 節）：
+ * 預設要在權限名單上，不在名單上回 403 NO_ACCESS（D-026）；寫入方法與 editorOnly 另外要是編輯者，檢視者回 403 NOT_EDITOR。
+ */
 export function route<P = Record<string, string>>(handler: (ctx: ApiContext<P>) => Promise<Response>, options: RouteOptions = {}) {
   return async (req: Request, args: RouteArgs<P>): Promise<Response> => {
     const started = performance.now();
@@ -59,11 +64,21 @@ export function route<P = Record<string, string>>(handler: (ctx: ApiContext<P>) 
         return errorResponse('UNAUTHENTICATED', 'sign-in required');
       }
       userId = user.id;
-      if ((options.editorOnly || WRITE_METHODS.has(req.method.toUpperCase())) && !(await isEditor(user.email))) {
-        status = 403;
-        errorCode = 'NOT_EDITOR';
-        return errorResponse('NOT_EDITOR', 'editor permission required');
+      const write = WRITE_METHODS.has(req.method.toUpperCase());
+      if (write || !options.anyLogin) {
+        const role = await getRole(user.email);
+        if (role === null) {
+          status = 403;
+          errorCode = 'NO_ACCESS';
+          return errorResponse('NO_ACCESS', 'member permission required');
+        }
+        if ((write || options.editorOnly) && role !== 'EDITOR') {
+          status = 403;
+          errorCode = 'NOT_EDITOR';
+          return errorResponse('NOT_EDITOR', 'editor permission required');
+        }
       }
+
       const res = await handler({ req, params: await args.params, user, requestId });
       status = res.status;
       return res;

@@ -20,11 +20,13 @@ export const errorCodes = [
   'DUPLICATE_PARTICIPANT',
   'DEPENDENT_EXISTS',
   'CONFLICT',
-  /** 不是編輯者的人呼叫會修改資料的 API 或編輯者名單的 API（D-021、AUTH-R12、AUTH-R13） */
+  /** 檢視者呼叫會修改資料的 API 或權限名單的 API（D-021、AUTH-R12、AUTH-R13） */
   'NOT_EDITOR',
-  /** 新增的 email 已在編輯者名單（PRM-R08、PRM-R10） */
-  'EDITOR_EXISTS',
-  /** 要移除的是名單上最後一位編輯者（PRM-R04、PRM-R12） */
+  /** 不在權限名單上的人呼叫發布頁以外的 API（D-026、AUTH-R16、AUTH-R17） */
+  'NO_ACCESS',
+  /** 新增的 email 已在權限名單（PRM-R08、PRM-R10）；fields.email 是依名單上的權限組好的提示 */
+  'MEMBER_EXISTS',
+  /** 要移除或改為檢視者的是名單上最後一位編輯者（PRM-R04、PRM-R12） */
   'LAST_EDITOR',
   'INTERNAL',
 ] as const;
@@ -45,7 +47,8 @@ export const errorStatus: Record<ErrorCode, number> = {
   DEPENDENT_EXISTS: 409,
   CONFLICT: 409,
   NOT_EDITOR: 403,
-  EDITOR_EXISTS: 409,
+  NO_ACCESS: 403,
+  MEMBER_EXISTS: 409,
   LAST_EDITOR: 409,
   INTERNAL: 500,
 };
@@ -62,6 +65,7 @@ export type ApiError = z.infer<typeof apiErrorSchema>;
 
 /**
  * 別人剛改過資料、這次操作不能完成：前端要重新載入（docs/spec/README.md COM-R07）。
- * NOT_EDITOR（403）不算：編輯權限被移除另外處理（AUTH-R13，src/client/save-queue.ts）。
+ * NOT_EDITOR、NO_ACCESS（403）不算：被改為檢視者、被移除權限另外處理（AUTH-R13、AUTH-R17，src/client/save-queue.ts）。
+
  */
 export const isConflictCode = (code: ErrorCode) => errorStatus[code] === 409 || code === 'NOT_FOUND';

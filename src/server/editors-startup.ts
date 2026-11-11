@@ -1,6 +1,6 @@
 import 'server-only';
 import { logError } from './log';
-import { bootstrapEditors } from './services/editors';
+import { bootstrapEditors } from './services/members';
 
 // 伺服器啟動時寫入第一位編輯者（PRM-R02；docs/architecture.md 第 7.3 節）：失敗就結束程序，和 seed 相同，
 // 平台會把這次部署標成失敗。INITIAL_EDITOR_EMAILS 沒有設定時 bootstrapEditors 直接跳過，不碰資料庫。

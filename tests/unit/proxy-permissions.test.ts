@@ -1,7 +1,7 @@
 // @vitest-environment node
 // 權限頁與發布頁的登入檢查（src/proxy.ts）：docs/spec/README.md AUTH-R01、AUTH-R08、AUTH-R15（發布頁 /seats 也要登入，登入後回到 /seats）；
 // docs/architecture.md 第 9.2 節（/seats 與 /api/seats 和其他頁面、API 一樣要登入，不列進 proxy 的公開路徑）、第 9.3 節
-// （proxy 只檢查登入，不查資料庫；權限由 route() 與頁面的伺服器端元件判斷）；D-021。
+// （proxy 只檢查登入，不查資料庫；權限由 route() 與頁面的伺服器端元件判斷）；D-021、D-026（/api/editors 改成 /api/members）。
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { proxy } from '@/proxy';
@@ -37,9 +37,10 @@ describe('沒登入', () => {
 
   it.each([
     ['GET', '/api/seats'],
-    ['GET', '/api/editors'],
-    ['POST', '/api/editors'],
-    ['DELETE', '/api/editors/1'],
+    ['GET', '/api/members'],
+    ['POST', '/api/members'],
+    ['PATCH', '/api/members/1'],
+    ['DELETE', '/api/members/1'],
     ['PUT', '/api/publish'],
   ])('%s %s 回 401 UNAUTHENTICATED，不導向', async (method, path) => {
     const res = await proxy(request(path, method));
@@ -50,11 +51,21 @@ describe('沒登入', () => {
 });
 
 describe('已登入：proxy 只看登入，不判斷權限（docs/architecture.md 第 9.3 節）', () => {
-  beforeEach(() => {
-    getToken.mockResolvedValue({ sub: 'google-sub-2', name: '檢視同仁', email: 'viewer@program.com.tw' });
-  });
+  it.each(['/seats', '/permissions', '/', '/people', '/employees', '/api/seats', '/api/members', '/api/state'])(
+    '檢視者開 %s 放行（是不是編輯者由頁面與 route() 判斷）',
+    async (path) => {
+      getToken.mockResolvedValue({ sub: 'google-sub-2', name: '檢視同仁', email: 'viewer@program.com.tw' });
+      expect(isPassThrough(await proxy(request(path)))).toBe(true);
+    },
+  );
 
-  it.each(['/seats', '/permissions', '/api/seats', '/api/editors'])('%s 放行（是不是編輯者由頁面與 route() 判斷）', async (path) => {
-    expect(isPassThrough(await proxy(request(path)))).toBe(true);
-  });
+  it.each(['/', '/people', '/employees', '/permissions', '/seats', '/api/state', '/api/seats'])(
+    '沒有權限的公司帳號開 %s 也放行，不導向登入頁（「沒有權限」頁由 (main)/layout.tsx 在同一個網址顯示，API 由 route() 回 NO_ACCESS，AUTH-R16）',
+    async (path) => {
+      getToken.mockResolvedValue({ sub: 'google-sub-4', name: '丁同仁', email: 'ding@program.com.tw' });
+      const res = await proxy(request(path));
+      expect(isPassThrough(res)).toBe(true);
+      expect(res.headers.get('location')).toBeNull();
+    },
+  );
 });

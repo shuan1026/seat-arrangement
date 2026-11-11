@@ -1,6 +1,8 @@
-// 只能檢視時的參與人員頁與員工名單：docs/spec/participants.md PPL-R86、第 5.10 節 PPL-AC85～AC90；docs/spec/employees.md EMP-R67、
-// EMP-AC89～AC93；docs/spec/README.md COM-R19、COM-AC23（參與人員與員工名單的部分）、AUTH-R13；D-021。
-// 「乙在權限頁移除了甲」用 helpers/permissions-db.ts 的 removeEditor 直接改資料庫模擬。
+// 檢視者的參與人員頁與員工名單：docs/spec/participants.md PPL-R86、第 5.10 節 PPL-AC85～AC90；docs/spec/employees.md EMP-R67、
+// EMP-AC89～AC93；docs/spec/README.md COM-R19、COM-AC23（參與人員與員工名單的部分）、AUTH-R13；D-021、D-026。
+// 檢視者用 helpers/auth.ts 的 signInAsViewer（以 VIEWER 寫進權限名單）。
+// PPL-AC90、EMP-AC93 的「乙移除了甲的編輯權限」，依預期結果（Sonner「你沒有編輯權限，已重新載入。」、畫面變成只能檢視，AUTH-R13）
+// 是甲被改為檢視者：用 helpers/permissions-db.ts 的 makeViewer 直接改資料庫模擬（從名單移除是 AUTH-R17，見 tests/e2e/no-access.spec.ts）。
 // 只能檢視時未報名的員工沒有「更多操作」，所以這裡用含姓名的列定位（helpers/employees-page.ts 的 dataRows 只找有列操作的列）。
 import { expect, test, type Page } from '@playwright/test';
 import { signIn, signInAsViewer, TEST_USER } from './helpers/auth';
@@ -26,7 +28,7 @@ import {
   searchBox,
   selectField,
 } from './helpers/participants-page';
-import { removeEditor } from './helpers/permissions-db';
+import { makeViewer } from './helpers/permissions-db';
 import { NOT_EDITOR_TOAST, viewOnlyBadge } from './helpers/permissions-page';
 import { expectToast, tableDetail } from './helpers/seating-page';
 
@@ -147,7 +149,7 @@ test.describe('參與人員：編輯權限在畫面開著時被移除（AUTH-R13
     const dialog = await openNewPersonDialog(page);
     await chooseOption(page, selectField(dialog, '員工'), /^陳大文（研發一部）/, '陳大文');
 
-    await removeEditor(TEST_USER.email); // 乙在權限頁移除了甲
+    await makeViewer(TEST_USER.email); // 乙在權限頁把甲改為檢視者
 
     await dialog.getByRole('button', { name: '新增人員', exact: true }).click();
     await expect(dialog).toBeHidden();
@@ -257,7 +259,7 @@ test.describe('員工名單：編輯權限在畫面開著時被移除（AUTH-R13
     await gotoEmployees(page);
     await expect(page.getByRole('checkbox').first()).toBeVisible();
 
-    await removeEditor(TEST_USER.email); // 乙在權限頁移除了甲
+    await makeViewer(TEST_USER.email); // 乙在權限頁把甲改為檢視者
 
     await rowWith(page, '李小華').getByRole('button', { name: '更多操作' }).click();
     await page.getByRole('menu').getByRole('menuitem', { name: '標記為不參加' }).click();
