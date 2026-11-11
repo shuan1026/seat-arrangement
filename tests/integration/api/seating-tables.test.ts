@@ -66,10 +66,10 @@ describe('moveTable：場上的桌 → 「未放桌」的位置（SEAT-R35、R36
     expect(result.participants).toEqual([]);
     expect(result.tables).toEqual([{ id: B4, kind: 'NORMAL', position: B8, stagedAt: null, noteName: '主桌' }]);
     expect(result.deletedTableIds).toEqual([]);
-    expect(result.undo).toEqual({
-      participants: [],
-      tables: [{ id: B4, kind: 'NORMAL', position: B4, stagedAt: null, noteName: '主桌', exists: true }],
-    });
+    expect(result.undo.participants).toEqual([]);
+    expect(result.undo.tables).toEqual([{ id: B4, kind: 'NORMAL', position: B4, stagedAt: null, noteName: '主桌', exists: true }]);
+    // D-028：這一步做完時動到的桌在哪裡（復原前比對，別人改過就回 409，SEAT-R100）
+    expect(result.undo.expect).toEqual({ participants: [], tables: [{ id: B4, position: B8, exists: true }] });
 
     await operate({ type: 'restore', snapshot: result.undo });
     expect(await tableAt(B4)).toBe(B4);

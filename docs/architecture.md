@@ -3,7 +3,7 @@
 | 項目 | 內容 |
 |---|---|
 | 系統 | Seat Arrangement |
-| 文件版本 | v0.6（桌子與位置分開：桌子可以新增、刪除、搬動，加暫存區，D-027） |
+| 文件版本 | v0.7（座位操作可以復原與重做最近 20 步，D-028） |
 | 日期 | 2026-11-10 |
 | 適用範圍 | 本系統的架構、模組邊界、技術選型、資料、API、部署與演進方式 |
 | 讀者 | 參與開發的工程師、Code Reviewer |
@@ -407,7 +407,8 @@ type SeatingOperationResult = {
 };
 ```
 
-- 每個指令都回傳 `undo`，前端只保留最近一次；按「復原」就送 `{ type: "restore", snapshot }`。復原記錄只存在瀏覽器記憶體，重新整理後就沒有了。
+- 每個指令都回傳 `undo`，前端把它放進復原紀錄（最多 20 步，D-028）；按「復原」就送 `{ type: "restore", snapshot }`。`restore` 也會回傳 `undo`（復原之前的狀態），前端把它放進重做紀錄，按「重做」時同樣送 `restore`，回應的 `undo` 再放回復原紀錄；做了新的可以復原的操作就清掉重做紀錄。紀錄只存在瀏覽器記憶體，重新整理、衝突後重新載入、被移除或改為檢視者時清掉。
+- `SeatingSnapshot.expect` 記這一步做完時，動到的人在哪一桌、動到的桌在不在與位置（D-028）。`restore` 先比對現在的資料，不同就回 409 `CONFLICT`（別人在這之間改過，SEAT-R100）；別人坐進同一桌、調整順序不算。沒有 `expect` 的舊快照不比對。`restore` 先還原要留下的桌、再移人，最後才刪掉這次新增的桌，所以重做「刪除桌」時桌上的人先移回未入座再刪桌。
 - `SeatingSnapshot` 除了相關的人，也記相關的桌（`id`、`position`、`stagedAt`、`noteName`，以及這次刪除的桌）；`restore` 會把搬動的桌放回原位、刪掉這次新增的桌、以原本的 `id` 重建這次刪除的桌（D-027）。
 - 暫存區的桌（`position` 是 null 的一般桌）不能當作入座的目標：`seat`、`seatMany`、`reorder`、`clear` 指到暫存的桌時回 409 `CONFLICT`（畫面本來就不讓人放進去，SEAT-R92）。
 - `seat`、`seatMany` 帶 `allowOverflow: true`（拖移與「加入人員」）時每桌上限 12 位，不帶時上限 10 位（選擇桌次對話框）；`restore`、`moveTable` 上限 12 位；`autoArrange` 每桌只排到 10 位（D-018）。超過上限時回 409，錯誤碼區分 10 位（`TABLE_FULL`）與 12 位（`TABLE_LIMIT`），前端照 `seating.md` SEAT-R86 顯示不同提示。
@@ -748,6 +749,7 @@ E2E 測試不經過 Google：測試環境用測試專用的 `NEXTAUTH_SECRET` �
 | D-021 | 權限管理與座位發布頁 | 已決議 | 編輯者與只能檢視兩種權限，編輯者名單在權限頁管理、第一位由 `INITIAL_EDITOR_EMAILS` 指定；寫入 API 在 `route()` 檢查；發布頁 `/seats` 要登入，只回傳座位圖需要的欄位 |
 | D-026 | 新增檢視者權限 | 已決議 | `Editor` 改為 `Member` 加 `role`（編輯者、檢視者）；不在名單上的公司帳號沒有權限，讀取 API 與三頁都拒絕，只能看 `/seats`；`(main)/layout.tsx` 在同一個網址畫「沒有權限」頁 |
 | D-027 | 桌子可以新增、刪除、搬動，加暫存區 | 已決議 | `SeatTable` 加 `position`（unique，null 是暫存區）與 `stagedAt`，新增的桌由服務層取最大 id 加 1；`swap` 改成 `moveTable`，新增 `createTable`、`deleteTable`，都可復原 |
+| D-028 | 座位操作可以復原與重做最近 20 步 | 已決議 | 前端記最多 20 步的復原紀錄與重做紀錄（記憶體）；重做用復原時 `restore` 回傳的 `undo` 再送一次 `restore` |
 
 
 

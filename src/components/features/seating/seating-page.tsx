@@ -404,6 +404,11 @@ function Seating({ initialPosition, initialStaged }: { initialPosition: number |
                   setPrefs({ expanded, ...(mobile ? { zoomMobile: expanded ? 100 : null } : { zoomDesktop: expanded ? 100 : null }) });
                 }}
                 onAutoArrange={isEditor ? () => setDialog('auto') : undefined}
+                // 復原與重做（SEAT-R77、R99，D-028）：只有編輯者看得到（SEAT-R90）
+                onUndo={isEditor ? ops.undo : undefined}
+                onRedo={isEditor ? ops.redo : undefined}
+                undoLabel={ops.undoLabel}
+                redoLabel={ops.redoLabel}
                 onShowPanel={!mobile && !panelOpen ? () => setPrefs({ panel: true }) : undefined}
                 covered={!mobile && detail !== null}
                 selected={selected}

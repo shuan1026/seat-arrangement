@@ -119,10 +119,15 @@ async function autoArrange(
   const { overfull } = normalizeTables(after, touched, gained);
   if (overfull !== null) throw new AppError('TABLE_FULL', VIOLATION_MESSAGE.TABLE_FULL);
 
-  const undo: SeatingSnapshot = { participants: [], tables: [] };
+  // 復原用的快照，連同排好之後每一位應該在哪一桌：復原前比對，別人改過就不能復原（SEAT-R100、D-028）
+  const expect: NonNullable<SeatingSnapshot['expect']> = { participants: [], tables: [] };
+  const undo: SeatingSnapshot = { participants: [], tables: [], expect };
   for (const p of after) {
     const b = byId.get(p.id)!;
-    if (b.tableId !== p.tableId || b.seatOrder !== p.seatOrder) undo.participants.push({ id: b.id, tableId: b.tableId, seatOrder: b.seatOrder });
+    if (b.tableId !== p.tableId || b.seatOrder !== p.seatOrder) {
+      undo.participants.push({ id: b.id, tableId: b.tableId, seatOrder: b.seatOrder });
+      expect.participants.push({ id: p.id, tableId: p.tableId });
+    }
   }
   const result = await write(tx, participants, tables, after, tables, undo);
   return { ...result, summary };

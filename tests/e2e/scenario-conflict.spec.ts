@@ -2,7 +2,7 @@
 // 甲、乙是 docs/spec/permissions.md 第 5 節的虛構帳號，兩人都是編輯者，各用自己的 browser context（各自的 cookie 與畫面），
 // 操作都走真的伺服器，不攔截請求。
 // 依據：docs/spec/README.md 第 7 節 COM-R06～R09、COM-AC04～AC07；第 8.3 節 AUTH-R11、AUTH-R13、AUTH-R17、AUTH-AC17、AUTH-AC26；
-// docs/spec/seating.md SEAT-R12、SEAT-R20、SEAT-R23、SEAT-R86、SEAT-R88、SEAT-R89、SEAT-R90、SEAT-AC97、SEAT-AC105；
+// docs/spec/seating.md SEAT-R12、SEAT-R20、SEAT-R23、SEAT-R86、SEAT-R88、SEAT-R89、SEAT-R90、SEAT-R100、SEAT-AC97、SEAT-AC105；
 // docs/spec/employees.md EMP-R41、EMP-R43；docs/spec/permissions.md PRM-R05、PRM-R11、PRM-R35（D-026）。
 // 伺服器端同時寫入的鎖與交易在 tests/integration/api/seating-concurrency.test.ts；這裡驗證兩個真的畫面各自看到的結果。
 // 每個測試開頭自己清空資料、把權限名單設成甲、乙兩位編輯者（helpers/scenario.ts 的 resetEverything），不依賴其他測試留下的狀態。
@@ -47,6 +47,8 @@ import {
   titleFor,
   toast,
   toolbarButton,
+  toolbarRedo,
+  toolbarUndo,
   waitForOperation,
   zoomToRegular,
 } from './helpers/seating-page';
@@ -82,12 +84,14 @@ async function pickTable(page: Page, name: string, table: number, left: string):
   return dialog;
 }
 
-/** 畫面是只能檢視：Header「只能檢視」，沒有修改資料的入口（COM-R19、COM-R20、SEAT-R90） */
+/** 畫面是只能檢視：Header「只能檢視」，沒有修改資料的入口（COM-R19、COM-R20、SEAT-R90；工具列的「復原」「重做」也沒有，D-028） */
 async function expectViewOnly(page: Page) {
   await expect(viewOnlyBadge(page)).toBeVisible();
   for (const name of ['新增人員', '發布', '自動排座']) {
     await expect(page.getByRole('button', { name, exact: true }), name).toHaveCount(0);
   }
+  await expect(toolbarUndo(page), '工具列的「復原」').toHaveCount(0);
+  await expect(toolbarRedo(page), '工具列的「重做」').toHaveCount(0);
   await expect(page.getByRole('button', { name: '匯出座位表', exact: true })).toBeVisible();
   await expect(seatMap(page).getByRole('button', { name: '拖移調換桌次' })).toHaveCount(0);
   await expect(peoplePanel(page).getByRole('button', { name: '更多操作' })).toHaveCount(0);
