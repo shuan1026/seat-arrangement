@@ -95,12 +95,12 @@ function defaultRespond(state: AppState) {
       const tableId = op.tableId as number;
       const seatOrder = state.participants.filter((p) => p.tableId === tableId).length;
       const undo: SeatingSnapshot = { participants: [{ id: WANG, tableId: wang.tableId, seatOrder: wang.seatOrder }], tables: [] };
-      return { status: 200, body: { participants: [{ ...wang, tableId, seatOrder }], tables: [], undo } };
+      return { status: 200, body: { participants: [{ ...wang, tableId, seatOrder }], tables: [], deletedTableIds: [], undo } };
     }
     if (op.type === 'restore') {
       const snapshot = op.snapshot as SeatingSnapshot;
       const back = snapshot.participants.map((s) => ({ ...wang, tableId: s.tableId, seatOrder: s.seatOrder }));
-      return { status: 200, body: { participants: back, tables: [], undo: { participants: [], tables: [] } } };
+      return { status: 200, body: { participants: back, tables: [], deletedTableIds: [], undo: { participants: [], tables: [] } } };
     }
     return { status: 500, body: { error: { code: 'INTERNAL', message: 'unexpected' } } };
   };
@@ -388,6 +388,59 @@ describe('D-018 選單類入口仍到 10 位為止（SEAT-R23、SEAT-R88、SEAT-
     await waitFor(() => expect(notify).toHaveBeenCalledWith('B2 桌已滿，請先移出一位。'));
     expect(sent.some((s) => s.url === '/api/state')).toBe(true);
     expect(notify).not.toHaveBeenCalledWith('B2 桌已達 12 位，請先移出一位。');
+  });
+});
+
+// D-027（SEAT-R23、SEAT-R92、SEAT-R94、SEAT-AC120、PPL-AC93）：選項只列場上的桌，不列「未放桌」的位置與暫存的桌；
+// 桌號照所在的位置；暫存的桌上的人算未入座，「入座…」離開暫存的桌入座。
+// 資料：B8（位置 9）是「未放桌」；暫存區有一桌（id 31）；B4 那一桌（id 3）搬到 A3（位置 17，原本 A3 的桌刪掉）。
+function buildD027State(wangTable: number | null): AppState {
+  const base = buildState(null);
+  const tables = base.tables
+    .filter((t) => t.position !== 9 && t.position !== 17)
+    .map((t) => (t.id === 3 ? { ...t, position: 17 } : t));
+  tables.push({ id: 31, kind: 'NORMAL', position: null, stagedAt: '2026-11-01T08:00:00.000Z', noteName: '暫放' });
+  const participants = base.participants.map((p) => (p.id === WANG ? { ...p, tableId: wangTable, seatOrder: wangTable === null ? null : 0 } : p));
+  return { ...base, participants, tables };
+}
+
+describe('D-027 只列場上的桌（SEAT-R23、SEAT-AC120）', () => {
+  it('B8、B4 是「未放桌」、暫存區有一桌：選項沒有 B8、B4，也沒有暫存的桌；只有 28 個位置上的桌', async () => {
+    const { user } = renderDialog(buildD027State(null));
+    const options = await openOptions(user);
+    expect(options).toHaveLength(28);
+    expect(options.some((o) => labelOf(o).startsWith('B8'))).toBe(false);
+    expect(options.some((o) => labelOf(o).includes('暫存') || labelOf(o).includes('暫放'))).toBe(false);
+    expect(options.some((o) => labelOf(o).includes('未放桌'))).toBe(false);
+  });
+
+  it('選項依位置的清單順序（A1～A15、B1～B15），桌號照所在的位置：B4 那一桌現在是「A3 桌」，B4 沒有桌', async () => {
+    const { user } = renderDialog(buildD027State(null));
+    const options = await openOptions(user);
+    expect(options.map(codeInLabel)).toEqual(CODES_IN_LIST_ORDER.filter((c) => c !== 'B8' && c !== 'B4'));
+  });
+
+  it('選搬到 A3 的那一桌：送出的 tableId 是桌子的 id（3），Sonner 寫「A3 桌」', async () => {
+    const { user, operations } = renderDialog(buildD027State(null));
+    await openOptions(user);
+    await user.click(screen.getByRole('option', { name: /^A3 桌/ }));
+    await user.click(screen.getByRole('button', { name: '確認入座' }));
+    await waitFor(() => expect(operations()).toHaveLength(1));
+    expect(operations()[0]!.body).toMatchObject({ type: 'seat', participantId: WANG, tableId: 3 });
+    expect(await screen.findByText('已把 王小明 安排到 A3 桌。')).toBeTruthy();
+  });
+
+  it('暫存的桌上的人按「入座…」：標題「安排 王小明 入座」（算未入座，SEAT-R94）；選 B2 確認後 Sonner「已把 王小明 安排到 B2 桌。」', async () => {
+    const { user, operations } = renderDialog(buildD027State(31));
+    expect(screen.getByRole('dialog', { name: '安排 王小明 入座' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '確認入座' })).toBeTruthy();
+    const options = await openOptions(user);
+    expect(options).toHaveLength(28);
+    await user.click(screen.getByRole('option', { name: /^B2 桌/ }));
+    await user.click(screen.getByRole('button', { name: '確認入座' }));
+    await waitFor(() => expect(operations()).toHaveLength(1));
+    expect(operations()[0]!.body).toMatchObject({ type: 'seat', participantId: WANG, tableId: 7 });
+    expect(await screen.findByText('已把 王小明 安排到 B2 桌。')).toBeTruthy();
   });
 });
 

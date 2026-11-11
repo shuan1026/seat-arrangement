@@ -6,7 +6,7 @@
 //
 // 指令約定（docs/architecture.md 第 8.1 節）：
 // - seat、seatMany 帶 allowOverflow: true（拖移與「加入人員」）時每桌上限 12 位；不帶時上限 10 位（選擇桌次對話框）。
-// - restore、swap 上限 12 位；autoArrange 每桌只排到 10 位。
+// - restore、moveTable 上限 12 位（D-027 起對調改用 moveTable）；autoArrange 每桌只排到 10 位。
 // - 超過上限回 409：10 位是 TABLE_FULL、12 位是 TABLE_LIMIT；工作人員桌是 STAFF_TABLE_FULL、STAFF_TABLE_LIMIT。
 // 這個檔案用預設的排座函式（src/domain/auto-arrange.ts）。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +22,7 @@ import {
   positionOf,
   postOperation,
   roster,
+  rosterAt,
   seatNewEmployees,
   staffIds,
 } from '../../helpers/seating-api';
@@ -278,7 +279,7 @@ describe('seatMany 帶 allowOverflow（加入人員）：最多到這一桌 12 �
   });
 });
 
-describe('restore、swap 上限 12 位（SEAT-R88、SEAT-AC98）', () => {
+describe('restore、moveTable（對調）上限 12 位（SEAT-R88、SEAT-AC98）', () => {
   it('11 位的 B10 桌（內部編號 5）移出一位後按「復原」：回到 11 位、原本的座號（SEAT-AC98）', async () => {
     const table5 = await seatNewEmployees(5, 11);
     const removed = await operate({ type: 'unseat', participantId: table5[4] });
@@ -288,23 +289,31 @@ describe('restore、swap 上限 12 位（SEAT-R88、SEAT-AC98）', () => {
     expect(await positionOf(table5[4]!)).toEqual({ tableId: 5, seatOrder: 4 });
   });
 
-  it('11 位的 B10 桌（5）和 9 位的 B13 桌（6）對調：名單整組交換，B13 桌變成 11 位；復原後回到對調前（SEAT-R35、SEAT-AC98）', async () => {
+  // D-027：對調改用 moveTable（兩桌交換位置），rosterAt(位置) 是那個位置上的名單
+  it('11 位的 B10 桌（5）和 9 位的 B13 桌（6）對調：名單整組交換，B13 的位置變成 11 位；復原後回到對調前（SEAT-R35、SEAT-AC98）', async () => {
     const table5 = await seatNewEmployees(5, 11);
     const table6 = await seatNewEmployees(6, 9);
-    const result = await operate({ type: 'swap', tableA: 5, tableB: 6 });
-    expect(await roster(6)).toEqual(table5);
-    expect(await roster(5)).toEqual(table6);
+    const result = await operate({ type: 'moveTable', tableId: 5, to: 6, expectedTableId: 6 });
+    expect(await rosterAt(6)).toEqual(table5);
+    expect(await rosterAt(5)).toEqual(table6);
     await operate({ type: 'restore', snapshot: result.undo });
-    expect(await roster(5)).toEqual(table5);
-    expect(await roster(6)).toEqual(table6);
+    expect(await rosterAt(5)).toEqual(table5);
+    expect(await rosterAt(6)).toEqual(table6);
   });
 
   it('12 位的桌和 12 位的桌對調：都可以', async () => {
     const table5 = await seatNewEmployees(5, 12);
     const table6 = await seatNewEmployees(6, 12);
-    await operate({ type: 'swap', tableA: 6, tableB: 5 });
-    expect(await roster(5)).toEqual(table6);
-    expect(await roster(6)).toEqual(table5);
+    await operate({ type: 'moveTable', tableId: 6, to: 5, expectedTableId: 5 });
+    expect(await rosterAt(5)).toEqual(table6);
+    expect(await rosterAt(6)).toEqual(table5);
+  });
+
+  it('12 位的桌也可以移到暫存區再放回；人數不變（D-027）', async () => {
+    const table5 = await seatNewEmployees(5, 12);
+    await operate({ type: 'moveTable', tableId: 5, to: 'staging', expectedTableId: null });
+    await operate({ type: 'moveTable', tableId: 5, to: 5, expectedTableId: null });
+    expect(await rosterAt(5)).toEqual(table5);
   });
 
   it('工作人員桌 12 位移出一位、別人補進第 12 位後再復原：409 STAFF_TABLE_LIMIT，資料不變（COM-R07）', async () => {

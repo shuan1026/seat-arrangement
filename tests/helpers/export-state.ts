@@ -30,9 +30,10 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 export class SheetData {
   readonly employees: Employee[] = [];
   readonly participants: Participant[] = [];
+  // D-027：桌子帶 position（1–30 是位置，null 是暫存區）；沒有特別設定時 1–30 桌在同號的位置
   readonly tables: SeatTable[] = [
-    { id: STAFF_TABLE_ID, kind: 'STAFF', noteName: null },
-    ...Array.from({ length: TABLE_COUNT }, (_, i): SeatTable => ({ id: i + 1, kind: 'NORMAL', noteName: null })),
+    { id: STAFF_TABLE_ID, kind: 'STAFF', position: null, stagedAt: null, noteName: null },
+    ...Array.from({ length: TABLE_COUNT }, (_, i): SeatTable => ({ id: i + 1, kind: 'NORMAL', position: i + 1, stagedAt: null, noteName: null })),
   ];
   private readonly byName = new Map<string, Participant>();
   private employeeSeq = 0;
@@ -118,10 +119,43 @@ export class SheetData {
   }
 
   note(tableId: number, noteName: string): this {
-    const t = this.tables.find((x) => x.id === tableId);
-    if (!t) throw new Error(`沒有內部編號 ${tableId} 的桌次`);
-    t.noteName = noteName;
+    this.table(tableId).noteName = noteName;
     return this;
+  }
+
+  /** 刪除這張桌（D-027）：桌上的人回到未入座，它的位置變成「未放桌」 */
+  removeTable(tableId: number): this {
+    for (const p of this.participants.filter((x) => x.tableId === tableId)) {
+      p.tableId = null;
+      p.seatOrder = null;
+    }
+    const i = this.tables.findIndex((x) => x.id === tableId);
+    if (i < 0) throw new Error(`沒有 id ${tableId} 的桌`);
+    this.tables.splice(i, 1);
+    return this;
+  }
+
+  /** 把這張桌移到暫存區（D-027）：名單跟著桌子，原位置變成「未放桌」 */
+  stage(tableId: number, stagedAt = '2026-11-01T08:00:00.000Z'): this {
+    const t = this.table(tableId);
+    t.position = null;
+    t.stagedAt = stagedAt;
+    return this;
+  }
+
+  /** 把這張桌放到「未放桌」的位置 position（D-027） */
+  place(tableId: number, position: number): this {
+    if (this.tables.some((x) => x.kind === 'NORMAL' && x.position === position)) throw new Error(`位置 ${position} 已有桌`);
+    const t = this.table(tableId);
+    t.position = position;
+    t.stagedAt = null;
+    return this;
+  }
+
+  private table(tableId: number): SeatTable {
+    const t = this.tables.find((x) => x.id === tableId);
+    if (!t) throw new Error(`沒有 id ${tableId} 的桌次`);
+    return t;
   }
 
   get(name: string): Participant {

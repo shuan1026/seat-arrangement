@@ -10,11 +10,12 @@ import { expect, test, type Page } from '@playwright/test';
 import { CODES_IN_LIST_ORDER } from '../helpers/table-codes';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
-import { noteNameOf, participantCount, rosterNames, seatOf, seed } from './helpers/seating-data';
+import { noteNameAt, noteNameOf, participantCount, rosterNames, rosterNamesAt, seatOf, seed, tableIdAt } from './helpers/seating-data';
 import {
   arrowToOption,
   chooseOption,
   detailRows,
+  emptySlot,
   expectRoster,
   expectToast,
   mapTable,
@@ -25,6 +26,9 @@ import {
   personRow,
   rowAction,
   rowWithName,
+  slotPanel,
+  stagedDetail,
+  stagedTableButton,
   tabUntilFocused,
   tableButton,
   tableDetail,
@@ -327,11 +331,39 @@ test.describe('調換桌次對話框（2.3.3、SEAT-R39）', () => {
     await seven.click();
     await dialog.getByRole('button', { name: '確認對調' }).click();
 
+    // D-027：兩桌交換位置；用位置查名單（B2 的位置上是甲乙與「主桌」）
     await expectToast(page, '已把 B4 桌和 B2 桌對調。', { undo: true });
-    await expect.poll(() => rosterNames(7)).toEqual(['甲', '乙']);
-    expect(await rosterNames(3)).toHaveLength(10);
-    expect(await noteNameOf(7)).toBe('主桌');
-    expect(await noteNameOf(3)).toBeNull();
+    await expect.poll(() => rosterNamesAt(7)).toEqual(['甲', '乙']);
+    expect(await rosterNamesAt(3)).toHaveLength(10);
+    expect(await noteNameAt(7)).toBe('主桌');
+    expect(await noteNameAt(3)).toBeNull();
+  });
+
+  test('D-027：選項也列出「未放桌」的位置「B8（未放桌）」；選它按「確認對調」就是搬過去，Sonner「已把 B4 桌搬到 B8。」（SEAT-R39、SEAT-AC116）', async ({
+    page,
+  }) => {
+    await seed(async (s) => {
+      await s.emptyPosition(9);
+      await s.noteName(3, '主桌');
+      for (const name of ['甲', '乙']) await s.employee(name, { tableId: 3 });
+    });
+    await openSeating(page);
+    const detail = await openTableDetail(page, 3);
+    await detail.getByRole('button', { name: '調換桌次…', exact: true }).click();
+    const dialog = selectDialog(page, '把 B4 桌和哪一桌對調？');
+    const labels = await optionLabels(page, dialog, /^桌次/);
+    expect(labels).toHaveLength(29);
+    expect(labels).toContain('B8（未放桌）');
+    expect(labels.map((l) => /^([AB]\d{1,2})/.exec(l)?.[1])).toEqual(CODES_IN_LIST_ORDER.filter((c) => c !== 'B4'));
+    await page.getByRole('option', { name: 'B8（未放桌）', exact: true }).click();
+    await dialog.getByRole('button', { name: '確認對調' }).click();
+
+    await expectToast(page, '已把 B4 桌搬到 B8。', { undo: true });
+    await expect.poll(() => rosterNamesAt(9)).toEqual(['甲', '乙']);
+    expect(await noteNameAt(9)).toBe('主桌');
+    expect(await tableIdAt(3)).toBeNull();
+    await expect(emptySlot(page, 3)).toBeVisible();
+    await expect(mapTable(page, 9)).toContainText('B8');
   });
 
   test('選項依 A1～A15、B1～B15 的順序列出自己以外的 29 桌（SEAT-R39、D-019）', async ({ page }) => {
@@ -443,7 +475,30 @@ test.describe('只用鍵盤（SEAT-R72、SEAT-R84、SEAT-AC86）', () => {
     await page.keyboard.press('Enter');
 
     await expectToast(page, '已把 B4 桌和 B2 桌對調。', { undo: true });
-    await expect.poll(() => rosterNames(7)).toEqual(['甲', '乙']);
+    await expect.poll(() => rosterNamesAt(7)).toEqual(['甲', '乙']);
+  });
+
+  test('D-027：「未放桌」的位置與暫存的桌也可以用 Tab 聚焦並按 Enter 開啟面板與詳情（SEAT-R84、SEAT-R95）', async ({ page }) => {
+    await seed(async (s) => {
+      await s.emptyPosition(9);
+      const staged = await s.stagedTable('貴賓桌');
+      await s.employee('丙', { tableId: staged });
+    });
+    await openSeating(page);
+    await page.locator('body').click({ position: { x: 1, y: 1 } });
+
+    const slot = emptySlot(page, 9);
+    await tabUntilFocused(page, slot);
+    const ring = await tokenShadow(page, '--shadow-focus-ring');
+    await expect.poll(() => slot.evaluate((el) => getComputedStyle(el).boxShadow)).toContain(ring);
+    await page.keyboard.press('Enter');
+    await expect(slotPanel(page, 9)).toBeVisible();
+    await slotPanel(page, 9).getByRole('button', { name: '關閉' }).click();
+
+    const staged = stagedTableButton(page, '貴賓桌');
+    await tabUntilFocused(page, staged);
+    await page.keyboard.press('Enter');
+    await expect(stagedDetail(page, '貴賓桌')).toBeVisible();
   });
 
   test('選擇桌次對話框可以只用鍵盤完成入座（SEAT-R84）', async ({ page }) => {

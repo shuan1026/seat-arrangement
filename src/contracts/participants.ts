@@ -5,7 +5,7 @@
 //   DELETE /api/participants/{id}        取消報名（員工，眷屬一併移除）或刪除（眷屬、外部貴賓）→ ParticipantDeleteResult
 //   POST   /api/participants/import      匯入 Google 表單報名表 CSV（D-010）→ ImportResult（contracts/imports.ts）
 import { z } from 'zod';
-import { participantSchema, STAFF_TABLE_ID, TABLE_COUNT } from './entities';
+import { participantSchema, STAFF_TABLE_ID } from './entities';
 
 const optionalText = (max: number) =>
   z
@@ -16,7 +16,7 @@ const optionalText = (max: number) =>
     .transform((v) => (v ? v : null));
 
 /** 一般桌的內部編號 1–30（畫面上的桌號見 src/domain/layout.ts，D-019）；null = 未入座。工作人員桌用 isStaff 指定，不用 tableId */
-export const seatChoiceSchema = z.number().int().min(1).max(TABLE_COUNT).nullable();
+export const seatChoiceSchema = z.number().int().min(1).nullable();
 
 const common = {
   childSeat: z.boolean().default(false),

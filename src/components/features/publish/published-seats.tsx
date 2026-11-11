@@ -55,6 +55,7 @@ function useMounted() {
 const toFace = (t: PublishedTable): PublicTableFace => ({
   id: t.id,
   isStaff: t.id === STAFF_TABLE_ID,
+  position: t.position,
   noteName: t.noteName,
   label: t.departmentLabel,
   count: t.people.length,
@@ -194,7 +195,7 @@ function PublishedTableDetail({ table, mobile, onClose }: { table: PublishedTabl
   const count = table.people.length;
   return (
     <DetailShell
-      title={isStaff ? '工作人員桌' : tableTitle(table.id)}
+      title={isStaff || table.position === null ? '工作人員桌' : tableTitle(table.position)}
       noteName={table.noteName}
       mobile={mobile}
       onClose={onClose}

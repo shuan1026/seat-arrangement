@@ -68,13 +68,18 @@ enum TableKind {
   STAFF
 }
 
+// 桌子（D-027）：名單、順序與備註名稱。position 是所在位置 1–30（桌號由 src/domain/layout.ts 對應），null 是暫存區；
+// 工作人員桌 id 0、kind STAFF、position null。既有 30 桌的 id 是 1–30；新增的桌由服務層取最大 id 加 1（docs/architecture.md 第 7.1 節）
 model SeatTable {
-  id           Int           @id // 1–30 為桌號；工作人員桌固定為 0
+  id           Int           @id
   kind         TableKind
+  position     Int?          @unique // 一個位置只能有一張桌；MySQL 的 unique 允許多個 null（暫存區）
+  stagedAt     DateTime?     // 移到暫存區的時間，暫存區依這個由上往下排；在位置上時是 null
   noteName     String?       @db.VarChar(50) // 備註名稱
   participants Participant[]
   updatedAt    DateTime      @updatedAt
 }
+
 
 // 權限名單上的身分（D-026）
 enum MemberRole {

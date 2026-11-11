@@ -2,6 +2,7 @@
 import { z } from 'zod';
 
 export const STAFF_TABLE_ID = 0;
+/** 場地的固定位置數（A1～A15、B1～B15，D-019、D-027）；位置編號 1–30 */
 export const TABLE_COUNT = 30;
 export const TABLE_CAPACITY = 10;
 export const STAFF_TABLE_CAPACITY = 10;
@@ -50,10 +51,16 @@ export const participantSchema = z.object({
 export type Participant = z.infer<typeof participantSchema>;
 
 export const seatTableSchema = z.object({
+  /** 桌子的編號：既有 30 桌是 1–30，工作人員桌 0，新增的桌從 31 起（D-027） */
   id: z.number().int(),
   kind: z.enum(['NORMAL', 'STAFF']),
+  /** 所在位置 1–30（桌號由 src/domain/layout.ts 對應）；null 是暫存區，工作人員桌也是 null（D-027） */
+  position: z.number().int().nullable(),
+  /** 移到暫存區的時間（ISO 字串），暫存區依這個由上往下排；在位置上時是 null */
+  stagedAt: z.string().nullable(),
   noteName: z.string().nullable(),
 });
+
 export type SeatTable = z.infer<typeof seatTableSchema>;
 
 export const appStateSchema = z.object({

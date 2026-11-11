@@ -3,7 +3,7 @@
 | 項目 | 內容 |
 |---|---|
 | 系統 | Seat Arrangement |
-| 文件版本 | v0.5（加入檢視者權限，沒有權限的公司帳號只能看發布頁，D-026） |
+| 文件版本 | v0.6（桌子與位置分開：桌子可以新增、刪除、搬動，加暫存區，D-027） |
 | 日期 | 2026-11-10 |
 | 適用範圍 | 本系統的架構、模組邊界、技術選型、資料、API、部署與演進方式 |
 | 讀者 | 參與開發的工程師、Code Reviewer |
@@ -275,8 +275,10 @@ enum TableKind {
 }
 
 model SeatTable {
-  id           Int           @id                // 1–30 是內部編號；畫面上的桌號（A1～A15、B1～B15）由 src/domain/layout.ts 的位置代碼對應（D-019）；工作人員桌固定為 0
+  id           Int           @id                // 桌子本身的編號；既有的 30 桌是 1–30，工作人員桌固定為 0；新增的桌由伺服器取目前最大的 id 加 1（從 31 起，D-027）
   kind         TableKind
+  position     Int?          @unique            // 所在位置 1–30（畫面上的桌號 A1～A15、B1～B15 由 src/domain/layout.ts 對應，D-019）；null = 暫存區；工作人員桌也是 null（kind 區分）
+  stagedAt     DateTime?                        // 移到暫存區的時間，暫存區依這個欄位由上往下排；在位置上時是 null
   noteName     String?       @db.VarChar(50)   // 備註名稱
   participants Participant[]
 }
@@ -305,7 +307,8 @@ model Setting {
 
 - **連動刪除交給外鍵**：刪除員工 → 參與人員 → 眷屬依序 cascade；取消報名刪除參與人員時眷屬一併刪除。座位存在參與人員列上，人刪了座位就空出來，不需要另外處理。
 - **工作人員 = 坐在工作人員桌的員工**：不另存旗標，避免兩個欄位不一致。人員對話框勾「工作人員」時，後端把他移進工作人員桌；取消勾選則移出成未入座。
-- **桌次固定**：1–30 桌與工作人員桌寫在第一個 migration 的 INSERT。30 桌在座位圖上的位置寫在 `src/domain/layout.ts`，不存資料庫。
+- **位置固定、桌子不固定（D-027）**：30 個位置與它們在座位圖上的座標、桌號、填桌順序寫在 `src/domain/layout.ts`，不存資料庫；`SeatTable` 是桌子（名單、順序、備註名稱），用 `position` 記在哪個位置。`position` 有 unique，同一個位置只會有一張桌；MySQL 的 unique 允許多個 null，所以暫存區可以有很多桌。沒有任何桌的 `position` 等於某個值，那個位置就是「未放桌」。搬動、對調、放回都只改 `position` 與 `stagedAt`，名單與備註名稱跟著 `id` 走，不必搬人。新增桌是插入一列（`kind = NORMAL`、指定 `position`）；刪除桌先把桌上的人改成未入座，再刪掉那一列。
+- **從固定 30 桌改成桌子與位置分開的 migration（D-027）**：加上 `position`、`stagedAt`；既有的 1–30 桌 `position = id`，工作人員桌是 null；原本的 id 不變，所以參與人員的 `tableId` 不必改。部署後 30 桌都在原位置，畫面和部署前相同。`id` 不改成 auto increment：工作人員桌的 id 是 0，MySQL 把 0 寫進 auto increment 欄位會當成「產生新編號」；新增桌改由服務層在座位指令的交易內（已鎖住全部桌）取目前最大的 id 加 1。
 - **沒有使用者資料表，只有權限名單**：登入狀態是存在 cookie 的 JWT session，不建帳號或 session 資料表，不存登入紀錄（D-003）。`Member` 只記哪些 email 有權限、是編輯者還是檢視者，以及誰在什麼時候加入（`createdBy`、`createdAt` 只留在資料庫，畫面只依加入順序排列）。不在名單上的公司帳號沒有權限（D-026）。身分每個請求查一次，不放進 JWT，所以權限變更從對方的下一次開啟頁面或操作起生效（D-021）。
 - **從編輯者名單改成權限名單（D-026）**：新增的 migration 把 `Editor` 表改名為 `Member`（unique 索引一併改名，讓 schema 與資料庫一致），加上 `role` 欄位；加欄位時用 `DEFAULT 'EDITOR'` 讓既有的列都成為編輯者，再拿掉預設值，之後每次新增都由程式指定權限。部署後名單上只有原本的編輯者，其他同仁要由編輯者在權限頁加成檢視者。
 - **發布設定用單列表**：`Setting` 只有 id = 1 一列，由新增它的 migration 用 INSERT 建好（`seatsPublished = false`）。欄位有型別、讀寫都是同一列，比 key-value 表單純；之後有其他全站設定就加欄位。
@@ -327,7 +330,7 @@ model Setting {
 
 - 開發時用 `prisma migrate dev` 產生 migration，提交進 repo。
 - 正式環境啟動時執行 `prisma migrate deploy` 與 `seed`（第 14 節）。
-- 1–30 桌與工作人員桌寫在第一個 migration 的 INSERT，不靠 seed。`Setting` 那一列寫在新增它的 migration 的 INSERT。
+- 1–30 桌與工作人員桌寫在第一個 migration 的 INSERT，不靠 seed；`position` 由 D-027 的 migration 補上。`Setting` 那一列寫在新增它的 migration 的 INSERT。
 - seed 在 `prisma migrate deploy` 之後、伺服器接受請求之前執行：Next.js 啟動時由 `src/instrumentation.ts` 呼叫 `src/server/seed.ts`，失敗就結束程序。正式映像沒有 TypeScript 執行工具，借用 Next.js 已打包好的程式與 Prisma Client，不另外建置。只在 `SEED_IMPORT=1`（Dockerfile 設定）時執行，本機開發與測試不會匯入真實資料。員工表是空的、而且 `prisma/seed-data/roster.csv` 與 `registrations.csv` 都存在時，匯入員工名單，再匯入報名表成為參與人員（D-007）。接著有 `staff.csv`（姓名、部門）時，把這些人設為工作人員、依檔案順序放進工作人員桌；有 `tables.csv`（桌號、備註名稱）時寫入備註名稱（D-015）；桌號欄寫桌號（A1～A15、B1～B15，D-019）。對不到、沒有報名、超過工作人員桌人數或格式不符的列略過並記 Log。seed 不自動排座。
   - 這幾步在同一個 `READ COMMITTED` 交易內完成，交易一開始 `SELECT … FOR UPDATE` 鎖住工作人員桌那一列（第一個 migration 就有，一定存在），鎖到 commit 或 rollback 才放開；多個執行個體同時啟動時，後面的會等前面的 commit 後才檢查員工表，看到已有資料就跳過。任何一列以外的錯誤就整批不寫入。
   - Log 只記筆數（匯入、對不到、略過），不記姓名（第 15.2 節）；對不到與略過的人名在部署前用本機試跑確認（D-007）。
@@ -385,7 +388,9 @@ type SeatingOperation =
   | { type: "unseat"; participantId: number }                               // 移出桌次或工作人員桌
   | { type: "reorder"; tableId: number; participantIds: number[] }          // 桌內調整順序
   | { type: "clear"; tableId: number }                                       // 清空
-  | { type: "swap"; tableA: number; tableB: number }                         // 整桌對調（名單與備註名稱）
+  | { type: "moveTable"; tableId: number; to: number | "staging"; expectedTableId: number | null } // 搬動桌子（D-027）：to 是位置 1–30 或暫存區；expectedTableId 是畫面上那個位置目前的桌（「未放桌」是 null），和伺服器不同時回 409 CONFLICT。目標位置有桌就對調（暫存的桌放到有桌的位置時，原本那桌改到暫存區最下面）
+  | { type: "createTable"; position: number }                                // 在「未放桌」的位置新增一張空桌；位置已有桌回 409 CONFLICT
+  | { type: "deleteTable"; tableId: number }                                 // 刪除桌：桌上的人變成未入座、備註名稱刪除；已被刪除回 404
   | { type: "autoArrange"; mode: "unseatedOnly" | "rebuild" }               // 自動排座
   | { type: "restore"; snapshot: SeatingSnapshot };                          // 復原
 ```
@@ -395,14 +400,17 @@ type SeatingOperation =
 ```ts
 type SeatingOperationResult = {
   participants: { id: number; tableId: number | null; seatOrder: number | null }[]; // 有變動的人
-  tables: { id: number; noteName: string | null }[];                               // 有變動的桌（對調時）
+  tables: { id: number; position: number | null; stagedAt: string | null; noteName: string | null }[]; // 有變動或新增的桌
+  deletedTableIds?: number[];                                                      // 這次刪除的桌
   undo: SeatingSnapshot;   // 這次操作之前的狀態，送回 restore 就能復原
   summary?: { placed: number; tableIds: number[]; left: number };                  // 自動排座的結果
 };
 ```
 
 - 每個指令都回傳 `undo`，前端只保留最近一次；按「復原」就送 `{ type: "restore", snapshot }`。復原記錄只存在瀏覽器記憶體，重新整理後就沒有了。
-- `seat`、`seatMany` 帶 `allowOverflow: true`（拖移與「加入人員」）時每桌上限 12 位，不帶時上限 10 位（選擇桌次對話框）；`restore`、`swap` 上限 12 位；`autoArrange` 每桌只排到 10 位（D-018）。超過上限時回 409，錯誤碼區分 10 位（`TABLE_FULL`）與 12 位（`TABLE_LIMIT`），前端照 `seating.md` SEAT-R86 顯示不同提示。
+- `SeatingSnapshot` 除了相關的人，也記相關的桌（`id`、`position`、`stagedAt`、`noteName`，以及這次刪除的桌）；`restore` 會把搬動的桌放回原位、刪掉這次新增的桌、以原本的 `id` 重建這次刪除的桌（D-027）。
+- 暫存區的桌（`position` 是 null 的一般桌）不能當作入座的目標：`seat`、`seatMany`、`reorder`、`clear` 指到暫存的桌時回 409 `CONFLICT`（畫面本來就不讓人放進去，SEAT-R92）。
+- `seat`、`seatMany` 帶 `allowOverflow: true`（拖移與「加入人員」）時每桌上限 12 位，不帶時上限 10 位（選擇桌次對話框）；`restore`、`moveTable` 上限 12 位；`autoArrange` 每桌只排到 10 位（D-018）。超過上限時回 409，錯誤碼區分 10 位（`TABLE_FULL`）與 12 位（`TABLE_LIMIT`），前端照 `seating.md` SEAT-R86 顯示不同提示。
 - 新增、編輯、刪除、加入尾牙、取消報名、匯入不走這個端點，也不能復原。
 
 ### 8.2 錯誤格式
@@ -513,7 +521,7 @@ type SeatingOperationResult = {
 
 ### 10.4 拖移與座位圖
 
-- dnd-kit 的可放置區：人員面板、每一桌、工作人員桌；可排序區：每一桌的名單。拖桌次的把手到另一桌觸發整桌對調。
+- dnd-kit 的可放置區：人員面板、每一桌、工作人員桌；可排序區：每一桌的名單。拖桌子的把手時，可放置區是 30 個位置（有桌或「未放桌」）與暫存區，放開送 `moveTable`（D-027）。暫存的桌與「未放桌」的位置不接受人員。
 - 感應器同時啟用滑鼠、觸控（長按啟動，避免和捲動衝突）與鍵盤。
 - 座位圖以 CSS `transform: scale()` 縮放，拖移時用 dnd-kit 的 modifier 依縮放比例換算座標。
 - 這是技術風險最高的部分，座位安排線一開始先做最小驗證（第 17 節）。
@@ -543,7 +551,7 @@ type SeatingOperationResult = {
 ### 11.3 座位安排
 
 - 介面配色（D-020）：淺色是 `:root` 的預設 token，深色是設計系統既有的 `:root[data-theme="dark"]`（`src/styles/tokens.css`）。選擇存在瀏覽器的 localStorage，由根版面 `<head>` 裡一段 inline script 在第一次繪製前把 `data-theme` 設在 `<html>`，避免先閃淺色；不存資料庫。元件只用語意 token，不判斷目前的配色。匯出 Excel 的色碼固定用淺色主題換算。
-- 桌號（D-019）：資料庫與 API 的桌次仍用內部編號 1–30（工作人員桌 0），畫面、匯出與網址參數（`/?table=A1`）都用位置代碼 A1～A15、B1～B15，對應寫在 `src/domain/layout.ts`。清單依 A1～A15、B1～B15 排列；自動排座的填桌順序沿用內部編號的順序（`docs/spec/auto-arrange.md` 的「填桌順序」）。
+- 桌號（D-019、D-027）：資料庫與 API 用桌子的 `id` 與位置編號 `position`（1–30），畫面、匯出與網址參數（`/?table=A1`）都用位置代碼 A1～A15、B1～B15，對應寫在 `src/domain/layout.ts`。暫存的桌沒有桌號，網址參數用 `/?staged={id}` 開啟它的詳情（參與人員頁的「暫存」徽章）。清單依 A1～A15、B1～B15 排列；自動排座的填桌順序是位置的順序（原本內部編號的順序，`docs/spec/auto-arrange.md` 的「填桌順序」），「未放桌」的位置跳過。
 - `seating-rules.ts` 對每個指令回傳「變更後的座位」或「違反哪條規則」，前端與後端共用。
 - 員工拖進工作人員桌時離開原本的桌次；眷屬不跟著移動。
 - 桌次的部門標示（依人數排序、以「＋」連接、有貴賓時加「貴賓」、沒人時為「空桌」）由前端即時計算，不存資料庫。
@@ -569,7 +577,8 @@ type SeatingOperationResult = {
     | {
         published: true;
         tables: {
-          id: number;                                       // 內部編號 1–30，工作人員桌 0；桌號由 domain/layout.ts 對應
+          id: number;                                       // 桌子的 id，工作人員桌 0
+          position: number | null;                          // 所在位置 1–30，工作人員桌 null；桌號由 domain/layout.ts 對應。只回傳場上的桌與工作人員桌，不含暫存的桌（D-027）
           noteName: string | null;
           departmentLabel: string;                          // 部門標示，伺服器用 domain/display.ts 算好（「研發一部＋貴賓」「空桌」）
           people: { displayName: string; group: string }[]; // 依桌內順序；group 是部門，外部貴賓是「貴賓」，只在搜尋結果同名時顯示
@@ -738,6 +747,9 @@ E2E 測試不經過 Google：測試環境用測試專用的 `NEXTAUTH_SECRET` �
 | D-007 | 正式版的真實名單用 seed 匯入 | 已決議 | 通訊錄與 Google 表單報名表放在 `prisma/seed-data/`，只隨第一次手動部署的 ZIP 進映像；員工表是空的時匯入一次 |
 | D-021 | 權限管理與座位發布頁 | 已決議 | 編輯者與只能檢視兩種權限，編輯者名單在權限頁管理、第一位由 `INITIAL_EDITOR_EMAILS` 指定；寫入 API 在 `route()` 檢查；發布頁 `/seats` 要登入，只回傳座位圖需要的欄位 |
 | D-026 | 新增檢視者權限 | 已決議 | `Editor` 改為 `Member` 加 `role`（編輯者、檢視者）；不在名單上的公司帳號沒有權限，讀取 API 與三頁都拒絕，只能看 `/seats`；`(main)/layout.tsx` 在同一個網址畫「沒有權限」頁 |
+| D-027 | 桌子可以新增、刪除、搬動，加暫存區 | 已決議 | `SeatTable` 加 `position`（unique，null 是暫存區）與 `stagedAt`，新增的桌由服務層取最大 id 加 1；`swap` 改成 `moveTable`，新增 `createTable`、`deleteTable`，都可復原 |
+
+
 
 
 ## 20. 待決事項

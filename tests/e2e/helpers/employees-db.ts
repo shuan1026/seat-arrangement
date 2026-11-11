@@ -4,6 +4,7 @@
 // 只放虛構資料。
 import { createPool, type Pool, type UpsertResult } from 'mariadb';
 import { databaseConfigFromEnv } from '../../../src/server/database-config';
+import { RESET_TABLES_SQL } from '../../helpers/table-reset';
 import { loadTestEnv } from '../../helpers/test-database';
 
 let pool: Pool | null = null;
@@ -37,13 +38,13 @@ export async function closeDb(): Promise<void> {
   }
 }
 
-/** 清空員工與參與人員，桌次備註名稱清空（同 tests/helpers/db.ts 的 resetData） */
+/** 清空員工與參與人員，桌子恢復成 1–30 桌在原位置、沒有備註名稱、暫存區沒有桌（同 tests/helpers/db.ts 的 resetData，D-027） */
 export async function resetData(): Promise<void> {
   const conn = db();
   await conn.query('DELETE FROM `Participant` WHERE `hostId` IS NOT NULL');
   await conn.query('DELETE FROM `Participant`');
   await conn.query('DELETE FROM `Employee`');
-  await conn.query('UPDATE `SeatTable` SET `noteName` = NULL');
+  for (const sql of RESET_TABLES_SQL) await conn.query(sql);
 }
 
 export type EmployeeSeed = {

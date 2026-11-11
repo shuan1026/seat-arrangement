@@ -5,20 +5,37 @@
 // 待確認 PRM-Q01（已報名但未入座的人搜尋自己：目前假設和找不到一樣）。
 // docs/architecture.md 第 11.5 節：發布頁的資料是 PublishedSeating（每桌 id、noteName、departmentLabel、people[{ displayName, group }]，
 // group 是部門，外部貴賓是「貴賓」），搜尋、同名區分與桌次標示都在前端用這份資料計算。
-// 桌號（D-019）：資料用內部編號（1 = B1、2 = A1、3 = B4、7 = B2、16 = B15、17 = A3、30 = A13），工作人員桌是 0。
+// 桌號（D-019）：資料用位置編號（1 = B1、2 = A1、3 = B4、7 = B2、16 = B15、17 = A3、30 = A13），工作人員桌是 0。
+// D-027：每一桌多一個 position（所在位置 1–30，工作人員桌 null），桌號照所在的位置；這裡沒有特別寫的桌 position = id。
+// 發布頁的資料只有場上的桌與工作人員桌，暫存的桌與桌上的人、「未放桌」的位置都不在裡面（PRM-R24、PRM-R30、PRM-AC45）。
 //
 // 假設的介面（src/domain/published-seating.ts，純函式）：
+//   export function toPublishedTables(state: AppState): PublishedTable[];
+//     src/contracts/permissions.ts 的 PublishedTable：{ id, position, noteName, departmentLabel, people[{ displayName, group }] }；
+//     只回傳場上的桌與工作人員桌（暫存的桌不回傳），名單依桌內順序。
 //   export function searchPublishedSeats(
-//     tables: readonly { id: number; noteName: string | null; departmentLabel: string; people: readonly { displayName: string; group: string }[] }[],
+//     tables: readonly { id: number; position: number | null; people: readonly { displayName: string; group: string }[] }[],
 //     keyword: string,
 //   ): { tableId: number; text: string }[];
-//     依 PRM-R30～R32 回傳每一位符合的人（text 是畫面上那一行的文字），順序同 PRM-R31；關鍵字空白時回空陣列。
+//     依 PRM-R30～R32 回傳每一位符合的人（text 是畫面上那一行的文字，桌號照 position），順序同 PRM-R31；關鍵字空白時回空陣列。
 //   export function seatNotFoundMessage(keyword: string): string;   // 「找不到「{關鍵字}」。」
 import { describe, expect, it } from 'vitest';
-import { searchPublishedSeats, seatNotFoundMessage } from '@/domain/published-seating';
+import type { AppState } from '@/contracts/entities';
+import { searchPublishedSeats, seatNotFoundMessage, toPublishedTables } from '@/domain/published-seating';
+import {
+  allTables,
+  asDependent,
+  asEmployee,
+  asGuest,
+  employee,
+  normalTable,
+  stagedTable,
+  updateTable,
+  withoutPositions,
+} from '../../helpers/seating-fixtures';
 
 type Person = { displayName: string; group: string };
-type Table = { id: number; noteName: string | null; departmentLabel: string; people: Person[] };
+type Table = { id: number; position: number | null; noteName: string | null; departmentLabel: string; people: Person[] };
 
 const STAFF = 0;
 const B1 = 1;
@@ -30,9 +47,10 @@ const A3 = 17;
 const A13 = 30;
 
 const person = (displayName: string, group: string): Person => ({ displayName, group });
-/** 部門標示由伺服器算好（domain/display.ts），搜尋不用它；這裡給一個合理的值 */
-const table = (id: number, people: Person[], noteName: string | null = null): Table => ({
+/** 部門標示由伺服器算好（domain/display.ts），搜尋不用它；這裡給一個合理的值。position 預設和 id 相同（工作人員桌是 null） */
+const table = (id: number, people: Person[], noteName: string | null = null, position: number | null = id === 0 ? null : id): Table => ({
   id,
+  position,
   noteName,
   departmentLabel: [...new Set(people.map((p) => p.group))].join('＋') || '空桌',
   people,
@@ -188,5 +206,104 @@ describe('找不到（PRM-R33、PRM-AC31、PRM-AC27、PRM-Q01）', () => {
 
   it('沒有任何人入座 → 搜尋任何姓名都是找不到', () => {
     expect(searchPublishedSeats(seating([]), '王')).toEqual([]);
+  });
+});
+
+describe('D-027 桌號照所在的位置（SEAT-R04、PRM-R31）', () => {
+  it('B4 那一桌（id 3）搬到 B2 的位置（7）：「王小明：B2 桌」', () => {
+    const tables = [table(3, [person('王小明', '研發一部')], null, 7), table(STAFF, [])];
+    expect(searchPublishedSeats(tables, '王小明')).toEqual([{ tableId: 3, text: '王小明：B2 桌' }]);
+  });
+
+  it('新增的桌（id 31）在 A3：「陳大文：A3 桌」；結果帶著桌子的 id', () => {
+    const tables = [table(31, [person('陳大文', '業務部')], null, A3), table(STAFF, [])];
+    expect(searchPublishedSeats(tables, '陳大文')).toEqual([{ tableId: 31, text: '陳大文：A3 桌' }]);
+  });
+
+  it('結果依所在位置的清單順序（A1～A15、B1～B15），不是依桌子的 id', () => {
+    // id 1 的桌在 A13（30）、id 30 的桌在 B1（1）
+    const tables = [table(1, [person('王甲', '業務部')], null, A13), table(30, [person('王乙', '業務部')], null, B1), table(STAFF, [])];
+    expect(texts(tables, '王')).toEqual(['王甲：A13 桌', '王乙：B1 桌']);
+  });
+});
+
+describe('toPublishedTables：伺服器給發布頁的資料（PRM-R24、PRM-R27、PRM-R30、PRM-AC45、D-027）', () => {
+  /**
+   * 王小明（研發一部）坐 B4（id 3）；陳大文（業務部）坐暫存區的一桌（id 31）；B8（位置 9）是「未放桌」；
+   * 林董（外部貴賓）坐 B2（id 7，「主桌」）；李美華是工作人員
+   */
+  function state(): AppState {
+    const tables = [...withoutPositions(allTables({ 7: '主桌' }), [9]), stagedTable(31, '2026-11-01T08:00:00.000Z', { noteName: '暫放' })];
+    return {
+      employees: [
+        employee(1, { name: '王小明', department: '研發一部', extension: '1234' }),
+        employee(2, { name: '陳大文', department: '業務部' }),
+        employee(3, { name: '李美華', department: '總務部' }),
+      ],
+      participants: [
+        asEmployee(1, { tableId: 3, seatOrder: 0, vegetarian: true }),
+        asDependent(11, 1, { tableId: 3, seatOrder: 1 }),
+        asEmployee(2, { tableId: 31, seatOrder: 0 }),
+        asGuest(21, { guestName: '林董', tableId: 7, seatOrder: 0 }),
+        asEmployee(3, { tableId: 0, seatOrder: 0 }),
+      ],
+      tables,
+    };
+  }
+
+  it('只有場上的桌（29 張）與工作人員桌：沒有暫存的桌，也沒有 B8（PRM-AC45）', () => {
+    const out = toPublishedTables(state());
+    expect(out).toHaveLength(30);
+    expect(out.map((t) => t.id)).not.toContain(31);
+    expect(out.map((t) => t.position)).not.toContain(9);
+    expect(out.filter((t) => t.id === STAFF)).toHaveLength(1);
+  });
+
+  it('每一桌多一個 position：場上的桌是所在位置，工作人員桌是 null', () => {
+    const out = toPublishedTables(state());
+    expect(out.find((t) => t.id === 3)).toEqual({
+      id: 3,
+      position: 3,
+      noteName: null,
+      departmentLabel: '研發一部',
+      people: [
+        { displayName: '王小明', group: '研發一部' },
+        { displayName: '王小明_眷屬', group: '研發一部' },
+      ],
+    });
+    expect(out.find((t) => t.id === STAFF)).toMatchObject({ position: null, noteName: null, people: [{ displayName: '李美華', group: '總務部' }] });
+    expect(out.find((t) => t.id === 7)).toMatchObject({ position: 7, noteName: '主桌', people: [{ displayName: '林董', group: '貴賓' }] });
+  });
+
+  it('暫存的桌上的人不在資料裡：搜尋「陳大文」找不到（PRM-R30、PRM-AC45）', () => {
+    const out = toPublishedTables(state());
+    expect(JSON.stringify(out)).not.toContain('陳大文');
+    expect(JSON.stringify(out)).not.toContain('暫放');
+    expect(searchPublishedSeats(out, '陳大文')).toEqual([]);
+  });
+
+  it('搬到別的位置的桌：position 是新的位置，搜尋結果用新位置的桌號', () => {
+    // id 3 的桌（王小明）搬到 B8（9）
+    const s = state();
+    s.tables = updateTable(s.tables, 3, { position: 9 });
+    const out = toPublishedTables(s);
+    expect(out.find((t) => t.id === 3)?.position).toBe(9);
+    expect(texts(out, '王小明')).toEqual(['王小明：B8 桌', '王小明_眷屬：B8 桌']);
+  });
+
+  it('新增的桌放在位置上：照常出現', () => {
+    const s = state();
+    s.tables = [...s.tables, normalTable(32, { position: 9, noteName: '新桌' })];
+    const out = toPublishedTables(s);
+    expect(out.find((t) => t.id === 32)).toMatchObject({ position: 9, noteName: '新桌', departmentLabel: '空桌', people: [] });
+  });
+
+  it('不含分機、素食、兒童椅、備註等欄位（PRM-R27）', () => {
+    const out = toPublishedTables(state());
+    expect(JSON.stringify(out)).not.toContain('1234');
+    for (const t of out) {
+      expect(Object.keys(t).sort()).toEqual(['departmentLabel', 'id', 'noteName', 'people', 'position']);
+      for (const p of t.people) expect(Object.keys(p).sort()).toEqual(['displayName', 'group']);
+    }
   });
 });

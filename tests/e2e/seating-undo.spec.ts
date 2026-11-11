@@ -6,7 +6,7 @@
 import { expect, test } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
-import { noteNameOf, rosterNames, seed, STAFF } from './helpers/seating-data';
+import { noteNameAt, rosterNames, rosterNamesAt, seed, STAFF } from './helpers/seating-data';
 import {
   chooseOption,
   clickUndo,
@@ -80,13 +80,16 @@ test('對調後按「復原」：兩桌的名單、順序與備註名稱回到�
   await dialog.getByRole('button', { name: '確認對調' }).click();
   await swapped;
   await expect(dialog).toBeHidden();
+  // D-027：兩桌交換位置；用位置查（B4 的位置上是丙丁戊）
+  expect(await rosterNamesAt(3)).toEqual(['丙', '丁', '戊']);
 
   await clickUndo(page, '已把 B4 桌和 B2 桌對調。');
   await expectToast(page, UNDONE, { undo: false });
-  await expect.poll(() => rosterNames(3)).toEqual(['甲', '乙']);
-  expect(await rosterNames(7)).toEqual(['丙', '丁', '戊']);
-  expect(await noteNameOf(3)).toBe('主桌');
-  expect(await noteNameOf(7)).toBeNull();
+  await expect.poll(() => rosterNamesAt(3)).toEqual(['甲', '乙']);
+  expect(await rosterNamesAt(7)).toEqual(['丙', '丁', '戊']);
+  expect(await noteNameAt(3)).toBe('主桌');
+  expect(await noteNameAt(7)).toBeNull();
+  await expect(mapTable(page, 3)).toContainText('2/10');
 });
 
 test('清空後按「復原」：6 位回到 B4 桌原本的座號，「未入座」分頁不再有他們（SEAT-R78、SEAT-AC77）', async ({ page }) => {

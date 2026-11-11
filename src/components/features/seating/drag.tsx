@@ -35,7 +35,11 @@ export type DropArea = 'map' | 'detail';
 export type DropTarget =
   | { kind: 'table'; tableId: number; index?: number; area: DropArea }
   | { kind: 'staff'; area: DropArea }
-  | { kind: 'panel' };
+  | { kind: 'panel' }
+  /** 「未放桌」的位置（D-027）：只接受拖桌子 */
+  | { kind: 'slot'; position: number }
+  /** 暫存區（D-027）：只接受拖桌子 */
+  | { kind: 'staging' };
 
 export type DragState = {
   source: DragSource | null;
@@ -46,13 +50,15 @@ export type DragState = {
   ghost: { width: number; height: number; scale: number };
 };
 
-/** 放置目標的屬性值：table:{n}、row:{n}:{index}、detail:{n}、staff、panel */
+/** 放置目標的屬性值：table:{n}、row:{n}:{index}、detail:{n}、staff、panel、slot:{位置}、staging */
 export const dropAttr = {
   table: (n: number) => `table:${n}`,
   row: (n: number, index: number) => `row:${n}:${index}`,
   detail: (n: number) => `detail:${n}`,
   staff: 'staff',
   panel: 'panel',
+  slot: (position: number) => `slot:${position}`,
+  staging: 'staging',
 } as const;
 
 function parseDrop(el: Element | null): DropTarget | null {
@@ -65,6 +71,8 @@ function parseDrop(el: Element | null): DropTarget | null {
   if (kind === 'detail') return { kind: 'table', tableId: Number(a), area: 'detail' };
   if (kind === 'staff') return { kind: 'staff', area };
   if (kind === 'panel') return { kind: 'panel' };
+  if (kind === 'slot') return { kind: 'slot', position: Number(a) };
+  if (kind === 'staging') return { kind: 'staging' };
   return null;
 }
 

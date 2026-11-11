@@ -14,6 +14,7 @@ import { noteNameOf, seed, setEmployeeDepartmentByName, STAFF } from './helpers/
 import {
   cardRows,
   detailRows,
+  emptySlot,
   expandAll,
   expectRoster,
   expectStats,
@@ -30,6 +31,7 @@ import {
   rowWithName,
   seatMap,
   staffTable,
+  stagingArea,
   styleOfText,
   tableButton,
   tableDetail,
@@ -184,7 +186,8 @@ test.describe('座位圖的排列（SEAT-R01、R03～R05、SEAT-AC21）', () => 
     expect(covers(exit, (t16.x + t21.x) / 2)).toBe(true);
   });
 
-  test('桌號寫成「A1」，不寫成「A-1」；沒有新增、刪除桌次或改桌號的操作（SEAT-R01、SEAT-R04、README 第 13 節用語表）', async ({
+  // SEAT-AC21 改寫（D-027）：桌子可以新增、刪除（在「未放桌」的面板與桌次詳情），但沒有改桌號、增減位置的操作；位置固定 30 個
+  test('桌號寫成「A1」，不寫成「A-1」；沒有改桌號、增減位置的操作（SEAT-R01、SEAT-R04、SEAT-AC21、README 第 13 節用語表）', async ({
     page,
   }) => {
     await seed(async (s) => {
@@ -192,9 +195,43 @@ test.describe('座位圖的排列（SEAT-R01、R03～R05、SEAT-AC21）', () => 
     });
     await openSeating(page);
     await expect(page.locator('body')).not.toContainText(/[AB]-\d{1,2}/);
-    await expect(page.getByRole('button', { name: /新增桌|刪除桌|桌號/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /桌號|位置/ })).toHaveCount(0);
+    // 30 個位置都有桌時沒有「未放桌」，也就沒有「新增桌」（SEAT-R96）
+    await expect(page.getByRole('button', { name: '新增桌', exact: true })).toHaveCount(0);
     await expandAll(page);
     await expect(page.locator('body')).not.toContainText(/[AB]-\d{1,2}/);
+  });
+
+  test('30 個位置固定：桌數加上「未放桌」的位置一直是 30（B8 刪掉後是 29 桌與 1 個「未放桌」）（SEAT-R01、SEAT-AC21、D-027）', async ({ page }) => {
+    desktopOnly(page);
+    await seed(async (s) => {
+      await s.emptyPosition(9);
+    });
+    await openSeating(page);
+    await expect(seatMap(page).getByRole('group', { name: /^[AB]\d{1,2} 桌$/ })).toHaveCount(29);
+    await expect(seatMap(page).getByRole('button', { name: /^[AB]\d{1,2} 未放桌$/ })).toHaveCount(1);
+    await expect(emptySlot(page, 9)).toBeVisible();
+  });
+
+  test('暫存區在 B 區外側列的右邊（工作人員桌與控台的右邊）；沒有桌時顯示「把桌子拖到這裡暫放」（2.1.12、SEAT-AC21）', async ({ page }) => {
+    desktopOnly(page);
+    await seed(async () => {});
+    await openSeating(page);
+    const area = stagingArea(page);
+    await expect(area).toBeVisible();
+    await expect(area.getByText('暫存區', { exact: true })).toBeVisible();
+    await expect(area.getByText('把桌子拖到這裡暫放')).toBeVisible();
+    const box = await area.boundingBox();
+    const staff = await staffTable(page).boundingBox();
+    const b4 = await centerOf(page, 3);
+    const control = await landmark(page, '控台').boundingBox();
+    if (!box || !staff || !control) throw new Error('量不到暫存區、工作人員桌或控台');
+    expect(box.x, '暫存區在工作人員桌的右邊').toBeGreaterThanOrEqual(staff.x + staff.width - 1);
+    expect(box.x, '暫存區在 B 外側列的右邊').toBeGreaterThan(b4.x);
+    expect(box.x, '暫存區在控台的右邊').toBeGreaterThanOrEqual(control.x + control.width - 1);
+    // 從第 0 列開始往下：上緣不低於 B1 桌（第 0 列）的下緣
+    const b1 = await centerOf(page, 1);
+    expect(box.y).toBeLessThanOrEqual(b1.box.y + b1.box.height);
   });
 
   test('30 桌各顯示自己的桌號：收合時只有「A3」（不加「桌」），座位圖上沒有「第 n 桌」（SEAT-R04、SEAT-AC21、2.1.5）', async ({
@@ -501,7 +538,8 @@ test.describe('桌次詳情（2.3、SEAT-R72～R74）', () => {
 
     expect(await menuItemsOf(page, rowWithName(rows, page, '王小明'))).toEqual(['移至其他桌次…', '移出桌次', '編輯']);
 
-    for (const name of ['加入人員', '調換桌次…', '清空桌次']) {
+    // D-027：底部按鈕多了「移到暫存區」「刪除桌」（2.3.1）
+    for (const name of ['加入人員', '調換桌次…', '移到暫存區', '清空桌次', '刪除桌']) {
       await expect(detail.getByRole('button', { name, exact: true }), name).toBeVisible();
     }
     await expect(detail.getByRole('button', { name: '關閉' })).toBeVisible();

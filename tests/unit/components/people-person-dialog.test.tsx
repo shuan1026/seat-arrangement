@@ -88,9 +88,10 @@ const WANG = employee(1, '王小明', '研發一部', '1234');
 const LEE = employee(2, '李美華', '業務部', '5678');
 const CHEN = employee(3, '陳大文', '研發一部', null);
 
+// D-027：桌子帶 position（1–30 桌在同號的位置）與 stagedAt
 const TABLES: SeatTable[] = [
-  { id: STAFF_TABLE_ID, kind: 'STAFF', noteName: null },
-  ...Array.from({ length: TABLE_COUNT }, (_, i): SeatTable => ({ id: i + 1, kind: 'NORMAL', noteName: null })),
+  { id: STAFF_TABLE_ID, kind: 'STAFF', position: null, stagedAt: null, noteName: null },
+  ...Array.from({ length: TABLE_COUNT }, (_, i): SeatTable => ({ id: i + 1, kind: 'NORMAL', position: i + 1, stagedAt: null, noteName: null })),
 ];
 
 const baseState = (): AppState => ({

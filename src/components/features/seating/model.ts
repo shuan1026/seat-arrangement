@@ -4,10 +4,10 @@ import {
   STAFF_TABLE_CAPACITY,
   STAFF_TABLE_ID,
   TABLE_CAPACITY,
-  TABLE_COUNT,
   type AppState,
   type Employee,
   type Participant,
+  type SeatTable,
 } from '@/contracts/entities';
 import { TABLE_MAX_SEATS } from '@/contracts/seating';
 import {
@@ -20,7 +20,7 @@ import {
   teamOf,
   type Directory,
 } from '@/domain/display';
-import { tableTitle } from '@/domain/layout';
+import { tableCodeOf } from '@/domain/layout';
 import { sortParticipants } from '@/domain/participants';
 import { tableStatus, type TableStatus } from '@/domain/seating-rules';
 
@@ -38,8 +38,13 @@ export const CATEGORY_LABEL: Record<Participant['kind'], string> = { EMPLOYEE: '
  * 座位安排頁用完整的 TableInfo；發布頁只有這些（docs/spec/permissions.md 第 2.3 節，PRM-R24）。
  */
 export type TableFace = {
+  /** 桌子的 id（工作人員桌 0） */
   id: number;
   isStaff: boolean;
+  /** 所在位置 1–30；暫存的桌與工作人員桌是 null（D-027） */
+  position: number | null;
+  /** 暫存區的桌：沒有桌號，放桌號的地方寫「暫存」（2.1.9、D-027） */
+  staged?: boolean;
   noteName: string | null;
   /** 部門標示，例如「研發一部＋業務部」；沒有人時「空桌」（SEAT-R07～R09） */
   label: string;
@@ -79,9 +84,8 @@ export function departmentsInOrder(employees: readonly Employee[]): string[] {
 export const sortPeople = (data: Pick<AppState, 'participants'>, dir: Directory): Participant[] =>
   sortParticipants(data.participants, dir);
 
-/** 30 桌與工作人員桌的名單與標示 */
+/** 工作人員桌、場上的桌與暫存的桌的名單與標示，依桌子 id（D-027） */
 export function buildTables(data: AppState, dir: Directory, sorted: readonly Participant[]): Map<number, TableInfo> {
-  const notes = new Map(data.tables.map((t) => [t.id, t.noteName]));
   const out = new Map<number, TableInfo>();
   const byTable = new Map<number, Participant[]>();
   for (const p of data.participants) {
@@ -91,7 +95,8 @@ export function buildTables(data: AppState, dir: Directory, sorted: readonly Par
     byTable.set(p.tableId, list);
   }
   const rank = new Map(sorted.map((p, i) => [p.id, i]));
-  for (let id = 0; id <= TABLE_COUNT; id++) {
+  for (const table of data.tables) {
+    const id = table.id;
     const isStaff = id === STAFF_TABLE_ID;
     const roster = [...(byTable.get(id) ?? [])].sort(
       isStaff
@@ -102,7 +107,9 @@ export function buildTables(data: AppState, dir: Directory, sorted: readonly Par
     out.set(id, {
       id,
       isStaff,
-      noteName: isStaff ? null : (notes.get(id) ?? null),
+      position: isStaff ? null : table.position,
+      staged: !isStaff && table.position === null,
+      noteName: isStaff ? null : table.noteName,
       roster,
       labels,
       label: labels.join('＋') || '空桌',
@@ -150,20 +157,55 @@ export const tableTooltip = (t: Pick<TableFace, 'noteName' | 'label'>): string =
 
 // ---- 文案（docs/spec/seating.md 第 4 節）
 
+/**
+ * 句子裡怎麼稱呼一桌（D-019、D-027）：場上的桌「{桌號} 桌」、暫存的桌「暫存區的桌」、工作人員桌「工作人員桌」。
+ * 依桌子 id 從目前的桌找；找不到時寫「這一桌」，不讓畫面壞掉。
+ */
+export function tableName(tables: readonly Pick<SeatTable, 'id' | 'kind' | 'position'>[], tableId: number): string {
+  if (tableId === STAFF_TABLE_ID) return '工作人員桌';
+  const t = tables.find((x) => x.id === tableId);
+  if (!t) return '這一桌';
+  if (t.position === null) return '暫存區的桌';
+  return `${tableCodeOf(t.position) ?? t.position} 桌`;
+}
+
+/** 位置代碼，例如「B8」 */
+export const positionCode = (position: number): string => tableCodeOf(position) ?? String(position);
+
+/** 暫存的桌在提示裡的稱呼：有備註名稱時「「{備註名稱}」」，沒有時「暫存區的桌」（SEAT-R35） */
+export const stagedName = (noteName: string | null): string => (noteName ? `「${noteName}」` : '暫存區的桌');
+
+/** 一桌在句子裡的稱呼（tableName 的 TableFace 版）：「{桌號} 桌」、「暫存區的桌」或「工作人員桌」 */
+export const faceName = (t: Pick<TableFace, 'isStaff' | 'position'>): string =>
+  t.isStaff ? '工作人員桌' : t.position === null ? '暫存區的桌' : `${positionCode(t.position)} 桌`;
+
+/** 未入座的人：不在任何一桌，或在暫存的桌上（SEAT-R94、D-027）；工作人員不算 */
+export const isUnseatedIn = (tables: ReadonlyMap<number, Pick<TableFace, 'staged'>>, p: Pick<Participant, 'tableId'>): boolean =>
+  p.tableId === null || (p.tableId !== STAFF_TABLE_ID && !!tables.get(p.tableId)?.staged);
+
 export const msg = {
-  // 參數是內部編號；文案用「{桌號} 桌」（D-019，README 第 12 節）
-  seated: (name: string, n: number) => `已把 ${name} 安排到 ${tableTitle(n)}。`,
-  moved: (name: string, from: number, to: number) => `已把 ${name} 從 ${tableTitle(from)}移到 ${tableTitle(to)}。`,
-  staffToTable: (name: string, to: number) => `已把 ${name} 從工作人員桌移到 ${tableTitle(to)}。`,
-  unseated: (name: string, n: number) => `已把 ${name} 移出 ${tableTitle(n)}。`,
-  reordered: (n: number) => `已調整 ${tableTitle(n)}的座位順序。`,
+  // 參數 to、from、n 是「{桌號} 桌」這類稱呼（tableName），文案照 README 第 12 節
+  seated: (name: string, to: string) => `已把 ${name} 安排到 ${to}。`,
+  moved: (name: string, from: string, to: string) => `已把 ${name} 從 ${from}移到 ${to}。`,
+  staffToTable: (name: string, to: string) => `已把 ${name} 從工作人員桌移到 ${to}。`,
+  unseated: (name: string, n: string) => `已把 ${name} 移出 ${n}。`,
+  reordered: (n: string) => `已調整 ${n}的座位順序。`,
   toStaff: (name: string) => `已把 ${name} 放進工作人員桌。`,
-  tableToStaff: (name: string, from: number) => `已把 ${name} 從 ${tableTitle(from)}移到工作人員桌。`,
+  tableToStaff: (name: string, from: string) => `已把 ${name} 從 ${from}移到工作人員桌。`,
   unstaffed: (name: string) => `已把 ${name} 移出工作人員桌。`,
-  swapped: (a: number, b: number) => `已把 ${tableTitle(a)}和 ${tableTitle(b)}對調。`,
-  cleared: (n: number) => `已清空 ${tableTitle(n)}。`,
-  added: (x: number, n: number) => `已把 ${x} 位人員加入 ${tableTitle(n)}。`,
+  swapped: (a: string, b: string) => `已把 ${a}和 ${b}對調。`,
+  cleared: (n: string) => `已清空 ${n}。`,
+  added: (x: number, n: string) => `已把 ${x} 位人員加入 ${n}。`,
   addedStaff: (x: number) => `已把 ${x} 位人員放進工作人員桌。`,
+  // 桌子的搬動、新增與刪除（SEAT-R35、R96、R97，D-027）；from、code 是位置代碼（例如「B4」）
+  movedToEmpty: (from: string, code: string) => `已把 ${from} 桌搬到 ${code}。`,
+  staged: (code: string) => `已把 ${code} 桌移到暫存區。`,
+  placed: (noteName: string | null, code: string) => `已把${stagedName(noteName)}放到 ${code}。`,
+  placedSwap: (noteName: string | null, code: string) => `已把${stagedName(noteName)}放到 ${code}，原本的 ${code} 桌移到暫存區。`,
+  leftStaged: (name: string) => `已把 ${name} 移出暫存區的桌。`,
+  created: (code: string) => `已在 ${code} 新增一桌。`,
+  deleted: (code: string) => `已刪除 ${code} 桌。`,
+  deletedStaged: '已刪除暫存區的一桌。',
   staffFull: '工作人員桌已滿，請先移出一位。',
   staffLimit: '工作人員桌已達 12 位，請先移出一位。',
   employeeOnly: '只有員工可以放進工作人員桌。',
@@ -174,9 +216,12 @@ export const msg = {
 /** 放進來後這一桌超過 10 位：成功的 Sonner 後面加上「這一桌已超過 10 位。」（SEAT-R89） */
 export const withOverflowNote = (text: string): string => text.replace(/。$/, '，這一桌已超過 10 位。');
 
-/** 入座或搬移到一般桌的提示（SEAT-R18、R19、R45） */
-export function seatMessage(p: Participant, name: string, to: number): string {
-  if (p.tableId === STAFF_TABLE_ID) return msg.staffToTable(name, to);
-  if (p.tableId === null) return msg.seated(name, to);
-  return msg.moved(name, p.tableId, to);
+/**
+ * 入座或搬移到一般桌的提示（SEAT-R18、R19、R45）。to 是目標桌的 id；暫存的桌上的人算未入座，入座時用「安排到」（SEAT-R94）
+ */
+export function seatMessage(tables: readonly Pick<SeatTable, 'id' | 'kind' | 'position'>[], p: Participant, name: string, to: number): string {
+  const target = tableName(tables, to);
+  if (p.tableId === STAFF_TABLE_ID) return msg.staffToTable(name, target);
+  if (p.tableId === null || tables.find((t) => t.id === p.tableId)?.position === null) return msg.seated(name, target);
+  return msg.moved(name, tableName(tables, p.tableId), target);
 }

@@ -9,7 +9,7 @@ import { useMemo, useState } from 'react';
 import { useAppStore } from '@/client/app-provider';
 import { STAFF_TABLE_ID, type Participant } from '@/contracts/entities';
 import { departmentOf, displayName } from '@/domain/display';
-import { tableCodeLabel, tableTitle } from '@/domain/layout';
+import { tableCodeLabel } from '@/domain/layout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/cn';
@@ -19,7 +19,7 @@ import { SearchInput } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { dropAttr, useDragState, useSeatingDraggable } from './drag';
-import { CATEGORY_LABEL, departmentsInOrder, panelMeta, searchMatch } from './model';
+import { CATEGORY_LABEL, departmentsInOrder, panelMeta, searchMatch, tableName } from './model';
 import { NameLine } from './person-parts';
 import { PersonMenu, useSeatingUi } from './person-menu';
 
@@ -44,8 +44,12 @@ export function PeoplePanel({ sorted, hidden, mobile, draggable, onCollapse }: P
 
   const depts = useMemo(() => departmentsInOrder(employees), [employees]);
   const passFilters = (p: Participant) => (!dept || departmentOf(p, dir) === dept) && (!cat || p.kind === cat);
-  const unseatedCount = sorted.filter((p) => p.tableId === null).length;
-  const rows = sorted.filter((p) => (tab === 'all' || p.tableId === null) && passFilters(p) && searchMatch(p, dir, q));
+  // 暫存的桌上的人算未入座（SEAT-R94、D-027）
+  const tables = useAppStore((s) => s.data.tables);
+  const stagedIds = useMemo(() => new Set(tables.filter((t) => t.kind === 'NORMAL' && t.position === null).map((t) => t.id)), [tables]);
+  const isUnseated = (p: Participant) => p.tableId === null || stagedIds.has(p.tableId);
+  const unseatedCount = sorted.filter(isUnseated).length;
+  const rows = sorted.filter((p) => (tab === 'all' || isUnseated(p)) && passFilters(p) && searchMatch(p, dir, q));
 
   // 從桌次或工作人員桌拖移人員時，清單區上方顯示放置提示（2.2.4、SEAT-R27）
   const fromSeat = useDragState((s) => {
@@ -82,7 +86,7 @@ export function PeoplePanel({ sorted, hidden, mobile, draggable, onCollapse }: P
       if (found.length === 1) {
         const p = found[0]!;
         const name = displayName(p, dir);
-        const title = p.tableId === STAFF_TABLE_ID ? `${name} 在工作人員桌。` : `${name} 已入座，在 ${tableTitle(p.tableId ?? 0)}。`;
+        const title = p.tableId === STAFF_TABLE_ID ? `${name} 在工作人員桌。` : `${name} 已入座，在 ${tableName(tables, p.tableId ?? 0)}。`;
         return <EmptyState variant="inline" title={title} action={showAll} />;
       }
       if (found.length > 1) {
@@ -232,7 +236,7 @@ function PersonRow({ person, showSeat, draggable }: { person: Participant; showS
             <span className="min-w-0 truncate">{meta.department}</span>
             {meta.team ? <span className="shrink-0">・{meta.team}</span> : null}
           </span>
-          {showSeat ? <SeatStatus person={person} onLocate={ui.locate} /> : null}
+          <SeatStatus person={person} onLocate={ui.locate} unseatedTab={!showSeat} />
         </div>
       </div>
       <PersonMenu person={person} place="panel" />
@@ -240,15 +244,21 @@ function PersonRow({ person, showSeat, draggable }: { person: Participant; showS
   );
 }
 
-/** 「全部」分頁第二行右側（SEAT-R57）：已入座「{桌號}」（可按下標示那一桌）、未入座、工作人員 */
-function SeatStatus({ person, onLocate }: { person: Participant; onLocate: (tableId: number) => void }) {
+/**
+ * 第二行右側（SEAT-R57）：已入座「{桌號}」（可按下標示那一桌）、未入座、工作人員；暫存的桌上的人「暫存」（可按下標示那張暫存的桌，
+ * SEAT-R94）。「未入座」分頁只有暫存的桌上的人顯示徽章（2.2.2）
+ */
+function SeatStatus({ person, onLocate, unseatedTab }: { person: Participant; onLocate: (tableId: number) => void; unseatedTab: boolean }) {
+  const table = useAppStore((s) => (person.tableId === null ? undefined : s.data.tables.find((t) => t.id === person.tableId)));
+  const staged = !!table && table.kind === 'NORMAL' && table.position === null;
+  if (unseatedTab && !staged) return null;
   if (person.tableId === STAFF_TABLE_ID) return <Badge variant="neutral">工作人員</Badge>;
-  if (person.tableId === null) return <Badge variant="pending">未入座</Badge>;
+  if (person.tableId === null || !table) return <Badge variant="pending">未入座</Badge>;
   const tableId = person.tableId;
   return (
     <Badge asChild variant="outline">
       <button type="button" onClick={() => onLocate(tableId)}>
-        {tableCodeLabel(tableId)}
+        {staged ? '暫存' : tableCodeLabel(table.position!)}
       </button>
     </Badge>
   );

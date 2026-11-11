@@ -116,9 +116,10 @@ const LIN = emp(5, '林五', '業務部');
 const LI_JOINED = participant(101, { kind: 'EMPLOYEE', employeeId: LI.id, tableId: 5, seatOrder: 0 });
 const LI_DEPENDENT = participant(102, { kind: 'DEPENDENT', hostId: LI_JOINED.id, relation: '配偶', tableId: 5, seatOrder: 1 });
 
+// D-027：桌子帶 position（1–30 桌在同號的位置）與 stagedAt
 const TABLES: AppState['tables'] = [
-  { id: STAFF_TABLE_ID, kind: 'STAFF', noteName: null },
-  ...Array.from({ length: 30 }, (_, i) => ({ id: i + 1, kind: 'NORMAL' as const, noteName: null })),
+  { id: STAFF_TABLE_ID, kind: 'STAFF', position: null, stagedAt: null, noteName: null },
+  ...Array.from({ length: 30 }, (_, i) => ({ id: i + 1, kind: 'NORMAL' as const, position: i + 1, stagedAt: null, noteName: null })),
 ];
 
 const INITIAL: AppState = {

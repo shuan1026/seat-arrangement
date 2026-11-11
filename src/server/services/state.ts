@@ -41,8 +41,11 @@ export const toParticipant = (p: Prisma.ParticipantGetPayload<object>): Particip
 export const toSeatTable = (t: Prisma.SeatTableGetPayload<object>): SeatTable => ({
   id: t.id,
   kind: t.kind,
+  position: t.position,
+  stagedAt: t.stagedAt ? t.stagedAt.toISOString() : null,
   noteName: t.noteName,
 });
+
 
 export async function loadState(db: Db = prisma): Promise<AppState> {
   const [employees, participants, tables] = await Promise.all([

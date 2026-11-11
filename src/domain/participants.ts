@@ -7,15 +7,26 @@ import {
   type Employee,
   type Participant,
   type ParticipantKind,
+  type SeatTable,
 } from '@/contracts/entities';
 import { departmentOf, employeeOf, matchesSearch, type Directory } from './display';
-import { TABLE_IDS_IN_ORDER } from './layout';
+import { placedInListOrder } from './tables';
 
-/** 入座狀態（PPL-R25）：坐在 1–30 桌是已入座；工作人員自成一類，不算已入座也不算未入座（PPL-R10） */
+/** 判斷入座狀態要用的桌（D-027）：暫存的桌（position 是 null 的一般桌）上的人算未入座 */
+export type TablesForSeat = readonly Pick<SeatTable, 'id' | 'kind' | 'position'>[];
+
+/** 坐在暫存的桌上（SEAT-R94、D-027） */
+export const onStagedTable = (p: Pick<Participant, 'tableId'>, tables?: TablesForSeat): boolean =>
+  p.tableId != null && p.tableId !== STAFF_TABLE_ID && !!tables?.some((t) => t.id === p.tableId && t.kind === 'NORMAL' && t.position === null);
+
+/**
+ * 入座狀態（PPL-R25）：坐在場上的桌是已入座；工作人員自成一類，不算已入座也不算未入座（PPL-R10）。
+ * 給了 tables 時，暫存的桌上的人算未入座（PPL-R26、D-027）
+ */
 export type SeatState = 'seated' | 'unseated' | 'staff';
 
-export const seatState = (p: Pick<Participant, 'tableId'>): SeatState =>
-  p.tableId === STAFF_TABLE_ID ? 'staff' : p.tableId == null ? 'unseated' : 'seated';
+export const seatState = (p: Pick<Participant, 'tableId'>, tables?: TablesForSeat): SeatState =>
+  p.tableId === STAFF_TABLE_ID ? 'staff' : p.tableId == null || onStagedTable(p, tables) ? 'unseated' : 'seated';
 
 /** 類別欄（PPL-R29）：員工／眷屬（{稱謂}）／眷屬／外部貴賓 */
 export function kindLabel(p: Pick<Participant, 'kind' | 'relation'>): string {
@@ -34,8 +45,10 @@ export const unitLabel = (p: Participant, dir: Directory): string | null =>
 /** 列操作（第 2.2 節）：編輯／入座…或移至其他桌次…／移出桌次／取消報名（員工）或刪除（眷屬、外部貴賓） */
 export type RowAction = 'edit' | 'seat' | 'move' | 'unseat' | 'cancelRegistration' | 'delete';
 
-export function rowActions(p: Participant): RowAction[] {
+export function rowActions(p: Participant, tables?: TablesForSeat): RowAction[] {
   const remove: RowAction = p.kind === 'EMPLOYEE' ? 'cancelRegistration' : 'delete';
+  // 暫存的桌上的人：編輯／入座…／移出桌次／取消報名或刪除（第 2.2 節、D-027）
+  if (onStagedTable(p, tables)) return ['edit', 'seat', 'unseat', remove];
   switch (seatState(p)) {
     case 'staff':
       return ['edit', remove];
@@ -145,33 +158,42 @@ export function filterParticipants(
   dir: Directory,
   query: string,
   f: ParticipantFilters,
+  tables?: TablesForSeat,
 ): Participant[] {
   return list.filter(
     (p) =>
       (f.kind === null || p.kind === f.kind) &&
       // 外部貴賓沒有部門，不符合任何部門（PPL-R24）
       (f.department === null || departmentOf(p, dir) === f.department) &&
-      (f.seat === null || seatState(p) === f.seat) &&
-      // 工作人員桌的 id 是 0，不會等於 1–30 的內部編號（PPL-R26）
+      (f.seat === null || seatState(p, tables) === f.seat) &&
+      // 桌次篩選的值是桌子 id；工作人員桌的 id 是 0，不會是選項（PPL-R26）
       (f.tableId === null || p.tableId === f.tableId) &&
       matchesSearch(p, dir, query),
   );
 }
 
+/** 桌次選項：tableId 是桌子 id（桌號依它所在的位置，D-027） */
 export type TableChoice = { tableId: number; remaining: number; disabled: boolean };
+
+/** 沒有給桌時：30 桌都在原位置（桌子 id 等於位置編號） */
+const DEFAULT_TABLES: TablesForSeat = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, kind: 'NORMAL' as const, position: i + 1 }));
 
 /** 這一桌目前的人數（1–30 桌或工作人員桌） */
 export const seatedCount = (participants: readonly Participant[], tableId: number): number =>
   participants.reduce((n, p) => (p.tableId === tableId ? n + 1 : n), 0);
 
 /**
- * 對話框的桌次選項（PPL-R56、PPL-Q08）：30 桌依 A1～A15、B1～B15 排列（D-019）與剩幾位；已滿的停用，
- * 但 self（編輯中的人）目前所在的桌次不算已滿。tableId 是內部編號。
+ * 對話框的桌次選項（PPL-R56、PPL-Q08）：場上的桌依 A1～A15、B1～B15 排列（D-019）與剩幾位；已滿的停用，
+ * 但 self（編輯中的人）目前所在的桌次不算已滿。不列「未放桌」的位置與暫存的桌（D-027）。
  */
-export function tableChoices(participants: readonly Participant[], self?: Participant | null): TableChoice[] {
-  return TABLE_IDS_IN_ORDER.map((tableId) => {
-    const remaining = TABLE_CAPACITY - seatedCount(participants, tableId);
-    return { tableId, remaining, disabled: remaining <= 0 && self?.tableId !== tableId };
+export function tableChoices(
+  participants: readonly Participant[],
+  self?: Participant | null,
+  tables: TablesForSeat = DEFAULT_TABLES,
+): TableChoice[] {
+  return placedInListOrder(tables).map((t) => {
+    const remaining = TABLE_CAPACITY - seatedCount(participants, t.id);
+    return { tableId: t.id, remaining, disabled: remaining <= 0 && self?.tableId !== t.id };
   });
 }
 

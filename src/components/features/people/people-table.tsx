@@ -28,12 +28,23 @@ const COMMANDS: Record<RowAction, { label: string; icon: ReactNode; destructive?
 
 const Empty = () => <span className="text-muted-foreground">—</span>;
 
-/** 桌次欄（PPL-R33）：「{桌號}」連到座位安排（/?table={桌號}）並標示那一桌；未入座是待處理徽章；工作人員是中性徽章、不能按（PPL-Q18） */
+/**
+ * 桌次欄（PPL-R33）：「{桌號}」連到座位安排（/?table={桌號}）並標示那一桌；未入座是待處理徽章；工作人員是中性徽章、不能按（PPL-Q18）；
+ * 暫存區的桌上的人是「暫存」，連到座位安排並開啟那張暫存的桌（/?staged={id}，D-027）
+ */
 function SeatBadge({ p }: { p: Participant }) {
+  const table = useAppStore((s) => (p.tableId == null ? undefined : s.data.tables.find((t) => t.id === p.tableId)));
   const state = seatState(p);
   if (state === 'staff') return <Badge variant="neutral">工作人員</Badge>;
-  if (state === 'unseated') return <Badge variant="pending">未入座</Badge>;
-  const code = tableCodeLabel(p.tableId ?? 0);
+  if (state === 'unseated' || !table) return <Badge variant="pending">未入座</Badge>;
+  if (table.position === null) {
+    return (
+      <Badge variant="outline" asChild>
+        <Link href={`/?staged=${table.id}`}>暫存</Link>
+      </Badge>
+    );
+  }
+  const code = tableCodeLabel(table.position);
   return (
     <Badge variant="outline" asChild>
       <Link href={`/?table=${code}`}>{code}</Link>
@@ -71,6 +82,7 @@ export function PeopleTable({
   readOnly?: boolean;
 }) {
   const dir = useAppStore((s) => s.dir);
+  const tables = useAppStore((s) => s.data.tables);
   return (
     <Table label="參與人員" stackOnMobile>
       <TableHeader>
@@ -93,7 +105,7 @@ export function PeopleTable({
         {rows.map((p) => {
           const unit = unitLabel(p, dir);
           const extension = extensionOf(p, dir);
-          const actions = rowActions(p);
+          const actions = rowActions(p, tables);
           return (
             <TableRow key={p.id}>
               <TableCell kind="primary" label="顯示名稱">

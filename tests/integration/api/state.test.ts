@@ -69,7 +69,7 @@ describe('已登入', () => {
     expect(state.tables).toHaveLength(31);
   });
 
-  it('桌次是內部編號 1–30 的 30 桌（畫面上的 A1～B15，D-019）與工作人員桌（id 0），初始沒有備註名稱（SEAT-R01、SEAT-R05）', async () => {
+  it('桌次是 id 1–30 的 30 桌（畫面上的 A1～B15，D-019）與工作人員桌（id 0），初始沒有備註名稱（SEAT-R01、SEAT-R05）', async () => {
     const { tables } = await loadState();
     expect(tables.map((t) => t.id).sort((a, b) => a - b)).toEqual(Array.from({ length: 31 }, (_, i) => i));
     expect(tables.find((t) => t.id === STAFF_TABLE_ID)?.kind).toBe('STAFF');
@@ -78,6 +78,34 @@ describe('已登入', () => {
       Array.from({ length: 30 }, (_, i) => i + 1),
     );
     expect(tables.every((t) => t.noteName === null)).toBe(true);
+  });
+
+  it('D-027：每一桌帶 position 與 stagedAt；部署時 1–30 桌各在自己的位置（position = id），工作人員桌 position null，都不在暫存區', async () => {
+    const { tables } = await loadState();
+    for (const t of tables) {
+      if (t.kind === 'STAFF') expect(t).toEqual({ id: STAFF_TABLE_ID, kind: 'STAFF', position: null, stagedAt: null, noteName: null });
+      else expect(t, `id ${t.id}`).toEqual({ id: t.id, kind: 'NORMAL', position: t.id, stagedAt: null, noteName: null });
+    }
+  });
+
+  it('D-027：搬到別的位置、暫存區的桌（stagedAt 是 ISO 字串）、新增的桌（id 31 起）與「未放桌」的位置（沒有那一列）都照資料庫回傳', async () => {
+    const stagedAt = new Date('2026-11-01T08:30:00.000Z');
+    await prisma.seatTable.update({ where: { id: 9 }, data: { position: null, stagedAt, noteName: '暫放' } });
+    await prisma.seatTable.update({ where: { id: 3 }, data: { position: 9 } });
+    await prisma.seatTable.create({ data: { id: 31, kind: 'NORMAL', position: 3 } });
+    await prisma.seatTable.delete({ where: { id: 17 } });
+    const { participant } = await createRegisteredEmployee({ name: '王小明', department: '研發一部' }, { tableId: 9, seatOrder: 0 });
+
+    const state = await loadState();
+
+    expect(state.tables).toHaveLength(31);
+    expect(state.tables.find((t) => t.id === 9)).toEqual({ id: 9, kind: 'NORMAL', position: null, stagedAt: stagedAt.toISOString(), noteName: '暫放' });
+    expect(state.tables.find((t) => t.id === 3)).toMatchObject({ position: 9, stagedAt: null });
+    expect(state.tables.find((t) => t.id === 31)).toEqual({ id: 31, kind: 'NORMAL', position: 3, stagedAt: null, noteName: null });
+    expect(state.tables.find((t) => t.id === 17)).toBeUndefined();
+    expect(state.tables.some((t) => t.position === 17)).toBe(false);
+    // 暫存的桌上的人：tableId 仍是那一桌
+    expect(state.participants.find((p) => p.id === participant.id)).toMatchObject({ tableId: 9, seatOrder: 0 });
   });
 
   it('回傳全部員工（含還沒報名的）、參與人員（員工、眷屬、外部貴賓）與桌次', async () => {

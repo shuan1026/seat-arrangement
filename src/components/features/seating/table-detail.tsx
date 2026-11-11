@@ -5,12 +5,14 @@
 // 名單固定 10 列，11、12 位時 12 列；有 12 位時「加入人員」停用（SEAT-R30、SEAT-R42、D-018）。
 // 只能檢視（readOnly，SEAT-R90）：沒有備註名稱欄位與常用選項、名單說明、列操作、拖移與底部按鈕；
 // 備註名稱改以文字顯示在副標下方。外框（DetailShell）發布頁的桌次名單也用（docs/spec/permissions.md 第 2.3 節）。
-import { ArrowRightLeft, Eraser, GripVertical, UserPlus, X } from 'lucide-react';
+// 桌子與位置分開（D-027）：場上的桌另有「移到暫存區」「刪除桌」；暫存的桌（2.3.7）標題「暫存區的桌」，只有「放到…」「刪除桌」，
+// 人不能拖進來、桌內不能調整順序，名單說明不顯示；EmptySlotPanel 是「未放桌」的位置面板（2.3.8），只有「新增桌」。
+import { Archive, ArrowRightLeft, Eraser, GripVertical, MapPin, Plus, Trash2, UserPlus, X } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import { useAppStore } from '@/client/app-provider';
 import type { Participant } from '@/contracts/entities';
 import { displayName } from '@/domain/display';
-import { tableTitle } from '@/domain/layout';
+import { tableCodeLabel, tableTitle } from '@/domain/layout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/cn';
@@ -43,25 +45,44 @@ export interface TableDetailProps {
   onAddPeople: () => void;
   onSwap: () => void;
   onClear: () => void;
+  /** 「移到暫存區」（SEAT-R91） */
+  onMoveToStaging?: () => void;
+  /** 暫存的桌的「放到…」（SEAT-R93） */
+  onPlace?: () => void;
+  /** 「刪除桌」（SEAT-R97） */
+  onDelete?: () => void;
+}
+
+/** 詳情的標題（2.3.1、2.3.7）：「{桌號} 桌」、「暫存區的桌（{備註名稱}）」或「工作人員桌」 */
+export function detailTitle(info: Pick<TableInfo, 'isStaff' | 'position' | 'noteName'>): string {
+  if (info.isStaff) return '工作人員桌';
+  if (info.position === null) return info.noteName ? `暫存區的桌（${info.noteName}）` : '暫存區的桌';
+  return tableTitle(info.position);
 }
 
 export function TableDetail(props: TableDetailProps) {
   const { info, readOnly = false } = props;
-  const title = info.isStaff ? '工作人員桌' : tableTitle(info.id);
+  const staged = !info.isStaff && info.position === null;
+  const title = detailTitle(info);
   // 副標照實寫人數，例如「11/10 人」（SEAT-R11）
   const subtitle = `${info.count}/${CAPACITY} 人`;
   const body = info.isStaff ? <StaffBody {...props} /> : <TableBody {...props} />;
   const add: Action = { key: 'add', label: '加入人員', variant: 'primary', icon: <UserPlus />, disabled: info.max, onClick: props.onAddPeople };
+  const remove: Action = { key: 'delete', label: '刪除桌', variant: 'destructive-outline', icon: <Trash2 />, onClick: () => props.onDelete?.() };
   const actions: Action[] = readOnly
     ? []
     : info.isStaff
       ? [add]
-      : [
-          add,
-          { key: 'swap', label: '調換桌次…', variant: 'outline', icon: <ArrowRightLeft />, onClick: props.onSwap },
-          // 空桌時停用（SEAT-Q06 的目前假設）
-          { key: 'clear', label: '清空桌次', variant: 'destructive-outline', icon: <Eraser />, disabled: info.count === 0, onClick: props.onClear },
-        ];
+      : staged
+        ? [{ key: 'place', label: '放到…', variant: 'primary', icon: <MapPin />, onClick: () => props.onPlace?.() }, remove]
+        : [
+            add,
+            { key: 'swap', label: '調換桌次…', variant: 'outline', icon: <ArrowRightLeft />, onClick: props.onSwap },
+            { key: 'stage', label: '移到暫存區', variant: 'outline', icon: <Archive />, onClick: () => props.onMoveToStaging?.() },
+            // 空桌時停用（SEAT-Q06 的目前假設）
+            { key: 'clear', label: '清空桌次', variant: 'destructive-outline', icon: <Eraser />, disabled: info.count === 0, onClick: props.onClear },
+            remove,
+          ];
   const button = (a: Action, className?: string) => (
     <Button key={a.key} variant={a.variant} size={props.mobile ? 'md' : 'sm'} leadingIcon={a.icon} disabled={a.disabled} onClick={a.onClick} className={className}>
       {a.label}
@@ -170,8 +191,11 @@ export function DetailShell({ title, subtitle, noteName, mobile, onClose, footer
           <X />
         </IconButton>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 scrollbar-inset">{children}</div>
-      {footer ? <div className="flex flex-wrap gap-2 border-t border-border px-4 pt-3 pb-4">{footer}</div> : null}
+      {/* 底部按鈕跟著內容捲動：內容短時停在面板底部，名單長時排在名單後面，不佔名單的高度（桌次詳情的按鈕有兩列，D-027） */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto scrollbar-inset">
+        <div className="flex flex-col gap-4 p-4">{children}</div>
+        {footer ? <div className="mt-auto flex flex-wrap gap-2 border-t border-border px-4 pt-3 pb-4">{footer}</div> : null}
+      </div>
     </section>
   );
 }
@@ -212,8 +236,8 @@ function TableBody({ info, mobile, draggable, readOnly = false }: TableDetailPro
         info={info}
         draggable={draggable && !readOnly}
         readOnly={readOnly}
-        // 手機不能拖移（SEAT-R82），名單說明不顯示（2.3.6、D-023）；只能檢視時也不顯示（SEAT-R90）
-        hint={readOnly || mobile ? null : '拖移可以調整順序，也可以從人員面板直接拖進來。'}
+        // 手機不能拖移（SEAT-R82），名單說明不顯示（2.3.6、D-023）；只能檢視時也不顯示（SEAT-R90）；暫存的桌不能拖進來也不能調整順序，沒有說明（2.3.7）
+        hint={readOnly || mobile || info.position === null ? null : '拖移可以調整順序，也可以從人員面板直接拖進來。'}
       />
     </div>
   );
@@ -376,5 +400,33 @@ function DetailRow({
       </div>
       {readOnly ? null : <PersonMenu person={person} place={info.isStaff ? 'staffDetail' : 'detail'} />}
     </li>
+  );
+}
+
+/** 「未放桌」的位置面板（2.3.8、SEAT-R95、SEAT-R96）：標題是位置代碼，內文「這個位置沒有擺桌。」，按鈕「新增桌」 */
+export function EmptySlotPanel({
+  position,
+  mobile,
+  onClose,
+  onCreate,
+}: {
+  position: number;
+  mobile: boolean;
+  onClose: () => void;
+  onCreate: () => void;
+}) {
+  return (
+    <DetailShell
+      title={tableCodeLabel(position)}
+      mobile={mobile}
+      onClose={onClose}
+      footer={
+        <Button variant="primary" size={mobile ? 'md' : 'sm'} leadingIcon={<Plus />} onClick={onCreate} className={mobile ? undefined : 'flex-auto'}>
+          新增桌
+        </Button>
+      }
+    >
+      <p className="type-sm-regular text-muted-foreground">這個位置沒有擺桌。</p>
+    </DetailShell>
   );
 }

@@ -15,10 +15,30 @@ beforeEach(async () => {
 });
 
 describe('修改備註名稱（SEAT-R12、SEAT-AC27）', () => {
-  it('設定備註名稱：立即儲存，回傳這一桌', async () => {
+  it('設定備註名稱：立即儲存，回傳這一桌（D-027 起含 position 與 stagedAt）', async () => {
     const result = await patchTableOk(7, { noteName: '供應商' });
-    expect(result.table).toEqual({ id: 7, kind: 'NORMAL', noteName: '供應商' });
+    expect(result.table).toEqual({ id: 7, kind: 'NORMAL', position: 7, stagedAt: null, noteName: '供應商' });
     expect(await noteNameOf(7)).toBe('供應商');
+  });
+
+  it('暫存的桌也可以改備註名稱，位置與暫存時間不變（SEAT-R92、2.3.7、SEAT-AC117）', async () => {
+    const stagedAt = new Date('2026-11-01T08:00:00.000Z');
+    await prisma.seatTable.update({ where: { id: 3 }, data: { position: null, stagedAt } });
+    const result = await patchTableOk(3, { noteName: '主桌' });
+    expect(result.table).toEqual({ id: 3, kind: 'NORMAL', position: null, stagedAt: stagedAt.toISOString(), noteName: '主桌' });
+    expect(await noteNameOf(3)).toBe('主桌');
+  });
+
+  it('新增的桌（id 31 起）也可以改備註名稱（D-027）', async () => {
+    await prisma.seatTable.delete({ where: { id: 9 } });
+    await prisma.seatTable.create({ data: { id: 31, kind: 'NORMAL', position: 9 } });
+    const result = await patchTableOk(31, { noteName: '新桌' });
+    expect(result.table).toEqual({ id: 31, kind: 'NORMAL', position: 9, stagedAt: null, noteName: '新桌' });
+  });
+
+  it('已被刪除的桌：404 NOT_FOUND（D-027、COM-R07）', async () => {
+    await prisma.seatTable.delete({ where: { id: 9 } });
+    await expectError(await patchTable(9, { noteName: '主桌' }), 404, 'NOT_FOUND');
   });
 
   it('把欄位清空：移除備註名稱', async () => {
@@ -68,7 +88,7 @@ describe('修改備註名稱（SEAT-R12、SEAT-AC27）', () => {
 });
 
 describe('不能修改的桌次', () => {
-  it('內部編號 31 的桌不存在：404 NOT_FOUND（SEAT-R01；API 用內部編號，D-019）', async () => {
+  it('id 31 的桌還沒新增（不存在）：404 NOT_FOUND（API 用桌子的 id，D-019、D-027）', async () => {
     await expectError(await patchTable(31, { noteName: '主桌' }), 404, 'NOT_FOUND');
   });
 

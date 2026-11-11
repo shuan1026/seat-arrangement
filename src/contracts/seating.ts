@@ -8,16 +8,30 @@ import { participantSchema, seatTableSchema, STAFF_TABLE_ID, TABLE_COUNT } from 
 /** 每桌（含工作人員桌）最多 12 位：標準 10 位，拖移與「加入人員」可以放進第 11、12 位（SEAT-R02、D-018） */
 export const TABLE_MAX_SEATS = 12;
 
-/** 0 = 工作人員桌，1–30 = 一般桌 */
-const anyTable = z.number().int().min(STAFF_TABLE_ID).max(TABLE_COUNT);
-const normalTable = z.number().int().min(1).max(TABLE_COUNT);
+/** 桌子的編號：0 = 工作人員桌，≥ 1 = 一般桌（既有 30 桌是 1–30，新增的桌從 31 起，D-027） */
+const anyTable = z.number().int().min(STAFF_TABLE_ID);
+const normalTable = z.number().int().min(1);
+/** 場地的位置 1–30（A1～A15、B1～B15） */
+const position = z.number().int().min(1).max(TABLE_COUNT);
 
-/** 指令之前的狀態，送回 restore 就能復原 */
+/**
+ * 指令之前的狀態，送回 restore 就能復原。tables 只記這次動到的桌（操作前的樣子）：
+ * exists 是 false 表示操作前不存在（這次新增的桌，restore 時刪掉）；操作前存在、之後被刪掉的，restore 以原本的 id 重建（D-027）
+ */
 export const seatingSnapshotSchema = z.object({
   participants: z.array(
     z.object({ id: z.number().int(), tableId: z.number().int().nullable(), seatOrder: z.number().int().nullable() }),
   ),
-  tables: z.array(z.object({ id: z.number().int(), noteName: z.string().nullable() })),
+  tables: z.array(
+    z.object({
+      id: z.number().int(),
+      kind: z.enum(['NORMAL', 'STAFF']),
+      position: z.number().int().nullable(),
+      stagedAt: z.string().nullable(),
+      noteName: z.string().nullable(),
+      exists: z.boolean(),
+    }),
+  ),
 });
 export type SeatingSnapshot = z.infer<typeof seatingSnapshotSchema>;
 
@@ -46,8 +60,20 @@ export const seatingOperationSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('reorder'), tableId: normalTable, participantIds: z.array(z.number().int()).max(TABLE_MAX_SEATS) }),
   /** 清空桌次，備註名稱保留（SEAT-R29） */
   z.object({ type: z.literal('clear'), tableId: normalTable }),
-  /** 整桌對調名單與備註名稱（SEAT-R35、R36） */
-  z.object({ type: z.literal('swap'), tableA: normalTable, tableB: normalTable }),
+  /**
+   * 搬動桌子（SEAT-R35、D-027）：to 是位置 1–30 或暫存區。expectedTableId 是畫面上目標位置目前的桌（「未放桌」是 null），
+   * 和伺服器不同時回 409 CONFLICT；目標是暫存區時不檢查。目標位置有桌就對調，暫存的桌放到有桌的位置時原本那桌改到暫存區最下面
+   */
+  z.object({
+    type: z.literal('moveTable'),
+    tableId: normalTable,
+    to: z.union([position, z.literal('staging')]),
+    expectedTableId: z.number().int().nullable(),
+  }),
+  /** 在「未放桌」的位置新增一張空桌（SEAT-R96）；位置已有桌回 409 CONFLICT */
+  z.object({ type: z.literal('createTable'), position }),
+  /** 刪除桌（SEAT-R97）：桌上的人變成未入座、備註名稱一併刪除；已被刪除回 404 */
+  z.object({ type: z.literal('deleteTable'), tableId: normalTable }),
   /** 自動排座（auto-arrange.md） */
   z.object({ type: z.literal('autoArrange'), mode: z.enum(['unseatedOnly', 'rebuild']) }),
   /** 復原最近一次 */
@@ -58,7 +84,7 @@ export type SeatingOperation = z.infer<typeof seatingOperationSchema>;
 export const autoArrangeSummarySchema = z.object({
   /** 排進桌次的人數 */
   placed: z.number().int(),
-  /** 有排進人的桌次內部編號（1–30），由小到大；畫面上的桌號見 src/domain/layout.ts（D-019） */
+  /** 有排進人的桌子編號，依所在位置由小到大；畫面上的桌號由所在位置對應（src/domain/layout.ts，D-019、D-027） */
   tableIds: z.array(z.number().int()),
   /** 空位不夠、留在未入座的人數 */
   left: z.number().int(),
@@ -68,8 +94,11 @@ export type AutoArrangeSummary = z.infer<typeof autoArrangeSummarySchema>;
 export const seatingResultSchema = z.object({
   /** 位置有改變的參與人員（完整資料） */
   participants: z.array(participantSchema),
-  /** 備註名稱有改變的桌次（對調、復原） */
+  /** 有變動或新增的桌（位置、暫存順序或備註名稱；搬動、新增、復原，D-027） */
   tables: z.array(seatTableSchema),
+  /** 這次刪除的桌（刪除桌、復原新增桌） */
+  deletedTableIds: z.array(z.number().int()),
+
   undo: seatingSnapshotSchema,
   summary: autoArrangeSummarySchema.optional(),
 });

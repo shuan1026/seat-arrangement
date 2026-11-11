@@ -583,6 +583,127 @@ describe('與頁面的搜尋、篩選、資料先後無關（EXP-R02、EXP-AC18�
   });
 });
 
+// ---- D-027：桌子可以新增、刪除、搬動，場地旁有暫存區（export.md v1.5：EXP-R02、EXP-R17、EXP-R24） ----
+// 依 position 放：桌號與位置照所在的位置（3.3 節）；「未放桌」的位置整塊空白；暫存區的桌不畫成桌次，桌上的人列在未入座區塊。
+
+/** 這個位置（位置編號 1–30）那一塊的全部格：標題格與十格名單格 */
+const blockCells = (position: number): string[] => {
+  const b = tableBlock(position);
+  return [b.header, ...b.list];
+};
+
+/** 格的內容（不含這幾塊位置）；比對「其他桌的位置不變」用 */
+const cellsExcept = (s: SheetReader, positions: readonly number[]) => {
+  const skip = new Set(positions.flatMap(blockCells));
+  return s.normalized().cells.filter(([a]) => !skip.has(a));
+};
+
+describe('EXP-AC24 資料甲，另把 B8 桌刪除（B8 變成「未放桌」，EXP-R24）', () => {
+  const B8 = idOfCode('B8');
+  const sheet = lazy(() => read(sampleA().removeTable(B8)));
+
+  it('B8 那一塊（H51:H60 與 I51–I60）都空白：沒有文字、底色、框線，也沒有合併，不寫「空桌」', () => {
+    const s = sheet();
+    expect(s.merge('H51')).toBeUndefined();
+    for (const a of blockCells(B8)) expect([a, s.text(a), s.fill(a), s.border(a)]).toEqual([a, '', null, false]);
+    expect(s.texts().filter((t) => t.startsWith('B8 桌'))).toEqual([]);
+  });
+
+  it('其他桌的位置與內容都不變：和資料甲比，只差 B8 那一塊', () => {
+    const s = sheet();
+    const full = read(sampleA());
+    expect(cellsExcept(s, [B8])).toEqual(cellsExcept(full, [B8]));
+    expect(s.merges().slice().sort()).toEqual(full.merges().filter((m) => m !== 'H51:H60').sort());
+  });
+
+  it('空桌（有桌、沒有人）照樣寫「空桌」：A3 桌「A3 桌↵供應商↵空桌↵(0)」、A13 桌「A13 桌↵空桌↵(0)」（EXP-R12）', () => {
+    const s = sheet();
+    expect(s.text('D21')).toBe('A3 桌\n供應商\n空桌\n(0)');
+    expect(s.text('B81')).toBe('A13 桌\n空桌\n(0)');
+  });
+});
+
+describe('EXP-AC25 資料甲，另把坐 2 位的一桌移到暫存區（EXP-R02、EXP-R17、EXP-R24）', () => {
+  // 資料甲的 B4 桌（id 3）再坐業務部的甲員、乙員（2 位），再把 B4 桌移到暫存區；資料甲原本沒有未入座的人
+  const B4 = idOfCode('B4');
+  const data = () => {
+    const d = sampleA().employee('甲員', '業務部').employee('乙員', '業務部');
+    d.seat(B4, ['甲員', '乙員']);
+    return d;
+  };
+  const sheet = lazy(() => read(data().stage(B4)));
+
+  it('B4 原本的位置（I21:I30 與 J21–J30）空白，沒有框線與合併', () => {
+    const s = sheet();
+    expect(s.merge('I21')).toBeUndefined();
+    for (const a of blockCells(B4)) expect([a, s.text(a), s.fill(a), s.border(a)]).toEqual([a, '', null, false]);
+  });
+
+  it('這 2 位出現在未入座區塊：B112:B121「未入座↵(2)」；C112「甲員」、C113「乙員」', () => {
+    const s = sheet();
+    expect(s.merge('B112')).toBe('B112:B121');
+    expect(s.text('B112')).toBe('未入座\n(2)');
+    expect([s.text('C112'), s.text('C113')]).toEqual(['甲員', '乙員']);
+  });
+
+  it('未入座的人數多 2：移到暫存區之前沒有未入座區塊（EXP-R19）', () => {
+    const before = read(data());
+    expect(before.text('B112')).toBe('');
+    expect(before.text('J21')).toBe('甲員');
+    expect(sheet().text('B112')).toBe('未入座\n(2)');
+  });
+
+  it('暫存的桌不畫成桌次：標題格只有 29 桌，沒有「暫存」', () => {
+    const s = sheet();
+    const headers = s.texts().filter((t) => /^[AB]\d{1,2} 桌\n/.test(t));
+    expect(headers).toHaveLength(29);
+    expect(s.texts().some((t) => t.includes('暫存'))).toBe(false);
+  });
+
+  it('其他桌的位置與內容不變：和移到暫存區之前比，只差 B4 那一塊與未入座區塊', () => {
+    const s = sheet();
+    const before = read(data());
+    const below = (cells: [string, string, unknown, boolean][]) => cells.filter(([a]) => parseAddress(a).row < 111);
+    expect(below(cellsExcept(s, [B4]))).toEqual(below(cellsExcept(before, [B4])));
+  });
+
+  it('暫存的桌上的人與一般的未入座的人一起依預設排序列出（EXP-R17、EXP-R20）', () => {
+    const d = data().employee('丙員', '總經理室').stage(B4);
+    const s = read(d);
+    expect(s.text('B112')).toBe('未入座\n(3)');
+    // 總經理室在員工名單上比業務部先出現
+    expect([s.text('C112'), s.text('C113'), s.text('C114')]).toEqual(['丙員', '甲員', '乙員']);
+  });
+});
+
+describe('依所在位置放（D-027、SEAT-R04、EXP-R09～R11）', () => {
+  it('B4 桌（id 3，坐甲員）搬到 B8（位置 9，原本的桌刪掉）：甲員在 B8 那一塊，標題「B8 桌」；B4 那一塊空白', () => {
+    const d = sampleA().employee('甲員', '業務部').removeTable(idOfCode('B8'));
+    d.seat(idOfCode('B4'), ['甲員']).stage(idOfCode('B4')).place(idOfCode('B4'), idOfCode('B8'));
+    const s = read(d);
+    expect(s.merge('H51')).toBe('H51:H60');
+    expect(s.text('H51')).toBe('B8 桌\n業務部\n(1)');
+    expect(s.text('I51')).toBe('甲員');
+    for (const a of blockCells(idOfCode('B4'))) expect([a, s.text(a), s.border(a)]).toEqual([a, '', false]);
+  });
+
+  it('備註名稱跟著桌子：資料甲的 B1 桌（「主桌」）和 B2 對調位置 → B2 那一塊是「B2 桌↵主桌↵…」，B1 那一塊是空桌', () => {
+    const d = sampleA().stage(idOfCode('B1')).place(idOfCode('B2'), idOfCode('B1')).place(idOfCode('B1'), idOfCode('B2'));
+    const s = read(d);
+    expect(s.text('H11')).toBe('B2 桌\n主桌\n總經理室＋貴賓\n(3)');
+    expect([s.text('I11'), s.text('I12'), s.text('I13')]).toEqual(['王大同', '李小華', '周董事(+兒童椅)(素食)']);
+    expect(s.text('G1')).toBe('B1 桌\n空桌\n(0)');
+  });
+
+  it('新增的桌（id 31）放在 B8：照 B8 的位置畫，標題「B8 桌」', () => {
+    const d = sampleA().removeTable(idOfCode('B8'));
+    d.tables.push({ id: 31, kind: 'NORMAL', position: idOfCode('B8'), stagedAt: null, noteName: '新桌' });
+    const s = read(d);
+    expect(s.merge('H51')).toBe('H51:H60');
+    expect(s.text('H51')).toBe('B8 桌\n新桌\n空桌\n(0)');
+  });
+});
+
 // ---- EXP-R23：有桌次 11、12 位（seating.md SEAT-R02，D-018） ----
 
 /** 加 count 位員工（姓名 prefix1…prefixN），依序坐內部編號 table 的桌；回傳姓名 */

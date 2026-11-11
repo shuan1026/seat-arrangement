@@ -6,6 +6,8 @@
 // 發布頁 /seats 也用這個元件（docs/spec/permissions.md 第 2.3 節、D-025）：工具列多了搜尋框（toolbarSearch，桌面在「適合視窗」右邊、
 // 767 px 以下自成一列滿版）與下方的搜尋結果（belowToolbar）；hideCounts 時桌次不顯示人數；centerNonce 改變時場地圖水平置中、捲到最上方。
 // 「全部展開」「自動排座」沒有傳入處理函式時不顯示（只能檢視時也沒有「自動排座」，SEAT-R90）。
+// 桌子與位置分開（D-027）：tables 依桌子 id，桌子畫在它所在的位置（position）；位置上沒有桌時，座位安排頁（showSlots）畫「未放桌」的
+// 虛線框，發布頁什麼都不畫（PRM-R24）。座位安排頁另有暫存區（showStaging，2.1.12）：B 區外側列右邊一欄，暫存的桌依移入的先後由上往下排。
 import { FoldVertical, Maximize, PanelLeftOpen, UnfoldVertical, WandSparkles, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { STAFF_TABLE_ID } from '@/contracts/entities';
@@ -13,12 +15,15 @@ import { STAFF_TABLE_PLACEMENT, TABLE_LAYOUT } from '@/domain/layout';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/cn';
 import { IconButton } from '@/components/ui/icon-button';
-import { MapTable, type TableMode } from './map-table';
+import { EmptySlot, MapTable, type TableMode } from './map-table';
+import { dropAttr, useDragState } from './drag';
 import { CAPACITY, type TableFace } from './model';
 
 const PAD = 24;
 const BAND = 56;
 const GAP = 32;
+/** 暫存區內距（--space-3） */
+const ZONE_PAD = 12;
 export const MIN_ZOOM = 25;
 export const MAX_ZOOM = 200;
 /** 收合狀態下比例低於 80% 時改為精簡顯示（SEAT-R68） */
@@ -37,14 +42,24 @@ const LANDMARKS = [
  * 收合是 88 px 圓形，展開是 256 px 卡片；卡片之間左右、上下各空 12 px：欄距 268 px、同一欄的列距 232 px（2.1.5、2.1.7、D-022）。
  * 有桌次超過 10 位時那一桌的卡片是 12 列、高 246 px，所有卡片的列距加大為 258 px，仍不會互相重疊（D-018、D-022）。
  */
-export function geometry(expanded: boolean, anyOver = false) {
+export function geometry(expanded: boolean, anyOver = false, staging?: { count: number }) {
   const u = expanded
     ? anyOver
       ? { w: 268, h: 258, item: 256, itemH: 246 }
       : { w: 268, h: 232, item: 256, itemH: 220 }
     : { w: 112, h: 104, item: 88, itemH: 88 };
   const y0 = PAD + BAND + GAP;
-  return { u, y0, W: PAD * 2 + 5 * u.w + u.item, H: y0 + 5 * u.h + u.itemH + GAP + BAND + PAD };
+  const baseH = y0 + 5 * u.h + u.itemH + GAP + BAND + PAD;
+  if (!staging) return { u, y0, W: PAD * 2 + 5 * u.w + u.item, H: baseH, zone: null };
+  // 暫存區（2.1.12）：B 區外側列的右邊一欄，從第 0 列往下；沒有桌時高度同第 0～5 列，桌子多時往下延伸
+  const rows = Math.max(6, staging.count);
+  const zone = {
+    left: PAD + 6 * u.w - ZONE_PAD,
+    top: PAD,
+    width: u.item + ZONE_PAD * 2,
+    height: y0 + (rows - 1) * u.h + u.itemH + ZONE_PAD - PAD,
+  };
+  return { u, y0, W: zone.left + zone.width + PAD, H: Math.max(baseH, zone.top + zone.height + PAD), zone };
 }
 type Geometry = ReturnType<typeof geometry>;
 
@@ -64,8 +79,14 @@ function fitZoom(size: Size, g: Geometry, cover: number): number {
 }
 
 export interface SeatMapProps {
-  /** 展開模式要傳 TableInfo（有名單）；發布頁傳 PublicTableFace（只有顯示名稱） */
+  /** 依桌子 id；展開模式要傳 TableInfo（有名單），發布頁傳 PublicTableFace（只有顯示名稱） */
   tables: ReadonlyMap<number, TableFace>;
+  /** 畫「未放桌」的位置（座位安排頁）；發布頁不畫（PRM-R24、D-027） */
+  showSlots?: boolean;
+  /** 點「未放桌」的位置（編輯者，SEAT-R95）；沒有時不能點 */
+  onOpenSlot?: (position: number) => void;
+  /** 畫暫存區（座位安排頁，2.1.12）；暫存的桌依這個順序由上往下排 */
+  staged?: readonly TableFace[];
   expanded: boolean;
   /** 手動縮放的比例（百分比）；null 是適合視窗 */
   manualPct: number | null;
@@ -78,7 +99,8 @@ export interface SeatMapProps {
   onShowPanel?: () => void;
   /** 被桌次詳情蓋住的寬度（桌面打開詳情時） */
   covered: boolean;
-  selected: number | 'staff' | null;
+  /** 選取的桌（桌子 id）、工作人員桌，或「未放桌」的位置 */
+  selected: number | 'staff' | { position: number } | null;
   /** 搜尋標示的桌次（2 px --accent）；nonce 改變時把第一桌捲到看得到的位置（SEAT-R62、PRM-R31） */
   hit: { tableIds: readonly number[]; nonce: number } | null;
   onOpen: (target: number | 'staff') => void;
@@ -101,7 +123,16 @@ export function SeatMap(props: SeatMapProps) {
   const vpRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size>({ ow: 0, oh: 0, cw: 0, ch: 0 });
   const anyOver = useMemo(() => [...tables.values()].some((t) => t.count > CAPACITY), [tables]);
-  const g = useMemo(() => geometry(expanded, anyOver), [expanded, anyOver]);
+  const stagedCount = props.staged?.length ?? 0;
+  const withStaging = props.staged !== undefined;
+  const g = useMemo(
+    () => geometry(expanded, anyOver, withStaging ? { count: stagedCount } : undefined),
+    [expanded, anyOver, withStaging, stagedCount],
+  );
+  const byPosition = useMemo(
+    () => new Map([...tables.values()].filter((t) => !t.isStaff && t.position !== null).map((t) => [t.position!, t])),
+    [tables],
+  );
   const cover = covered ? Math.min(DETAIL_WIDTH, size.ow) : 0;
   const z = manualPct != null ? manualPct / 100 : fitZoom(size, g, cover);
   const measured = size.ow > 0;
@@ -203,12 +234,24 @@ export function SeatMap(props: SeatMapProps) {
     const vp = vpRef.current;
     const first = hit?.tableIds[0];
     if (first === undefined || !vp || !measured) return;
-    const place = first === STAFF_TABLE_ID ? STAFF_TABLE_PLACEMENT : TABLE_LAYOUT.find((t) => t.id === first);
-    if (!place) return;
+    const info = tables.get(first);
+    const stagedIndex = props.staged?.findIndex((t) => t.id === first) ?? -1;
+    let col: number;
+    let row: number;
+    if (first === STAFF_TABLE_ID) ({ col, row } = STAFF_TABLE_PLACEMENT);
+    else if (info?.position != null) {
+      const place = TABLE_LAYOUT.find((t) => t.id === info.position);
+      if (!place) return;
+      ({ col, row } = place);
+    } else if (stagedIndex >= 0) {
+      // 暫存的桌在暫存區那一欄（第 6 欄），依順序一列一桌（SEAT-R94）
+      col = 6;
+      row = stagedIndex;
+    } else return;
     const { z: cz, offset: co } = layout.current;
     const visible = vp.clientWidth - cover;
-    const cx = PAD + place.col * g.u.w + g.u.item / 2;
-    const cy = g.y0 + place.row * g.u.h + g.u.itemH / 2;
+    const cx = PAD + col * g.u.w + g.u.item / 2;
+    const cy = g.y0 + row * g.u.h + g.u.itemH / 2;
     vp.scrollTo({ left: co + cx * cz - visible / 2, top: cy * cz - vp.clientHeight / 2 });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在每次按下「{桌號}」時捲動一次
   }, [hit?.nonce, measured]);
@@ -301,30 +344,130 @@ export function SeatMap(props: SeatMapProps) {
                 </div>
               ))}
               {[STAFF_TABLE_PLACEMENT, ...TABLE_LAYOUT].map((place) => {
-                const info = tables.get(place.id);
-                if (!info) return null;
-                const key = place.id === STAFF_TABLE_ID ? 'staff' : place.id;
+                const isStaff = place === STAFF_TABLE_PLACEMENT;
+                // place.id 是位置編號（工作人員桌是桌子 id 0）；位置上的桌依 position 找（D-027）
+                const info = isStaff ? tables.get(STAFF_TABLE_ID) : byPosition.get(place.id);
+                const x = PAD + place.col * g.u.w;
+                const y = g.y0 + place.row * g.u.h;
+                if (!info) {
+                  if (isStaff || !props.showSlots) return null;
+                  const sel = props.selected;
+                  return (
+                    <EmptySlot
+                      key={`slot-${place.id}`}
+                      position={place.id}
+                      x={x}
+                      y={y}
+                      mode={mode}
+                      selected={typeof sel === 'object' && sel !== null && sel.position === place.id}
+                      onOpen={props.onOpenSlot ? () => props.onOpenSlot!(place.id) : undefined}
+                    />
+                  );
+                }
+                const key = isStaff ? 'staff' : info.id;
                 return (
                   <MapTable
                     key={key}
                     info={info}
-                    x={PAD + place.col * g.u.w}
-                    y={g.y0 + place.row * g.u.h}
+                    x={x}
+                    y={y}
                     mode={mode}
                     scale={z}
                     selected={props.selected === key}
-                    hit={hit?.tableIds.includes(place.id) ?? false}
+                    hit={hit?.tableIds.includes(info.id) ?? false}
                     draggable={props.draggable}
                     hideCounts={props.hideCounts}
                     onOpen={() => props.onOpen(key)}
                   />
                 );
               })}
+              {g.zone && props.staged ? (
+                <StagingZone
+                  zone={g.zone}
+                  bandHeight={BAND}
+                  tables={props.staged}
+                  rowHeight={g.u.h}
+                  firstTop={g.y0 - g.zone.top}
+                  mode={mode}
+                  scale={z}
+                  selected={props.selected}
+                  hit={hit}
+                  draggable={props.draggable}
+                  onOpen={(id) => props.onOpen(id)}
+                />
+              ) : null}
             </div>
           </div>
         </div>
         {props.detail}
       </div>
+    </div>
+  );
+}
+
+/**
+ * 暫存區（2.1.12、D-027）：和地標相同的底色與圓角，最上面是標題「暫存區」；暫存的桌依移入的先後由上往下排，
+ * 和同一欄的桌次同樣的列距。沒有桌時中間是「把桌子拖到這裡暫放」。整個區域是拖桌子的放置目標（data-drop="staging"）。
+ */
+function StagingZone({
+  zone,
+  bandHeight,
+  tables,
+  rowHeight,
+  firstTop,
+  mode,
+  scale,
+  selected,
+  hit,
+  draggable,
+  onOpen,
+}: {
+  zone: { left: number; top: number; width: number; height: number };
+  bandHeight: number;
+  tables: readonly TableFace[];
+  rowHeight: number;
+  firstTop: number;
+  mode: TableMode;
+  scale: number;
+  selected: SeatMapProps['selected'];
+  hit: SeatMapProps['hit'];
+  draggable: boolean;
+  onOpen: (tableId: number) => void;
+}) {
+  const over = useDragState((s) => s.target?.kind === 'staging' && !s.blocked);
+  return (
+    <div
+      role="region"
+      aria-label="暫存區"
+      data-drop={dropAttr.staging}
+      className={cn(
+        'absolute rounded-lg bg-muted',
+        over ? 'border border-primary [box-shadow:var(--shadow-md)]' : 'border border-transparent',
+      )}
+      style={{ left: zone.left, top: zone.top, width: zone.width, height: zone.height }}
+    >
+      <div className="grid place-items-center type-sm-medium text-muted-foreground" style={{ height: bandHeight }}>
+        暫存區
+      </div>
+      {tables.length === 0 ? (
+        <div className="absolute inset-x-3 grid place-items-center text-center type-xs-regular text-muted-foreground" style={{ top: bandHeight, bottom: 0 }}>
+          把桌子拖到這裡暫放
+        </div>
+      ) : null}
+      {tables.map((info, i) => (
+        <MapTable
+          key={info.id}
+          info={info}
+          x={ZONE_PAD}
+          y={firstTop + i * rowHeight}
+          mode={mode}
+          scale={scale}
+          selected={selected === info.id}
+          hit={hit?.tableIds.includes(info.id) ?? false}
+          draggable={draggable}
+          onOpen={() => onOpen(info.id)}
+        />
+      ))}
     </div>
   );
 }

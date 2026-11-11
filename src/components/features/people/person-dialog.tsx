@@ -25,7 +25,7 @@ import type { ErrorCode } from '@/contracts/errors';
 import type { ParticipantCreateInput, ParticipantUpdateInput, ParticipantsResult } from '@/contracts/participants';
 import { displayName, employeeOf, employeeSecondLine, type Directory } from '@/domain/display';
 import { clearDeclinedOfRegistered } from '@/domain/employees';
-import { tableTitle } from '@/domain/layout';
+import { tableName } from '../seating/model';
 import {
   canMarkStaff,
   KIND_NAMES,
@@ -188,9 +188,9 @@ function PersonForm({ onOpenChange, mode, participantId, employeeId, onSaved }: 
     });
   const tableOptions: SelectOption[] = [
     { value: NO_TABLE, label: '未入座' },
-    ...tableChoices(data.participants, self).map((c) => ({
+    ...tableChoices(data.participants, self, data.tables).map((c) => ({
       value: String(c.tableId),
-      label: `${tableTitle(c.tableId)}（剩 ${Math.max(0, c.remaining)} 位）${c.disabled ? '・已滿' : ''}`,
+      label: `${tableName(data.tables, c.tableId)}（剩 ${Math.max(0, c.remaining)} 位）${c.disabled ? '・已滿' : ''}`,
       disabled: c.disabled,
     })),
   ];
@@ -218,8 +218,8 @@ function PersonForm({ onOpenChange, mode, participantId, employeeId, onSaved }: 
     if (f.kind === 'GUEST') e.guestName = guestNameError(f);
     if (f.kind === 'EMPLOYEE' && f.isStaff && !staffAllowed) e.isStaff = STAFF_FULL;
     const seatOk = !(f.kind === 'EMPLOYEE' && f.isStaff);
-    const choice = f.tableId == null ? undefined : tableChoices(data.participants, self).find((c) => c.tableId === f.tableId);
-    if (seatOk && choice?.disabled) e.tableId = tableFullMessage(choice.tableId);
+    const choice = f.tableId == null ? undefined : tableChoices(data.participants, self, data.tables).find((c) => c.tableId === f.tableId);
+    if (seatOk && choice?.disabled) e.tableId = tableFullMessage(data.tables.find((t) => t.id === choice.tableId)?.position ?? choice.tableId);
     return Object.fromEntries(Object.entries(e).filter(([, v]) => v)) as Errors;
   }
 
@@ -268,7 +268,7 @@ function PersonForm({ onOpenChange, mode, participantId, employeeId, onSaved }: 
       const toStaff = f.kind === 'EMPLOYEE' && f.isStaff && original?.tableId !== STAFF_TABLE_ID;
       return {
         // 改成工作人員時會從原本的桌次移到工作人員桌（PPL-R55）
-        success: toStaff && fromTable != null ? `已儲存，${originalName} 已從 ${tableTitle(fromTable)}移到工作人員桌。` : '已儲存',
+        success: toStaff && fromTable != null ? `已儲存，${originalName} 已從 ${tableName(data.tables, fromTable)}移到工作人員桌。` : '已儲存',
       };
     }
     if (f.kind === 'EMPLOYEE') {
@@ -279,7 +279,7 @@ function PersonForm({ onOpenChange, mode, participantId, employeeId, onSaved }: 
             : f.withDependent
               ? `已新增 ${employeeName} 與 1 位眷屬。`
               : `已新增 ${employeeName}。`,
-        dependentLeft: f.tableId != null ? `${tableTitle(f.tableId)}只剩 1 位，${employeeName}_眷屬先留在未入座。` : '',
+        dependentLeft: f.tableId != null ? `${tableName(data.tables, f.tableId)}只剩 1 位，${employeeName}_眷屬先留在未入座。` : '',
       };
     }
     if (f.kind === 'DEPENDENT') return { success: `已新增 ${f.hostId == null ? '' : hostName(f.hostId)}_眷屬。` };
@@ -296,7 +296,7 @@ function PersonForm({ onOpenChange, mode, participantId, employeeId, onSaved }: 
           ? { field: 'hostId', text: `${hostName(f.hostId)} 已經有一位眷屬，一位員工最多一位。` }
           : {};
       case 'TABLE_FULL':
-        return f.tableId == null ? {} : { field: 'tableId', text: tableFullMessage(f.tableId) };
+        return f.tableId == null ? {} : { field: 'tableId', text: tableFullMessage(data.tables.find((t) => t.id === f.tableId)?.position ?? f.tableId) };
       case 'STAFF_TABLE_FULL':
         return { field: 'isStaff', text: STAFF_FULL };
       default:

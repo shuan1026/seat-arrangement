@@ -6,7 +6,7 @@
 import { expect, test, type Locator } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { expectNoHorizontalScroll, isMobileWidth, requireBaseURL } from './helpers/page-checks';
-import { rosterNames, seed, STAFF } from './helpers/seating-data';
+import { rosterNames, rosterNamesAt, seed, STAFF } from './helpers/seating-data';
 import {
   chooseOption,
   detailRows,
@@ -27,6 +27,7 @@ import {
   showPeople,
   staffTable,
   staffTableButton,
+  stagingArea,
   startDrag,
   tableButton,
   tableDetail,
@@ -66,12 +67,13 @@ test('頁首下方有「座位圖」「人員」分頁，一次只顯示一個�
   await expect(seatMap(page)).toBeVisible();
   await expect(peoplePanel(page)).toBeHidden();
 
-  // 收合：沒有名單卡片；適合視窗：30 桌與工作人員桌都在座位圖區內
+  // 收合：沒有名單卡片；適合視窗：30 桌、工作人員桌與暫存區都在座位圖區內（D-027：暫存區是場地圖的一部分，SEAT-R64、2.1.11）
   await expect(mapTable(page, 3).getByRole('listitem')).toHaveCount(0);
   const area = await seatMap(page).boundingBox();
   if (!area) throw new Error('量不到座位圖區');
   for (let n = 1; n <= 30; n++) expect(await isInside(mapTable(page, n), area), titleFor(n)).toBe(true);
   expect(await isInside(staffTable(page), area)).toBe(true);
+  expect(await isInside(stagingArea(page), area), '暫存區').toBe(true);
 
   for (const name of ['縮小', '放大', '適合視窗', '全部展開', '自動排座']) await expect(toolbarButton(page, name), name).toBeVisible();
   await expect(toolbarButton(page, '顯示人員面板')).toHaveCount(0);
@@ -167,8 +169,9 @@ test('點 B4 桌：桌次詳情以 Dialog 顯示，有「加入人員」「調�
   await swap.getByRole('button', { name: '確認對調' }).click();
   await saved;
   await expectToast(page, '已把 B4 桌和 B2 桌對調。', { undo: true });
-  expect(await rosterNames(3)).toEqual(['丙']);
-  expect(await rosterNames(7)).toEqual(['甲', '乙']);
+  // D-027：兩桌交換位置；用位置查（B4 的位置上是丙）
+  expect(await rosterNamesAt(3)).toEqual(['丙']);
+  expect(await rosterNamesAt(7)).toEqual(['甲', '乙']);
 });
 
 test('點 B4 桌：詳情 Dialog 有「名單」標題與名單，不顯示名單說明「拖移可以調整順序，也可以從人員面板直接拖進來。」（手機不能拖移；2.3.1、2.3.6、SEAT-R82、D-023）', async ({
