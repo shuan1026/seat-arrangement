@@ -1,9 +1,9 @@
 // @vitest-environment node
-// 伺服器啟動時寫入初始編輯者：docs/architecture.md 第 7.3 節（src/instrumentation.ts 在 seed 之後呼叫 server/services/editors.ts 的 bootstrap；
-// 這一步不看 SEED_IMPORT，本機開發也會執行；寫入失敗就結束程序，和 seed 相同）；docs/spec/permissions.md PRM-R02；D-021。
-// bootstrap 本身（名單是空的才寫入、略過非公司網域）在 tests/integration/server/editors-bootstrap.test.ts。
+// 伺服器啟動時寫入初始編輯者：docs/architecture.md 第 7.3 節（src/instrumentation.ts 在 seed 之後呼叫 server/services/members.ts 的 bootstrap；
+// 這一步不看 SEED_IMPORT，本機開發也會執行；寫入失敗就結束程序，和 seed 相同）；docs/spec/permissions.md PRM-R02；D-021、D-026。
+// bootstrap 本身（名單是空的才寫入、略過非公司網域、只有檢視者時跳過）在 tests/integration/server/editors-bootstrap.test.ts。
 //
-// 假設：register() 在 Node.js runtime 動態載入 src/server/services/editors.ts 並呼叫 bootstrapEditors()（可以經過一個像 seed-startup.ts 的
+// 假設：register() 在 Node.js runtime 動態載入 src/server/services/members.ts 並呼叫 bootstrapEditors()（可以經過一個像 seed-startup.ts 的
 // 小模組，失敗時記 Log 並 process.exit(1)）；SEED_IMPORT=1 時先執行 src/server/seed-startup.ts 的 runSeedOnStartup()。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,7 +11,7 @@ const { bootstrapEditors, runSeedOnStartup } = vi.hoisted(() => ({
   bootstrapEditors: vi.fn<() => Promise<unknown>>(async () => ({})),
   runSeedOnStartup: vi.fn<() => Promise<void>>(async () => {}),
 }));
-vi.mock('@/server/services/editors', () => ({ bootstrapEditors, isEditor: vi.fn(async () => false) }));
+vi.mock('@/server/services/members', () => ({ bootstrapEditors, getRole: vi.fn(async () => null) }));
 vi.mock('@/server/seed-startup', () => ({ runSeedOnStartup }));
 
 const ORIGINAL = { runtime: process.env.NEXT_RUNTIME, seed: process.env.SEED_IMPORT };

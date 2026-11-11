@@ -2,8 +2,8 @@
 
 | 項目 | 內容 |
 |---|---|
-| 版本 | v0.2（階段 3 加入權限與座位發布，D-021） |
-| 日期 | 2026-11-10 |
+| 版本 | v0.3（階段 3 加入檢視者權限，D-026） |
+| 日期 | 2026-11-11 |
 | 依據 | `docs/spec/`（正式規格）、`docs/architecture.md`（技術架構）、`docs/decision-record.md` |
 | 讀者 | 使用者、主 agent、各線的實作與測試 agent |
 
@@ -146,11 +146,23 @@
     - 內容：Prisma migration 加 `Editor`、`Setting`（含 `Setting` 那一列的 INSERT）；啟動時依 `INITIAL_EDITOR_EMAILS` 寫入初始編輯者；`route()` 對寫入方法檢查編輯者、回 403 `NOT_EDITOR`；`/api/state` 回傳 `me.isEditor` 與 `seatsPublished`；`/api/editors`、`/api/publish`、`/api/seats`；權限頁、導覽第 4 項、Header 的「只能檢視」徽章、三頁只能檢視時隱藏的操作、儲存佇列處理 403；座位安排頁的「發布」對話框；發布頁 `/seats`（重用座位圖元件，不能拖移與修改）。做法見 `docs/architecture.md` 第 7.1、7.3、8、9.3、10.3、11.5 節。
     - 照流程先由 test-writer 依 `docs/spec/permissions.md`、`README.md` 的 COM-R19、COM-R20、AUTH-R11～R15，以及 SEAT-R90、PPL-R86、EMP-R67 補測試。正式環境登入後預設只能檢視；測試工具登入的預設帳號是編輯者（寫進 `Editor`），既有會修改資料的測試不必改，只能檢視的情境另用一個帳號。
     - **部署這一版前，使用者要先在 aiborn 的環境變數設定 `INITIAL_EDITOR_EMAILS`**（承辦人的公司帳號，逗號分隔），否則上線後沒有人能修改資料。
-11. 全部測試通過。
+11. 檢視者權限（D-026）：權限分成編輯者、檢視者與沒有權限三種身分。
+    - 內容：
+      - Prisma migration 把 `Editor` 改名為 `Member` 並加 `role`，既有的列都成為編輯者。
+      - `route()` 的讀取檢查：預設要在權限名單上，`GET /api/seats` 只要登入；寫入時沒有權限回 `NO_ACCESS`、檢視者回 `NOT_EDITOR`。
+      - API 從 `/api/editors` 改成 `/api/members`，新增 `PATCH` 改權限；最後一位編輯者不能移除也不能降級。
+      - 權限頁改成一份名單，有權限選單、改權限的確認與移除的確認。
+      - `(main)/layout.tsx` 在沒有權限時，於同一個網址畫「沒有權限」頁。
+      - 儲存佇列與匯出處理 403 `NO_ACCESS`。
+      - 做法見 `docs/architecture.md` 第 7.1、8、9.3、11.5 節。
+    - 照流程先由 test-writer 依 `docs/spec/permissions.md` v1.2、`README.md` 第 2、8 節（AUTH-R11～R17、AUTH-AC15～AC27）更新與補測試。測試工具的預設帳號仍是編輯者；檢視者的情境改用以 `VIEWER` 寫進 `Member` 的帳號，另用一個不在名單上的帳號測沒有權限。
+    - **部署這一版後**，名單上只有原本的編輯者，其他同仁會立刻看不到三頁；使用者部署前先準備好要加的檢視者，部署後馬上在權限頁加入。
+12. 全部測試通過。
 
 ## 7. 階段 4：上線
 
-1. 使用者：OAuth 用戶端核准後在平台按「帶入環境變數」；設定 `ALLOWED_EMAIL_DOMAIN=program.com.tw`，以及第一位編輯者 `INITIAL_EDITOR_EMAILS`（D-021）。
+1. 使用者：OAuth 用戶端核准後在平台按「帶入環境變數」；設定 `ALLOWED_EMAIL_DOMAIN=program.com.tw`，以及第一位編輯者 `INITIAL_EDITOR_EMAILS`（D-021）。部署後在權限頁加入需要看排座資料的檢視者（D-026）。
+
 2. 部署正式版，用公司帳號登入，再用非公司帳號確認會被擋。
 3. 用 seed 匯入真實名單（D-007）：第一次部署的手動 ZIP 帶上 `prisma/seed-data/roster.csv`（通訊錄加「組別」欄）與 `registrations.csv`（Google 表單報名表），以及 `staff.csv`、`tables.csv`（D-015）；看 Log 的匯入摘要確認筆數、工作人員與七桌的備註名稱；成功後刪掉本機資料檔。再匯出座位表，和 2025 年的座位表比對版面。
 4. 和承辦人實際演練一次完整排座，手機上也試一次。

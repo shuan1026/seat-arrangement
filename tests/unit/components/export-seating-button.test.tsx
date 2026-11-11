@@ -12,6 +12,9 @@
 //   - 回 401（登入已過期，API 回 { error: { code: 'UNAUTHENTICATED' } }）：不下載、不顯示失敗提示，做法和儲存佇列的
 //     onUnauthenticated（src/client/app-provider.tsx）相同：整頁導到「/login?expired=1&callbackUrl={目前的路徑與網址參數}」。
 //     用 window.location.assign、location.replace 或設定 location.href 都可以；這裡把 window.location 換成假的，記下導向的網址。
+//   - 回 403 NO_ACCESS（權限被移除的檢視者，D-026、docs/spec/README.md AUTH-R17、AUTH-AC25；docs/architecture.md 第 8.2 節、第 10.3 節第 8 點）：
+//     不下載檔案，不顯示成功或失敗的 Sonner，不導向登入頁；呼叫 next/navigation 的 router.refresh()，讓 (main)/layout.tsx 在同一個網址改畫
+//     「沒有權限」頁（可以直接用 useRouter，或經過 AppProvider；這裡兩種都接到同一個假的 router）。
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
@@ -19,6 +22,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProvider } from '@/client/app-provider';
 import { ExportSeatingButton } from '@/components/features/export/export-seating-button';
 import { Toaster } from '@/components/ui/toaster';
+
+const router = vi.hoisted(() => ({
+  push: vi.fn(),
+  replace: vi.fn(),
+  refresh: vi.fn(),
+  back: vi.fn(),
+  forward: vi.fn(),
+  prefetch: vi.fn(),
+}));
+vi.mock('next/navigation', () => ({
+  useRouter: () => router,
+  usePathname: () => '/people',
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+}));
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const FILE_NAME = '座位表_20261110.xlsx';
@@ -141,6 +159,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  for (const fn of Object.values(router)) fn.mockReset();
 });
 
 describe('ExportSeatingButton', () => {
@@ -268,5 +287,41 @@ describe('ExportSeatingButton：登入已過期（D-016、EXP-AC21、docs/spec/R
     await userEvent.click(renderButton());
     await waitFor(() => expect(visits.length).toBeGreaterThan(0));
     expectExpiredLogin(visits, { pathname: '/people', params: { q: '王' } });
+  });
+});
+
+describe('ExportSeatingButton：權限被移除（D-026、docs/spec/README.md AUTH-R17、AUTH-AC25）', () => {
+  /** 權限被移除：route() 回 403 NO_ACCESS（docs/architecture.md 第 8.2 節） */
+  const noAccessResponse = () =>
+    new Response(JSON.stringify({ error: { code: 'NO_ACCESS', message: 'no access' } }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  it('API 回 403 NO_ACCESS：不下載檔案；不顯示成功或失敗的 Sonner；不導向登入頁；呼叫 router.refresh() 改畫「沒有權限」頁', async () => {
+    const visits = stubLocation('/people?q=%E7%8E%8B');
+    const fetchMock = vi.fn<typeof fetch>(async () => noAccessResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    await userEvent.click(renderButton());
+
+    await waitFor(() => expect(router.refresh).toHaveBeenCalledTimes(1));
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(downloads).toEqual([]);
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(screen.queryByText(FAILURE)).toBeNull();
+    expect(screen.queryByText(SUCCESS)).toBeNull();
+    expect(visits).toEqual([]);
+    expect(router.push).not.toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it('對照：伺服器錯誤（500）仍是匯出失敗，不會 refresh', async () => {
+    stubLocation('/people');
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => errorResponse(500)));
+    await userEvent.click(renderButton());
+    expect(await screen.findByText(FAILURE)).toBeTruthy();
+    expect(router.refresh).not.toHaveBeenCalled();
   });
 });

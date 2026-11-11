@@ -12,6 +12,15 @@ import { AppProvider, useAppStore, useMutation } from '@/client/app-provider';
 import { tableFullMessage } from '@/client/conflict-messages';
 import { saveStatusText } from '@/client/save-time';
 
+// AppProvider 在權限被移除時呼叫 next/navigation 的 router.refresh()（D-026；tests/unit/client/app-provider-permissions.test.tsx），
+// 測試環境沒有 Next.js 的 App Router，給一個假的 router
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), back: vi.fn(), forward: vi.fn(), prefetch: vi.fn() }),
+  usePathname: () => '/',
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+}));
+
 const employee = (id: number, name: string): Employee => ({
   id,
   name,

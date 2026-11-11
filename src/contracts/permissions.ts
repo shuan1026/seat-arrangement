@@ -1,22 +1,31 @@
-// 權限與座位發布的 API 資料形狀（D-021；docs/architecture.md 第 8 節、第 11.5 節）。
+// 權限與座位發布的 API 資料形狀（D-021、D-026；docs/architecture.md 第 8 節、第 11.5 節）。
 import { z } from 'zod';
+import { MEMBER_ROLES } from '@/domain/members';
 import type { AppState } from './entities';
 
-/** 編輯者名單的一列（GET /api/editors、POST /api/editors 的回應）；畫面只依加入順序排列，不回傳加入者與時間 */
-export const editorSchema = z.object({
+/** 權限：編輯者或檢視者 */
+export const memberRoleSchema = z.enum(MEMBER_ROLES);
+
+/** 權限名單的一列（GET /api/members、POST /api/members、PATCH /api/members/{id} 的回應）；畫面只依加入順序排列，不回傳加入者與時間 */
+export const memberSchema = z.object({
   id: z.number().int(),
   email: z.string(),
+  role: memberRoleSchema,
 });
-export type Editor = z.infer<typeof editorSchema>;
+export type Member = z.infer<typeof memberSchema>;
 
-/** POST /api/editors 的本體；email 的格式與網域由服務層依 domain/editors.ts 檢查（錯誤標在 fields.email） */
-export const editorCreateSchema = z.object({ email: z.string() });
+/** POST /api/members 的本體；email 的格式與網域由服務層依 domain/members.ts 檢查（錯誤標在 fields.email） */
+export const memberCreateSchema = z.object({ email: z.string(), role: memberRoleSchema });
+
+/** PATCH /api/members/{id} 的本體 */
+export const memberRoleUpdateSchema = z.object({ role: memberRoleSchema });
 
 /** PUT /api/publish 的本體與回應 */
 export const publishUpdateSchema = z.object({ published: z.boolean() });
 export type PublishState = z.infer<typeof publishUpdateSchema>;
 
-/** GET /api/state：全部資料，加上目前登入者是否為編輯者與發布狀態 */
+/** GET /api/state：全部資料，加上目前登入者是否為編輯者（檢視者是 false）與發布狀態；沒有權限的人拿不到（403 NO_ACCESS） */
+
 export type StateResponse = AppState & {
   me: { isEditor: boolean };
   seatsPublished: boolean;

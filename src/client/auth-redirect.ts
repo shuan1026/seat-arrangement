@@ -11,3 +11,4 @@ export function expiredLoginUrl(location: Pick<Location, 'pathname' | 'search'> 
 export function redirectToExpiredLogin(): void {
   window.location.assign(expiredLoginUrl(window.location));
 }
+

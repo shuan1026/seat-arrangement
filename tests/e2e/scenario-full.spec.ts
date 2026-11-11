@@ -1,7 +1,7 @@
 // 階段 3 整體驗證：核心情境全流程（docs/plan/implementation-plan.md 第 6 節第 2 項；docs/spec/README.md 第 1.2 節）。
 // 一位承辦人從空的資料庫走完一輪，每一步都檢查畫面與資料庫：
 //   1 登入（README 第 2、4 節、COM-AC21）
-//   2 權限頁新增協辦同仁為編輯者（permissions.md PRM-R07～R09、AUTH-R14）
+//   2 權限頁把協辦同仁設為編輯者、把現場工作人員設為檢視者（README 1.2 第 2 步；permissions.md PRM-R07～R09、AUTH-R14，D-026）
 //   3 匯入通訊錄（含組別欄，employees.md EMP-R44～R62、EMP-R07、EMP-R08、EMP-R09）、標記不參加（EMP-R63）
 //   4 匯入報名表（participants.md PPL-R64～R74：眷屬、兒童椅、素食、備註）、手動新增外部貴賓並選桌次（PPL-R51、PPL-R56）、
 //     員工名單看得到誰還沒報名（EMP-R03、EMP-R08）
@@ -11,11 +11,12 @@
 //     復原（SEAT-R76～R79）
 //   7 名單異動：員工名單改已入座員工的部門 → 座位圖跟著變（EMP-R39、SEAT-R10）；取消報名 → 座位空出來（PPL-R14、PPL-R37）
 //   8 匯出座位表（export.md EXP-R01、R03、R04、R06、R10～R13、R16、R19）
-//   9 發布（permissions.md PRM-R17～R19），只能檢視的帳號在發布頁搜尋自己的名字（PRM-R21、R30、R31、R33，AUTH-R15）
-// 手機（README 1.2 第 10 步）另一個測試：只能檢視的同仁在 320 px 開 /seats 查座位、開桌次看名單；開座位安排看得到資料但沒有編輯入口
+//   9 發布（permissions.md PRM-R17～R19），不在權限名單上的同仁（沒有權限）開座位安排看到「沒有權限」頁，按「查看座位表」到發布頁
+//     搜尋自己的名字（PRM-R21、R30、R31、R33，AUTH-R15、AUTH-R16，D-026）
+// 手機（README 1.2 第 10 步）另一個測試：檢視者（現場工作人員）在 320 px 開 /seats 查座位、開桌次看名單；開座位安排看得到資料但沒有編輯入口
 //   （permissions.md 第 2.3 節、PRM-R26、R27；seating.md SEAT-R81、SEAT-R83、SEAT-R90；README COM-R19、COM-R20）。
 // 資料都是虛構的：通訊錄 CSV 用 tests/helpers/employees-roster.ts，報名表 CSV 用 tests/helpers/participants-registration-csv.ts。
-// 每個測試開頭自己清空資料、設定編輯者名單與發布狀態（helpers/scenario.ts 的 resetEverything）。
+// 每個測試開頭自己清空資料、設定權限名單與發布狀態（helpers/scenario.ts 的 resetEverything）。
 // 桌號（D-019）：資料庫用內部編號（1 = B1、2 = A1、3 = B4、4 = B7、5 = B10、6 = B13），畫面與匯出用桌號。
 // 無障礙結構的假設見 helpers/seating-page.ts、helpers/permissions-page.ts 開頭。
 //
@@ -32,17 +33,20 @@ import { SWITCHBOARD_ROW, rosterCsv, rosterPerson, type RosterRecord } from '../
 import { headerTitle, TABLE_IDS, tableBlock } from '../helpers/export-sheet';
 import { cellText, loadWorkbook, mergeRanges, taiwanDateStamp } from '../helpers/export-xlsx';
 import { answer, registrationCsv } from '../helpers/participants-registration-csv';
-import { setSessionCookie, signIn, signInAsViewer, TEST_USER, type TestUser } from './helpers/auth';
+import { setSessionCookie, signIn, signInAsViewer, signInWithoutAccess, TEST_USER, type TestUser } from './helpers/auth';
 import { closeDb, employeeRows } from './helpers/employees-db';
 import * as employeesPage from './helpers/employees-page';
 import { expectNoHorizontalScroll, isMobileWidth, requireBaseURL } from './helpers/page-checks';
 import { withDb } from './helpers/participants-db';
 import * as peoplePage from './helpers/participants-page';
-import { editorEmails, isPublished, setPublished } from './helpers/permissions-db';
+import { isPublished, memberList, setPublished } from './helpers/permissions-db';
 import {
-  addEditorButton,
+  addedToast,
+  addMember,
+  addRoleSelect,
   emailField,
-  expectEditorList,
+  expectMemberList,
+  expectNoAccessPage,
   gotoSeats,
   navNames,
   notFoundLine,
@@ -51,7 +55,9 @@ import {
   publishCheckbox,
   recordWrites,
   resultLine,
+  SEATS_TITLE,
   seatSearch,
+  seatsLink,
   viewOnlyBadge,
 } from './helpers/permissions-page';
 import { navigateTo, resetEverything, waitForTablePatch } from './helpers/scenario';
@@ -91,7 +97,12 @@ const B13 = 6;
 
 /** 協辦同仁（虛構帳號）：承辦人在權限頁把他設為編輯者 */
 const HELPER: TestUser = { name: '何佳穎', email: 'he.jiaying@program.com.tw', sub: 'e2e-scenario-helper' };
-/** 只能檢視的同仁（虛構帳號），也是員工名單上的「林小青」：在發布頁搜尋自己的名字 */
+/** 現場工作人員（虛構帳號）：承辦人在權限頁把他設為檢視者（README 1.2 第 2 步） */
+const ONSITE: TestUser = { name: '現場同仁', email: 'onsite.staff@program.com.tw', sub: 'e2e-scenario-onsite' };
+/**
+ * 員工名單上的「林小青」（虛構帳號）。全流程裡不在權限名單上（沒有權限），在發布頁搜尋自己的名字；
+ * 手機的測試裡是檢視者（現場工作人員），活動當天查座位與統計列。
+ */
 const LIN: TestUser = { name: '林小青', email: 'lin.xiaoqing@program.com.tw', sub: 'e2e-scenario-lin' };
 
 /** 虛構的公司通訊錄（範本欄位，含組別欄）；第一列是總機資訊，匯入時略過（EMP-R49） */
@@ -245,16 +256,32 @@ test.describe('核心情境全流程（桌面）', () => {
       await expect(viewOnlyBadge(page)).toHaveCount(0);
     });
 
-    await test.step('2. 權限頁新增協辦同仁為編輯者 → 加到清單最後、Sonner 沒有「復原」；協辦同仁不必重新登入，開啟頁面就是編輯者', async () => {
+    await test.step('2. 權限頁把協辦同仁設為編輯者、把現場工作人員設為檢視者 → 依序加到清單最後、Sonner 沒有「復原」；兩人不必重新登入，開啟頁面就是各自的權限', async () => {
       await navigateTo(page, '權限');
-      await expectEditorList(page, [TEST_USER.email]);
-      await emailField(page).fill(HELPER.email);
-      await addEditorButton(page).click();
+      await expectMemberList(page, [{ email: TEST_USER.email, role: 'EDITOR' }]);
 
-      await expectEditorList(page, [TEST_USER.email, HELPER.email]);
+      await addMember(page, HELPER.email, 'EDITOR');
+      await expectMemberList(page, [
+        { email: TEST_USER.email, role: 'EDITOR' },
+        { email: HELPER.email, role: 'EDITOR' },
+      ]);
       await expect(emailField(page)).toHaveValue('');
-      await expectToast(page, `已把 ${HELPER.email} 設為編輯者。`, { undo: false });
-      await expect.poll(() => editorEmails()).toEqual([TEST_USER.email, HELPER.email]);
+      await expect(addRoleSelect(page)).toHaveText('檢視者');
+      await expectToast(page, addedToast(HELPER.email, 'EDITOR'), { undo: false });
+
+      // 權限選單維持預設的「檢視者」
+      await addMember(page, ONSITE.email);
+      await expectMemberList(page, [
+        { email: TEST_USER.email, role: 'EDITOR' },
+        { email: HELPER.email, role: 'EDITOR' },
+        { email: ONSITE.email, role: 'VIEWER' },
+      ]);
+      await expectToast(page, addedToast(ONSITE.email, 'VIEWER'), { undo: false });
+      await expect.poll(() => memberList()).toEqual([
+        { email: TEST_USER.email, role: 'EDITOR' },
+        { email: HELPER.email, role: 'EDITOR' },
+        { email: ONSITE.email, role: 'VIEWER' },
+      ]);
 
       const helperContext = await browser.newContext({ baseURL: base, viewport: page.viewportSize() ?? undefined });
       try {
@@ -266,6 +293,19 @@ test.describe('核心情境全流程（桌面）', () => {
         await expect(viewOnlyBadge(helperPage)).toHaveCount(0);
       } finally {
         await helperContext.close();
+      }
+
+      const onsiteContext = await browser.newContext({ baseURL: base, viewport: page.viewportSize() ?? undefined });
+      try {
+        await setSessionCookie(onsiteContext, base, ONSITE);
+        const onsitePage = await onsiteContext.newPage();
+        await openSeating(onsitePage);
+        await expect(viewOnlyBadge(onsitePage)).toBeVisible();
+        await expect(onsitePage.getByRole('button', { name: '新增人員', exact: true })).toHaveCount(0);
+        await expect(onsitePage.getByRole('button', { name: '匯出座位表', exact: true })).toBeVisible();
+        expect(await navNames(await openNav(onsitePage))).toEqual(['座位安排', '參與人員', '員工名單']);
+      } finally {
+        await onsiteContext.close();
       }
     });
 
@@ -610,7 +650,7 @@ test.describe('核心情境全流程（桌面）', () => {
       expect(text('C112')).toBe('');
     });
 
-    await test.step('9. 開啟發布 → 只能檢視的林小青開 /seats，搜尋自己的名字看到「林小青：B4 桌」；取消報名的人找不到', async () => {
+    await test.step('9. 開啟發布 → 不在權限名單上的林小青開座位安排是「沒有權限」頁，按「查看座位表」到 /seats，搜尋自己的名字看到「林小青：B4 桌」；取消報名的人找不到', async () => {
       const dialog = await openPublishDialog(page);
       await expect(dialog.getByText('未發布', { exact: true })).toBeVisible();
       await publishCheckbox(dialog).click();
@@ -622,10 +662,14 @@ test.describe('核心情境全流程（桌面）', () => {
 
       const viewerContext = await browser.newContext({ baseURL: base, viewport: page.viewportSize() ?? undefined });
       try {
-        await signInAsViewer(viewerContext, base, LIN);
+        await signInWithoutAccess(viewerContext, base, LIN);
         const viewer = await viewerContext.newPage();
         const writes = recordWrites(viewer);
-        await gotoSeats(viewer);
+        await viewer.goto('/');
+        await expectNoAccessPage(viewer, LIN.email);
+        await seatsLink(viewer).click();
+        await expect(viewer).toHaveURL((url) => url.pathname === '/seats');
+        await expect(viewer.getByRole('heading', { level: 1, name: SEATS_TITLE })).toBeVisible();
         await expect(seatMap(viewer)).toBeVisible();
 
         await seatSearch(viewer).fill('林小青');
@@ -646,7 +690,7 @@ test.describe('核心情境全流程（桌面）', () => {
   });
 });
 
-test.describe('手機：只能檢視的同仁查座位（README 1.2 第 9、10 步）', () => {
+test.describe('手機：檢視者（現場工作人員）查座位（README 1.2 第 9、10 步）', () => {
   test('320 px：在 /seats 搜尋自己的名字、點桌次看名單；開座位安排看得到資料（含分機、兒童椅、素食），但沒有任何編輯入口，也沒有整頁水平捲動', async ({
     page,
     context,
@@ -732,6 +776,6 @@ test.describe('手機：只能檢視的同仁查座位（README 1.2 第 9、10 �
       await expectNoHorizontalScroll(page);
     });
 
-    expect(writes, '只能檢視的人沒有送出任何寫入').toEqual([]);
+    expect(writes, '檢視者沒有送出任何寫入').toEqual([]);
   });
 });

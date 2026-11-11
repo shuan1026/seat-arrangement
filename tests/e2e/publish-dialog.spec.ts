@@ -1,9 +1,10 @@
 // 座位安排頁頁首的「發布」與發布對話框：docs/spec/seating.md 2.1.1（頁首依序是「新增人員」「匯出座位表」「發布」）、SEAT-AC106；
 // docs/spec/permissions.md 第 2.2 節、PRM-R16～R20、第 4.2 節文案；驗收條件 PRM-AC17～AC22；待確認 PRM-Q02（複製失敗的提示）；
 // docs/spec/README.md 第 6 節（切換發布立即儲存，Header 的儲存狀態跟著更新）、第 11.1 節（已發布是正向徽章、未發布是中性徽章）；D-021。
+// D-026：permissions.md 第 5 節的驗收條件裡，沒寫到權限的人不在名單上（沒有權限），所以 PRM-AC21 的丙用沒有權限的帳號；PRM-AC20 的丙是檢視者。
 // 無障礙結構的假設見 helpers/permissions-page.ts 開頭。
 import { expect, test, type Page } from '@playwright/test';
-import { signIn, signInAsViewer } from './helpers/auth';
+import { BING, signIn, signInAsViewer, signInWithoutAccess } from './helpers/auth';
 import { expectNoHorizontalScroll, isMobileWidth, requireBaseURL } from './helpers/page-checks';
 import { isPublished, setPublished } from './helpers/permissions-db';
 import {
@@ -130,13 +131,13 @@ test.describe('編輯者', () => {
     await linkField(dialog).selectText();
   });
 
-  test('PRM-AC21：已發布，甲把王小明從 B4 桌移到 A3 桌 → 丙重新整理發布頁 → 王小明在 A3 桌', async ({ page, browser, baseURL }) => {
+  test('PRM-AC21：已發布，甲把王小明從 B4 桌移到 A3 桌 → 丙（沒有權限）重新整理發布頁 → 王小明在 A3 桌', async ({ page, browser, baseURL }) => {
     await setPublished(true);
     const wangId = await seed(async (s) => s.employee('王小明', { department: '研發一部', tableId: 3 }));
 
     const viewerContext = await browser.newContext({ baseURL, viewport: page.viewportSize() ?? undefined });
     try {
-      await signInAsViewer(viewerContext, requireBaseURL(baseURL));
+      await signInWithoutAccess(viewerContext, requireBaseURL(baseURL), BING);
       const viewer = await viewerContext.newPage();
       await gotoSeats(viewer);
       await seatSearch(viewer).fill('王小明');
@@ -175,9 +176,9 @@ test.describe('編輯者', () => {
   });
 });
 
-test.describe('只能檢視（PRM-R16、PRM-AC20）', () => {
-  test('丙只能檢視 → 頁首沒有「發布」；直接呼叫切換發布的 API → 被拒（403），發布狀態不變', async ({ page, context, baseURL }) => {
-    await signInAsViewer(context, requireBaseURL(baseURL));
+test.describe('檢視者（PRM-R16、PRM-AC20）', () => {
+  test('丙是檢視者 → 頁首沒有「發布」；直接呼叫切換發布的 API → 被拒（403 NOT_EDITOR），發布狀態不變', async ({ page, context, baseURL }) => {
+    await signInAsViewer(context, requireBaseURL(baseURL), BING);
     await openSeating(page);
     await expect(button(page, '匯出座位表')).toBeVisible();
     await expect(button(page, '發布')).toHaveCount(0);

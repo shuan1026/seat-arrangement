@@ -61,8 +61,10 @@ test.describe('沒登入呼叫 API（AUTH-R08、AUTH-AC08）', () => {
     ['POST', '/api/seating/operations'],
     ['PATCH', '/api/tables/3'],
     ['GET', '/api/export/seating'],
-    ['GET', '/api/editors'],
-    ['POST', '/api/editors'],
+    ['GET', '/api/members'],
+    ['POST', '/api/members'],
+    ['PATCH', '/api/members/1'],
+    ['DELETE', '/api/members/1'],
     ['PUT', '/api/publish'],
     ['GET', '/api/seats'],
   ] as const) {

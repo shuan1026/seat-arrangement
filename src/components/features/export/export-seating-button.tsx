@@ -4,7 +4,11 @@
 // 處理中用 Button 的 loading（spinner 取代圖示、不能再按）。按下直接下載，不開對話框。
 // 參與人員頁與座位安排頁頁首各放一個，行為相同。
 // 登入已過期（401）不算匯出失敗：不下載、不顯示提示，和儲存佇列一樣整頁回到登入頁（D-016、EXP-AC21、README AUTH-R07）。
+// 權限被移除（403 NO_ACCESS）也不算失敗：重新取得伺服器端的畫面，(main)/layout.tsx 在同一個網址改畫「沒有權限」頁（AUTH-R17、D-026）。
+
+
 import { Download } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { redirectToExpiredLogin } from '@/client/auth-redirect';
 import { downloadBlob } from '@/client/download';
@@ -43,6 +47,7 @@ function fallbackFileName(now: Date = new Date()): string {
 }
 
 export function ExportSeatingButton() {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
 
   const exportSeating = async () => {
@@ -52,6 +57,11 @@ export function ExportSeatingButton() {
       const res = await fetch(EXPORT_URL, { method: 'GET', credentials: 'same-origin', cache: 'no-store' });
       if (res.status === 401) {
         redirectToExpiredLogin();
+        return;
+      }
+      // 權限被移除（403 NO_ACCESS）：不下載、不顯示提示，畫面換成「沒有權限」頁（AUTH-R17、D-026）
+      if (res.status === 403) {
+        router.refresh();
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

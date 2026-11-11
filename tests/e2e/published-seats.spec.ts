@@ -1,6 +1,9 @@
 // 發布頁 /seats：docs/spec/permissions.md v1.1 第 2.3 節（版面、工具列、搜尋、座位圖、桌次名單、未發布、狀態、手機）、PRM-R21～R34、
 // 第 4.3 節文案；驗收條件 PRM-AC23～AC36；待確認 PRM-Q01（已報名但未入座的人搜尋自己 → 目前假設「找不到「{關鍵字}」。」）；
 // docs/spec/README.md AUTH-R15、AUTH-AC20（發布頁也要登入，登入後回到 /seats）、COM-R18（沿用這個瀏覽器的配色、沒有介面配色鈕）；D-021。
+// D-026（permissions.md v1.2 PRM-R21）：編輯者、檢視者與沒有權限的公司帳號看到的內容相同。PRM-AC23 是甲（編輯者）、丙（檢視者）與丁（沒有權限），
+// PRM-AC24 是丙（檢視者）與丁（沒有權限）；驗收條件裡沒寫到權限的人不在名單上（沒有權限），所以 PRM-AC32 的丙用沒有權限的帳號。
+// 其他發布頁的內容測試用檢視者（signInAsViewer），三種身分看到的相同。
 // D-025（發布頁預設全部展開、搜尋框移進工具列、不顯示人數）：
 // - 開啟或重新整理時全部展開（含工作人員桌）、比例 100%、場地圖水平置中、從最上方開始；展開狀態與比例都不記住（PRM-R25）。
 // - 工具列新增「全部展開／全部收合」：收合換回圓形並適合視窗；展開回到開啟時的樣子。桌面一列依序是縮小、比例、放大、適合視窗、
@@ -15,7 +18,7 @@
 // 用它的 scrollLeft、scrollTop 判斷；地標「舞台」在 A 內、B 內兩欄上方（seating.md 2.1.4），正好在場地圖左右的正中間。
 import { expect, test, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import { CODES_IN_LIST_ORDER } from '../helpers/table-codes';
-import { signIn, signInAsViewer, VIEWER_USER } from './helpers/auth';
+import { BING, DING, signIn, signInAsViewer, signInWithoutAccess, VIEWER_USER } from './helpers/auth';
 import { expectNoHorizontalScroll, fetchFromPage, isMobileWidth, requireBaseURL } from './helpers/page-checks';
 import { STAFF_TABLE, withDb } from './helpers/participants-db';
 import { setNoteName, setPublished } from './helpers/permissions-db';
@@ -107,9 +110,14 @@ async function seedSeats(published = true) {
   await setPublished(published);
 }
 
-/** 只能檢視的同仁（丙）登入 */
+/** 檢視者登入（VIEWER_USER，以 VIEWER 寫進權限名單） */
 async function asViewer(context: BrowserContext, baseURL: string | undefined) {
   await signInAsViewer(context, requireBaseURL(baseURL));
+}
+
+/** 沒有權限的同仁（丁，不在權限名單上）登入 */
+async function asNoAccess(context: BrowserContext, baseURL: string | undefined) {
+  await signInWithoutAccess(context, requireBaseURL(baseURL), DING);
 }
 
 /** 開已發布的 /seats，等座位圖量好大小、工具列顯示比例（畫好、可以操作）之後才繼續 */
@@ -436,7 +444,7 @@ test.describe('登入（AUTH-R15、AUTH-AC20）', () => {
 });
 
 test.describe('未發布（PRM-R22、PRM-AC23）', () => {
-  test('編輯者與只能檢視的人開 /seats → 都只有 H1 與「座位表還沒有發布，請稍後再看。」，沒有搜尋框與座位圖；回應不含座位資料', async ({
+  test('甲（編輯者）、丙（檢視者）與丁（沒有權限）分別開 /seats → 都只有 H1 與「座位表還沒有發布，請稍後再看。」，沒有搜尋框與座位圖；回應不含座位資料', async ({
     page,
     context,
     baseURL,
@@ -446,12 +454,16 @@ test.describe('未發布（PRM-R22、PRM-AC23）', () => {
     await signIn(context, requireBaseURL(baseURL));
 
     const viewerContext = await browser.newContext({ baseURL, viewport: page.viewportSize() ?? undefined });
+    const noAccessContext = await browser.newContext({ baseURL, viewport: page.viewportSize() ?? undefined });
     try {
-      await asViewer(viewerContext, baseURL);
+      await signInAsViewer(viewerContext, requireBaseURL(baseURL), BING);
+      await asNoAccess(noAccessContext, baseURL);
       const viewerPage = await viewerContext.newPage();
+      const noAccessPage = await noAccessContext.newPage();
       for (const [label, p] of [
         ['編輯者', page],
-        ['只能檢視', viewerPage],
+        ['檢視者', viewerPage],
+        ['沒有權限', noAccessPage],
       ] as const) {
         await gotoSeats(p);
         await expect(p.getByText(NOT_PUBLISHED, { exact: true }), label).toBeVisible();
@@ -469,6 +481,7 @@ test.describe('未發布（PRM-R22、PRM-AC23）', () => {
       }
     } finally {
       await viewerContext.close();
+      await noAccessContext.close();
     }
   });
 });
@@ -503,6 +516,52 @@ test.describe('已發布：版面（PRM-R21、PRM-R23、PRM-R24、PRM-AC24）', 
     await expect(zoomText(page)).toBeVisible();
     for (const name of ['全部展開', '自動排座', '新增人員', '匯出座位表', '發布', '顯示人員面板']) {
       await expect(toolbarButton(page, name), name).toHaveCount(0);
+    }
+  });
+
+  test('PRM-AC24：丙（檢視者）與丁（沒有權限）開 /seats → 兩人看到的相同：H1、工具列（含搜尋框）與座位圖；都沒有 Sidebar、Header、導覽與介面配色鈕', async ({
+    page,
+    browser,
+    baseURL,
+  }) => {
+    const dingContext = await browser.newContext({
+      baseURL,
+      viewport: page.viewportSize() ?? undefined,
+      isMobile: isMobileWidth(page),
+      hasTouch: isMobileWidth(page),
+    });
+    try {
+      await asNoAccess(dingContext, baseURL);
+      const ding = await dingContext.newPage();
+      const seen: { tables: string[]; staff: number; text: string; api: unknown }[] = [];
+      for (const p of [page, ding]) {
+        await openSeatsMap(p);
+        await expect(seatSearch(p)).toHaveAttribute('placeholder', '輸入姓名找座位');
+        for (const name of ['縮小', '放大', '適合視窗', '全部收合']) await expect(toolbarButton(p, name), name).toBeVisible();
+        await expect(p.getByRole('navigation', { name: '主要導覽' })).toHaveCount(0);
+        await expect(p.getByRole('complementary')).toHaveCount(0);
+        await expect(p.getByRole('button', { name: '收合或展開側選單' })).toHaveCount(0);
+        await expect(p.getByRole('button', { name: '開啟選單' })).toHaveCount(0);
+        await expect(anyThemeButton(p)).toHaveCount(0);
+        await expect(p.getByText(/^(已儲存|儲存中…)/)).toHaveCount(0);
+        await expect(p.getByRole('heading', { level: 1, name: '你沒有檢視權限' })).toHaveCount(0);
+        const groups = seatMap(p).getByRole('group', { name: /^[AB]\d{1,2} 桌$/ });
+        await expect(groups).toHaveCount(30);
+        const tables: string[] = [];
+        for (const g of await groups.all()) tables.push((await g.getAttribute('aria-label')) ?? (await g.innerText()));
+        seen.push({
+          tables: tables.sort(),
+          staff: await staffTable(p).count(),
+          text: (await seatMap(p).innerText()).replace(/\s+/g, ' '),
+          api: (await fetchFromPage(p, '/api/seats')).body,
+        });
+      }
+      expect(seen[1]?.tables, '桌次相同').toEqual(seen[0]?.tables);
+      expect(seen[1]?.staff).toBe(1);
+      expect(seen[1]?.text, '座位圖的內容相同').toBe(seen[0]?.text);
+      expect(seen[1]?.api, '伺服器回傳的資料相同').toEqual(seen[0]?.api);
+    } finally {
+      await dingContext.close();
     }
   });
 
@@ -861,9 +920,9 @@ test.describe('同名（PRM-R32、PRM-AC30）', () => {
 });
 
 test.describe('內容是開啟當下的資料（PRM-R29、PRM-AC32）', () => {
-  test('丙開著 /seats，甲停止發布 → 丙的頁面不變；丙重新整理 →「座位表還沒有發布，請稍後再看。」', async ({ page, context, baseURL }) => {
+  test('丙（沒有權限）開著 /seats，甲停止發布 → 丙的頁面不變；丙重新整理 →「座位表還沒有發布，請稍後再看。」', async ({ page, context, baseURL }) => {
     await seedSeats();
-    await asViewer(context, baseURL);
+    await signInWithoutAccess(context, requireBaseURL(baseURL), BING);
     await openSeatsMap(page);
 
     await setPublished(false); // 甲在對話框取消打勾

@@ -1,12 +1,14 @@
-// 兩種權限的 App Shell：docs/spec/README.md 第 2 節（COM-R19、COM-R20）、第 4 節（編輯者四項導覽，只能檢視三項）、第 5 節（「權限」用 key-round；
-// Header 右側依序是介面配色鈕與儲存狀態，只能檢視時是中性徽章「只能檢視」，桌面與 Mobile Header 都有）、AUTH-R11、AUTH-R14；
-// 驗收條件 COM-AC21、COM-AC22、COM-AC24、AUTH-AC15、AUTH-AC19；D-021。
-// 只能檢視的帳號用 helpers/auth.ts 的 signInAsViewer；甲、乙是 docs/spec/permissions.md 第 5 節的虛構帳號。
+// 三種身分的 App Shell：docs/spec/README.md 第 2 節（COM-R19、COM-R20）、第 4 節（編輯者四項導覽，檢視者三項，沒有權限的人看不到導覽）、
+// 第 5 節（「權限」用 key-round；Header 右側依序是介面配色鈕與儲存狀態，檢視者是中性徽章「只能檢視」，桌面與 Mobile Header 都有）、
+// AUTH-R11、AUTH-R14、AUTH-R16；驗收條件 COM-AC21、COM-AC22、COM-AC24、AUTH-AC15、AUTH-AC19；D-021、D-026。
+// 檢視者用 helpers/auth.ts 的 signInAsViewer（以 VIEWER 寫進權限名單），沒有權限用 signInWithoutAccess；
+// 甲、乙、丙是 docs/spec/permissions.md 第 5 節的虛構帳號。
 import { expect, test, type Page } from '@playwright/test';
-import { JIA, signIn, signInAsViewer, YI } from './helpers/auth';
+import { BING, JIA, signIn, signInAsViewer, signInWithoutAccess, YI } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
-import { makeEditor, setEditors } from './helpers/permissions-db';
+import { makeEditor, setMembers } from './helpers/permissions-db';
 import {
+  expectNoAccessPage,
   KEY_ROUND_PATH,
   navNames,
   openNav,
@@ -48,7 +50,7 @@ test.describe('導覽（COM-AC21）', () => {
     await expect(permissions.locator(`svg path[d^="${KEY_ROUND_PATH}"]`)).toHaveCount(1);
   });
 
-  test('不是編輯者的公司帳號：導覽只有座位安排、參與人員、員工名單三項', async ({ page, context, baseURL }) => {
+  test('檢視者：導覽只有座位安排、參與人員、員工名單三項', async ({ page, context, baseURL }) => {
     await signInAsViewer(context, requireBaseURL(baseURL));
     await openSeating(page);
     expect(await navNames(await openNav(page))).toEqual(VIEWER_NAV);
@@ -56,40 +58,62 @@ test.describe('導覽（COM-AC21）', () => {
   });
 });
 
-test.describe('AUTH-AC15：名單有甲、沒有乙', () => {
-  test('甲登入是編輯者：導覽有「權限」、Header 是儲存狀態；乙登入是只能檢視：導覽沒有「權限」，Header 顯示「只能檢視」', async ({
+test.describe('AUTH-AC15：名單有甲（編輯者）、乙（檢視者），沒有丙', () => {
+  test('甲登入是編輯者：導覽有「權限」、Header 是儲存狀態；乙登入是檢視者：看得到三頁的資料，導覽沒有「權限」，Header 顯示「只能檢視」；丙看到「沒有權限」頁', async ({
     page,
     context,
     baseURL,
     browser,
   }) => {
-    await signIn(context, requireBaseURL(baseURL), JIA);
-    await setEditors([JIA.email]);
+    const base = requireBaseURL(baseURL);
+    await signIn(context, base, JIA);
+    await setMembers([
+      { email: JIA.email, role: 'EDITOR' },
+      { email: YI.email, role: 'VIEWER' },
+    ]);
     await openSeating(page);
     await expect(viewOnlyBadge(page)).toHaveCount(0);
     await expect(saveStatusText(page)).toBeVisible();
     expect(await navNames(await openNav(page))).toEqual(EDITOR_NAV);
 
-    const yiContext = await browser.newContext({
-      baseURL,
-      viewport: page.viewportSize() ?? undefined,
-      isMobile: isMobileWidth(page),
-      hasTouch: isMobileWidth(page),
-    });
+    const newContext = () =>
+      browser.newContext({ baseURL, viewport: page.viewportSize() ?? undefined, isMobile: isMobileWidth(page), hasTouch: isMobileWidth(page) });
+
+    const yiContext = await newContext();
     try {
-      await signInAsViewer(yiContext, requireBaseURL(baseURL), YI);
+      await signInAsViewer(yiContext, base, YI);
       const yiPage = await yiContext.newPage();
       await openSeating(yiPage);
       await expectViewOnlyHeader(yiPage);
       expect(await navNames(await openNav(yiPage))).toEqual(VIEWER_NAV);
+      if (isMobileWidth(yiPage)) await yiPage.keyboard.press('Escape');
+      for (const [path, heading] of [
+        ['/people', '參與人員'],
+        ['/employees', '員工名單'],
+      ] as const) {
+        await yiPage.goto(path);
+        await expect(yiPage.getByRole('heading', { level: 1, name: heading, exact: true })).toBeVisible();
+        await expect(yiPage.getByRole('main').getByText('王小明').first()).toBeVisible();
+        await expectViewOnlyHeader(yiPage);
+      }
     } finally {
       await yiContext.close();
+    }
+
+    const bingContext = await newContext();
+    try {
+      await signInWithoutAccess(bingContext, base, BING);
+      const bingPage = await bingContext.newPage();
+      await bingPage.goto('/');
+      await expectNoAccessPage(bingPage, BING.email);
+    } finally {
+      await bingContext.close();
     }
   });
 });
 
 test.describe('Header（COM-R20、COM-AC22）', () => {
-  test('只能檢視：Header 右側依序是「介面配色」與中性徽章「只能檢視」，沒有儲存狀態（桌面與 320 px 的 Mobile Header）', async ({
+  test('檢視者：Header 右側依序是「介面配色」與中性徽章「只能檢視」，沒有儲存狀態（桌面與 320 px 的 Mobile Header）', async ({
     page,
     context,
     baseURL,
@@ -155,7 +179,7 @@ test.describe('Header（COM-R20、COM-AC22）', () => {
   });
 });
 
-test.describe('AUTH-AC19：只能檢視的人被設為編輯者', () => {
+test.describe('AUTH-AC19：檢視者被改為編輯者', () => {
   test('乙開著座位安排、甲把乙設為編輯者 → 乙的畫面不變；乙重新整理 → 出現「新增人員」「自動排座」與「權限」導覽，不必重新登入', async ({
     page,
     context,

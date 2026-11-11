@@ -1,5 +1,6 @@
-// 編輯權限被移除後的下一次操作：docs/spec/README.md AUTH-R13（這次操作不儲存，還沒存的後續操作一併取消，重新載入並切換成只能檢視）；
-// docs/architecture.md 第 8.2 節（403 NOT_EDITOR：不重試，捨棄佇列中還沒送出的操作）、第 10.3 節第 7 點；D-021。
+// 被改為檢視者後的下一次操作：docs/spec/README.md AUTH-R13（這次操作不儲存，還沒存的後續操作一併取消，重新載入並切換成只能檢視）；
+// docs/architecture.md 第 8.2 節（403 NOT_EDITOR：不重試，捨棄佇列中還沒送出的操作）、第 10.3 節第 7 點；D-021、D-026。
+// 權限被移除（403 NO_ACCESS，AUTH-R17）見 tests/unit/client/save-queue-no-access.test.ts。
 // 用假的 send，不發網路請求。重新載入與提示由 AppProvider 處理（tests/unit/client/app-provider-permissions.test.tsx）。
 //
 // 假設的介面（src/client/save-queue.ts）：QueueHooks 多一個可省略的 onNotEditor?: () => void，
