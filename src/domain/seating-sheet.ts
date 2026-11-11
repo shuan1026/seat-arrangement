@@ -10,6 +10,7 @@ import { TABLE_MAX_SEATS } from '@/contracts/seating';
 import { participantComparator } from './participants';
 import { buildDirectory, displayName, tableDepartmentLabel, type Directory } from './display';
 import { TABLE_LAYOUT, tableTitle } from './layout';
+import { isPlaced } from './tables';
 
 /** 底色類別：標題格、貴賓、兒童椅、素食（EXP-R14、EXP-R21） */
 export type SheetFill = 'header' | 'guest' | 'childSeat' | 'vegetarian';
@@ -87,7 +88,12 @@ export function buildSeatingSheet(data: AppState): SeatingSheet {
   LEGEND.forEach((item, i) => put(LEGEND_ROW + i, 1, item.text, item.fill, true));
 
   // 各段的高度：段裡有桌次 11、12 位時十二列，其他十列；每一段的起始列是前面各段高度的和（EXP-R09、EXP-R23）
-  const seatedAt = (tableId: number) => data.participants.filter((p) => p.tableId === tableId).sort(bySeatOrder);
+  // 桌子與位置分開（D-027）：placement.id 是位置編號；位置上沒有桌（「未放桌」）時整個區塊空白（EXP-R24）
+  const tableAt = new Map(data.tables.filter(isPlaced).map((t) => [t.position!, t]));
+  const seatedAt = (position: number) => {
+    const table = tableAt.get(position);
+    return table ? data.participants.filter((p) => p.tableId === table.id).sort(bySeatOrder) : [];
+  };
   const segmentOf = (placement: (typeof TABLE_LAYOUT)[number]) => placement.row * 2;
   const segmentRows = Array.from({ length: SEGMENT_COUNT }, () => SEGMENT_ROWS);
   for (const placement of TABLE_LAYOUT) {
@@ -97,15 +103,16 @@ export function buildSeatingSheet(data: AppState): SeatingSheet {
   const tableRows = segmentRows.reduce((a, b) => a + b, 0);
 
   // 30 桌：標題格是所在段的十（或十二）列合併；名單格在右邊一欄，依座位順序由上往下放，空位留白也畫框線（EXP-R09～R12、EXP-R22、EXP-R23）
-  const notes = new Map(data.tables.map((t) => [t.id, t.noteName]));
   for (const placement of TABLE_LAYOUT) {
     const col = HEADER_COLUMNS[placement.col];
     if (col === undefined) continue;
+    const table = tableAt.get(placement.id);
+    if (!table) continue;
     const seg = segmentOf(placement);
     const top = segmentTop(seg);
     const rows = segmentRows[seg] ?? SEGMENT_ROWS;
     const seated = seatedAt(placement.id);
-    const note = notes.get(placement.id);
+    const note = table.noteName;
     header(
       top,
       col,
@@ -123,8 +130,10 @@ export function buildSeatingSheet(data: AppState): SeatingSheet {
   header(1, STAFF_HEADER_COL, ['工作人員', `(${staff.length})`], staffRows);
   for (let i = 0; i < staffRows; i++) putName(1 + i, STAFF_LIST_COL, staff[i]);
 
-  // 未入座：不在任何一桌、也不是工作人員的參與人員，含外部貴賓；只有放了人的名單格畫框線（EXP-R17～R20、EXP-Q05 ④）
-  const unseated = data.participants.filter((p) => p.tableId === null).sort(byDefaultOrder);
+  // 未入座：不在場上任何一桌、也不是工作人員的參與人員，含外部貴賓與暫存區的桌上的人（D-027）；
+  // 只有放了人的名單格畫框線（EXP-R17～R20、EXP-Q05 ④）
+  const onField = new Set([STAFF_TABLE_ID, ...[...tableAt.values()].map((t) => t.id)]);
+  const unseated = data.participants.filter((p) => p.tableId === null || !onField.has(p.tableId)).sort(byDefaultOrder);
   // 桌次區下面空一列，未入座區塊從再下一列開始（沒有段改為十二列時是第 112 列）
   const unseatedTop = tableRows + 2;
   if (unseated.length > 0) {

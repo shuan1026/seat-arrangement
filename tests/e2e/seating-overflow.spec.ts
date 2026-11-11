@@ -10,7 +10,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
-import { rosterNames, seed, STAFF } from './helpers/seating-data';
+import { rosterNames, rosterNamesAt, seed, STAFF } from './helpers/seating-data';
 import {
   badgeLook,
   cardRows,
@@ -39,7 +39,6 @@ import {
   staffTableButton,
   startDrag,
   tableButton,
-  tableDetail,
   tableHandle,
   titleFor,
   tokenBackground,
@@ -667,8 +666,9 @@ test.describe('SEAT-AC98 復原與對調可以回到 11、12 位（SEAT-R88）',
     await dragAndDrop(page, tableHandle(page, 5), tableButton(page, 6));
     await saved;
     await expectToast(page, '已把 B10 桌和 B13 桌對調', { undo: true });
-    await expect.poll(() => rosterNames(6)).toEqual(names('五', 11));
-    expect(await rosterNames(5)).toEqual(names('六', 9));
+    // D-027：兩桌交換位置；用位置查名單
+    await expect.poll(() => rosterNamesAt(6)).toEqual(names('五', 11));
+    expect(await rosterNamesAt(5)).toEqual(names('六', 9));
     await expect(mapTable(page, 6)).toContainText('超過');
     await expect(mapTable(page, 5)).toContainText('9/10');
     await expectStats(page, { seated: 20, total: 20, unseated: 0, empty: 281, full: 1, over: 1 });
@@ -692,8 +692,9 @@ test.describe('SEAT-AC98 復原與對調可以回到 11、12 位（SEAT-R88）',
     const saved = waitForOperation(page);
     await dialog.getByRole('button', { name: '確認對調' }).click();
     await saved;
-    await expect.poll(() => rosterNames(6)).toEqual(names('五', 11));
-    await expect(tableDetail(page, 6)).toContainText('11/10 人');
+    // D-027：兩桌交換位置。對調後開著的詳情跟著哪一桌，規格沒有寫，這裡只看座位圖與資料庫
+    await expect.poll(() => rosterNamesAt(6)).toEqual(names('五', 11));
+    await expect(mapTable(page, 6)).toContainText('超過');
   });
 });
 

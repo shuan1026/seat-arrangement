@@ -4,6 +4,7 @@
 // 每個操作開一條連線、做完就關，不留連線在 Playwright 的 worker 裡。
 import { createConnection, type Connection } from 'mariadb';
 import { databaseConfigFromEnv } from '../../../src/server/database-config';
+import { RESET_TABLES_SQL } from '../../helpers/table-reset';
 import { loadTestEnv } from '../../helpers/test-database';
 
 /** 工作人員桌的 id（src/contracts/entities.ts 的 STAFF_TABLE_ID） */
@@ -50,12 +51,28 @@ const str = (v: unknown): string | null => (v === null || v === undefined ? null
 export class PeopleDb {
   constructor(private readonly conn: Connection) {}
 
-  /** 清空員工與參與人員，桌次備註名稱還原（和 tests/helpers/db.ts 的 resetData 相同） */
+  /** 清空員工與參與人員，桌子恢復成 1–30 桌在原位置、沒有備註名稱、暫存區沒有桌（和 tests/helpers/db.ts 的 resetData 相同，D-027） */
   async reset(): Promise<void> {
     await this.conn.query('DELETE FROM Participant WHERE hostId IS NOT NULL');
     await this.conn.query('DELETE FROM Participant');
     await this.conn.query('DELETE FROM Employee');
-    await this.conn.query('UPDATE SeatTable SET noteName = NULL, updatedAt = NOW(3)');
+    for (const sql of RESET_TABLES_SQL) await this.conn.query(sql);
+  }
+
+  /** 刪掉這個位置（1–30）上的桌：位置變成「未放桌」（D-027） */
+  async emptyPosition(position: number): Promise<void> {
+    await this.conn.query("DELETE FROM SeatTable WHERE position = ? AND kind = 'NORMAL'", [position]);
+  }
+
+  /** 新增一張暫存的桌（id 是目前最大的 id 加 1，31 起），回傳 id；之後用 tableId 讓人坐上去（D-027） */
+  async stagedTable(noteName: string | null = null): Promise<number> {
+    const [row] = await this.conn.query<Row[]>('SELECT GREATEST(COALESCE(MAX(id), 0), 30) + 1 AS next FROM SeatTable');
+    const id = num(row?.next) ?? 31;
+    await this.conn.query(
+      "INSERT INTO SeatTable (id, kind, position, stagedAt, noteName, updatedAt) VALUES (?, 'NORMAL', NULL, '2026-01-01 00:00:00.000', ?, NOW(3))",
+      [id, noteName],
+    );
+    return id;
   }
 
   /** 新增一位員工（還沒報名），回傳員工 id */

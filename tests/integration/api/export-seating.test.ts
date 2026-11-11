@@ -269,4 +269,55 @@ describe('已登入', () => {
     // 沒有任何一格寫「第 n 桌」或「A-1」
     expect([...cellTexts(ws).values()].filter((t) => /第\s*\d+\s*桌|[AB]-\d/.test(t))).toEqual([]);
   });
+
+  // ---- D-027（export.md v1.5：EXP-R02、EXP-R17、EXP-R24） ----
+
+  it('EXP-AC24：資料甲，另把 B8 桌刪除（B8 變成「未放桌」）→ H51:H60 不合併，H51 與 I51–I60 空白、沒有框線與底色，也不寫「空桌」；其他桌的位置不變', async () => {
+    await seedSampleA();
+    await prisma.seatTable.delete({ where: { id: idOfCode('B8') } });
+
+    const { ws } = await exportWorkbook();
+    const merges = mergeRanges(ws);
+    expect(merges).not.toContain('H51:H60');
+    for (const a of ['H51', ...Array.from({ length: 10 }, (_, i) => `I${51 + i}`)]) {
+      expect([a, cellText(ws.getCell(a))]).toEqual([a, '']);
+      expect(borderSides(ws.getCell(a)), a).toEqual([]);
+    }
+    expect(fillRgb(ws.getCell('H51'))).not.toBe(fillRgb(ws.getCell('G1')));
+    for (const n of TABLE_IDS.filter((id) => id !== idOfCode('B8'))) expect(merges, headerTitle(n)).toContain(tableBlock(n).range);
+    expect(cellText(ws.getCell('G1'))).toBe('B1 桌\n主桌\n總經理室＋貴賓\n(3)');
+  });
+
+  it('EXP-AC25：資料甲，另把坐 2 位的一桌移到暫存區 → 那一桌原本的位置空白；這 2 位在未入座區塊，未入座多 2 位', async () => {
+    await seedSampleA();
+    // B4 桌（id 3）坐業務部的甲員、乙員，再移到暫存區
+    await createRegisteredEmployee({ name: '甲員', department: '業務部', sortOrder: 40 }, { tableId: 3, seatOrder: 0 });
+    await createRegisteredEmployee({ name: '乙員', department: '業務部', sortOrder: 41 }, { tableId: 3, seatOrder: 1 });
+    const before = await exportWorkbook();
+    expect(cellText(before.ws.getCell('J21'))).toBe('甲員');
+    expect(cellText(before.ws.getCell('B112'))).toBe('');
+
+    await prisma.seatTable.update({ where: { id: 3 }, data: { position: null, stagedAt: new Date('2026-11-01T08:00:00.000Z') } });
+
+    const { ws } = await exportWorkbook();
+    expect(mergeRanges(ws)).not.toContain('I21:I30');
+    for (const a of ['I21', ...Array.from({ length: 10 }, (_, i) => `J${21 + i}`)]) expect([a, cellText(ws.getCell(a))]).toEqual([a, '']);
+    expect(mergeRanges(ws)).toContain('B112:B121');
+    expect(cellText(ws.getCell('B112'))).toBe('未入座\n(2)');
+    expect([cellText(ws.getCell('C112')), cellText(ws.getCell('C113'))]).toEqual(['甲員', '乙員']);
+    expect([...cellTexts(ws).values()].some((t) => t.includes('暫存'))).toBe(false);
+  });
+
+  it('依所在位置放：B4 桌（id 3）搬到 B8 的位置 → 名單在 H51:H60 那一塊，標題「B8 桌」（D-027、SEAT-R04）', async () => {
+    await seedSampleA();
+    await createRegisteredEmployee({ name: '甲員', department: '業務部', sortOrder: 40 }, { tableId: 3, seatOrder: 0 });
+    await prisma.seatTable.delete({ where: { id: 9 } });
+    await prisma.seatTable.update({ where: { id: 3 }, data: { position: 9 } });
+
+    const { ws } = await exportWorkbook();
+    expect(mergeRanges(ws)).toContain('H51:H60');
+    expect(cellText(ws.getCell('H51'))).toBe('B8 桌\n業務部\n(1)');
+    expect(cellText(ws.getCell('I51'))).toBe('甲員');
+    expect(cellText(ws.getCell('I21'))).toBe('');
+  });
 });

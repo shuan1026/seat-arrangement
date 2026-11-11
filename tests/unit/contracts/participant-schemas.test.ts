@@ -1,7 +1,9 @@
 // 參與人員的輸入格式：docs/spec/participants.md PPL-R01（三種類別）、PPL-R05（稱謂選填）、PPL-R06、PPL-R51（外部貴賓姓名必填）、
 // PPL-R09（兒童椅、素食）、PPL-R10（工作人員）、PPL-R46（同時加一位眷屬）、PPL-R59（必填文案）、
 // PPL-R64（匯入改用 Google 表單報名表原檔，D-010）、PPL-Q07、PPL-Q08（編輯可變更類別與桌次，目前假設，D-008）、
-// PPL-AC40、PPL-AC54、PPL-AC55；EMP-R21（一次加入多位至少一位）；seating.md SEAT-R01（API 的桌次是內部編號 1–30，D-019）。
+// PPL-AC40、PPL-AC54、PPL-AC55；EMP-R21（一次加入多位至少一位）；seating.md SEAT-R01（API 的桌次是桌子的 id，D-019）。
+// D-027：既有的 30 桌 id 是 1–30，新增的桌從 31 起（docs/architecture.md 第 7.1 節），桌次欄位可以選這種桌（PPL-R56 只列場上的桌，
+// 不限 id 範圍），所以桌次沒有上限；有沒有這張桌、在不在場上由伺服器判斷（不存在或在暫存區回 409 CONFLICT）。0 仍不合法（工作人員桌用「工作人員」指定）。
 import { describe, expect, it } from 'vitest';
 import * as participantsContract from '@/contracts/participants';
 import { accepts, fieldErrors } from '../../helpers/schema';
@@ -104,11 +106,12 @@ describe('participantCreateSchema：類別與桌次', () => {
     expect(accepts(participantCreateSchema, { guestName: '林董' })).toBe(false);
   });
 
-  it.each([1, 30, null])('桌次可以是第 1–30 桌或未入座（%s）', (tableId) => {
+  it.each([1, 30, 31, null])('桌次可以是 id 1 以上的桌（31 起是新增的桌，D-027）或未入座（%s）', (tableId) => {
     expect(accepts(participantCreateSchema, { kind: 'GUEST', guestName: '林董', tableId })).toBe(true);
+    expect(accepts(participantCreateSchema, { kind: 'EMPLOYEE', employeeId: 1, tableId })).toBe(true);
   });
 
-  it.each([0, 31, -1, 2.5])('桌次不能是 %s（工作人員桌用「工作人員」指定，不是內部編號 0）', (tableId) => {
+  it.each([0, -1, 2.5])('桌次不能是 %s（工作人員桌用「工作人員」指定，不是桌子的 id 0；負數、小數不是桌子的 id）', (tableId) => {
     expect(accepts(participantCreateSchema, { kind: 'GUEST', guestName: '林董', tableId })).toBe(false);
     expect(accepts(participantCreateSchema, { kind: 'EMPLOYEE', employeeId: 1, tableId })).toBe(false);
   });
@@ -141,11 +144,11 @@ describe('participantUpdateSchema', () => {
     expect(accepts(participantUpdateSchema, { kind: 'VIP' })).toBe(false);
   });
 
-  it.each([1, 30, null])('編輯時可以改到第 1–30 桌或改回未入座（%s）（PPL-Q08 的目前假設）', (tableId) => {
+  it.each([1, 30, 31, null])('編輯時可以改到 id 1 以上的桌（31 起是新增的桌，D-027）或改回未入座（%s）（PPL-Q08 的目前假設）', (tableId) => {
     expect(participantUpdateSchema.parse({ tableId })).toEqual({ tableId });
   });
 
-  it.each([0, 31, -1, 2.5])('編輯時桌次不能是 %s（工作人員桌用「工作人員」指定）', (tableId) => {
+  it.each([0, -1, 2.5])('編輯時桌次不能是 %s（工作人員桌用「工作人員」指定；負數、小數不是桌子的 id）', (tableId) => {
     expect(accepts(participantUpdateSchema, { tableId })).toBe(false);
   });
 });

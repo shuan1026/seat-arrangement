@@ -34,7 +34,8 @@ const seatsResponse = () => getSeats(new Request('http://localhost:3000/api/seat
 const stateResponse = () => getState(new Request('http://localhost:3000/api/state'), { params: Promise.resolve({}) });
 
 type PublishedPerson = { displayName: string; group: string };
-type PublishedTable = { id: number; noteName: string | null; departmentLabel: string; people: PublishedPerson[] };
+/** D-027：每一桌多一個 position（所在位置 1–30，工作人員桌 null）；只有場上的桌與工作人員桌（docs/architecture.md 第 11.5 節） */
+type PublishedTable = { id: number; position: number | null; noteName: string | null; departmentLabel: string; people: PublishedPerson[] };
 type Published = { published: true; tables: PublishedTable[] };
 
 const B4 = 3;
@@ -198,14 +199,15 @@ describe('GET /api/seats：已發布（PRM-R21、PRM-R24、PRM-R26、PRM-R27、P
     await setPublished(true);
   });
 
-  it('回應只有 published 與 tables；31 張桌（30 桌與工作人員桌），每桌只有 id、noteName、departmentLabel、people', async () => {
+  it('回應只有 published 與 tables；31 張桌（30 桌與工作人員桌），每桌只有 id、position、noteName、departmentLabel、people', async () => {
     await seedSample();
     const { body } = await publishedSeating();
     expect(Object.keys(body).sort()).toEqual(['published', 'tables']);
     expect(body.tables.map((t) => t.id).sort((a, b) => a - b)).toEqual(Array.from({ length: 31 }, (_, i) => i));
     for (const t of body.tables) {
-      expect(Object.keys(t).sort(), `桌次 ${t.id}`).toEqual(['departmentLabel', 'id', 'noteName', 'people']);
+      expect(Object.keys(t).sort(), `桌次 ${t.id}`).toEqual(['departmentLabel', 'id', 'noteName', 'people', 'position']);
       for (const p of t.people) expect(Object.keys(p).sort(), `桌次 ${t.id}`).toEqual(['displayName', 'group']);
+      expect(t.position, `桌次 ${t.id}`).toBe(t.id === STAFF_TABLE_ID ? null : t.id);
     }
   });
 
@@ -214,6 +216,7 @@ describe('GET /api/seats：已發布（PRM-R21、PRM-R24、PRM-R26、PRM-R27、P
     const { body } = await publishedSeating();
     expect(tableOf(body, B4)).toEqual({
       id: B4,
+      position: B4,
       noteName: null,
       departmentLabel: '研發一部＋貴賓',
       people: [
@@ -229,7 +232,33 @@ describe('GET /api/seats：已發布（PRM-R21、PRM-R24、PRM-R26、PRM-R27、P
     const { body } = await publishedSeating();
     expect(tableOf(body, B2)).toMatchObject({ noteName: '主桌', departmentLabel: '研發一部', people: [{ displayName: '張主任', group: '研發一部' }] });
     expect(tableOf(body, STAFF_TABLE_ID).people).toEqual([{ displayName: '陳大華', group: '總務部' }]);
-    expect(tableOf(body, B8)).toEqual({ id: B8, noteName: null, departmentLabel: '空桌', people: [] });
+    expect(tableOf(body, B8)).toEqual({ id: B8, position: B8, noteName: null, departmentLabel: '空桌', people: [] });
+  });
+
+  it('PRM-AC45：B8 是「未放桌」、暫存區有一桌坐陳大文 → 回傳的資料不含 B8 與暫存的桌，也沒有陳大文（PRM-R24、PRM-R30、D-027）', async () => {
+    const { unseated: chen } = await seedSample();
+    // seedSample 的陳大文未入座；把他放到暫存區的一桌（id 31），B8（9）的桌刪掉
+    await prisma.seatTable.delete({ where: { id: B8 } });
+    await prisma.seatTable.create({ data: { id: 31, kind: 'NORMAL', position: null, stagedAt: new Date('2026-11-01T08:00:00.000Z'), noteName: '暫放' } });
+    await prisma.participant.update({ where: { id: chen.participant.id }, data: { tableId: 31, seatOrder: 0 } });
+
+    const { body, text } = await publishedSeating();
+    expect(body.tables).toHaveLength(30);
+    expect(body.tables.map((t) => t.id)).not.toContain(31);
+    expect(body.tables.map((t) => t.id)).not.toContain(B8);
+    expect(body.tables.map((t) => t.position)).not.toContain(B8);
+    expect(text).not.toContain('陳大文');
+    expect(text).not.toContain('暫放');
+  });
+
+  it('搬到別的位置的桌：position 是新的位置（B4 那一桌搬到 B8 → position 9，名單跟著）', async () => {
+    await seedSample();
+    await prisma.seatTable.update({ where: { id: B8 }, data: { position: null, stagedAt: new Date('2026-11-01T08:00:00.000Z') } });
+    await prisma.seatTable.update({ where: { id: B4 }, data: { position: B8 } });
+    const { body } = await publishedSeating();
+    expect(tableOf(body, B4)).toMatchObject({ position: B8, people: [{ displayName: '王小明' }, { displayName: '王小明_眷屬' }, { displayName: '林董' }] });
+    expect(body.tables.map((t) => t.id)).not.toContain(B8);
+    expect(body.tables.some((t) => t.position === B4)).toBe(false);
   });
 
   it('不含分機、素食、兒童椅、備註、稱謂、組別、單位／頭銜、任何 id 與未入座的人（PRM-R27、PRM-AC26、PRM-AC27）', async () => {

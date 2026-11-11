@@ -116,6 +116,7 @@ async function importTableNotes(sheet: Sheet<(typeof TABLE_COLUMNS)[number]>) {
   const reasons: TableReasons = { invalidTableCode: 0, invalidNoteName: 0, duplicate: 0 };
   const written = new Set<number>();
   for (const row of sheet.body) {
+    // 桌號是位置代碼（D-019）；seed 只在員工表是空的時執行，這時桌子都在原位置，依位置找桌（D-027）
     const tableId = parseTableCode(sheet.cell(row, '桌號'));
     if (tableId === undefined) {
       reasons.invalidTableCode++;
@@ -130,7 +131,7 @@ async function importTableNotes(sheet: Sheet<(typeof TABLE_COLUMNS)[number]>) {
       reasons.invalidNoteName++;
       continue;
     }
-    await db.seatTable.update({ where: { id: tableId }, data: { noteName: parsed.data.noteName } });
+    await db.seatTable.updateMany({ where: { position: tableId }, data: { noteName: parsed.data.noteName } });
     written.add(tableId);
   }
   return { tableNotes: written.size, reasons };

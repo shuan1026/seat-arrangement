@@ -20,6 +20,7 @@ import {
   seatMap,
   staffTable,
   staffTableButton,
+  stagingArea,
   styleOfText,
   tableButton,
   tableDetail,
@@ -36,9 +37,26 @@ test.beforeEach(async ({ context, baseURL, page }) => {
 
 const allTables = (page: Page) => [...Array.from({ length: 30 }, (_, i) => mapTable(page, i + 1)), staffTable(page)];
 
-/** 30 桌與工作人員桌都在 area 裡 */
+/**
+ * 30 桌、工作人員桌與暫存區都在 area 裡。D-027 起暫存區是場地圖的一部分（B 區外側列右邊一欄，seating.md 2.1.12），
+ * 「適合視窗」時也算進去：SEAT-R64「讓 30 個位置、工作人員桌與暫存區全部可見」
+ */
 async function expectAllInside(page: Page, area: { x: number; y: number; width: number; height: number }) {
   for (const t of allTables(page)) expect(await isInside(t, area), (await t.getAttribute('aria-label')) ?? undefined).toBe(true);
+  expect(await isInside(stagingArea(page), area), '暫存區').toBe(true);
+}
+
+/**
+ * 整張場地圖的左右邊界（量置中用）：左邊界是桌次外框的最左邊；右邊界取桌次外框與暫存區兩者的最右邊。
+ * D-027 起暫存區是場地圖的一部分（seating.md 2.1.12、SEAT-R64），置中的對象是包含暫存區的整張場地圖（SEAT-R67）
+ */
+async function venueBounds(page: Page): Promise<{ left: number; right: number }> {
+  const boxes = await Promise.all(allTables(page).map((t) => t.boundingBox()));
+  const staging = await stagingArea(page).boundingBox();
+  if (!staging) throw new Error('量不到暫存區');
+  const left = Math.min(...boxes.map((b) => b?.x ?? Infinity));
+  const right = Math.max(...boxes.map((b) => (b ? b.x + b.width : -Infinity)), staging.x + staging.width);
+  return { left, right };
 }
 
 async function mapBox(page: Page) {
@@ -627,9 +645,8 @@ test.describe('整頁不能水平捲動、場地圖置中（SEAT-R67、SEAT-AC74
       await expectNoHorizontalScroll(page);
 
       const map = await mapBox(page);
-      const boxes = await Promise.all(allTables(page).map((t) => t.boundingBox()));
-      const left = Math.min(...boxes.map((b) => b?.x ?? Infinity));
-      const right = Math.max(...boxes.map((b) => (b ? b.x + b.width : -Infinity)));
+      // 場地圖的右邊界含暫存區（D-027）
+      const { left, right } = await venueBounds(page);
       const gapLeft = left - map.x;
       const gapRight = map.x + map.width - right;
       expect(gapLeft).toBeGreaterThanOrEqual(-1);
@@ -648,9 +665,8 @@ test.describe('整頁不能水平捲動、場地圖置中（SEAT-R67、SEAT-AC74
     const map = await mapBox(page);
     const d = await detail.boundingBox();
     if (!d) throw new Error('量不到詳情');
-    const boxes = await Promise.all(allTables(page).map((t) => t.boundingBox()));
-    const left = Math.min(...boxes.map((b) => b?.x ?? Infinity));
-    const right = Math.max(...boxes.map((b) => (b ? b.x + b.width : -Infinity)));
-    expect(Math.abs(left - map.x - (d.x - right))).toBeLessThanOrEqual(12);
+    // 場地圖的右邊界含暫存區（D-027）
+    const { left, right } = await venueBounds(page);
+    expect(Math.abs(left - map.x - (d.x - right)), `左右留白 ${left - map.x} / ${d.x - right}`).toBeLessThanOrEqual(12);
   });
 });

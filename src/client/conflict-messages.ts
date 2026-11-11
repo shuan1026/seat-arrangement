@@ -18,8 +18,8 @@ const BY_CODE: Partial<Record<ErrorCode, string>> = {
 
 export const conflictMessage = (code: ErrorCode): string => BY_CODE[code] ?? CONFLICT_FALLBACK;
 
-/** 桌次已滿：從選單入座時到 10 位（SEAT-R23、SEAT-R86）；參數是內部編號，文案用桌號（D-019） */
+/** 桌次已滿：從選單入座時到 10 位（SEAT-R23、SEAT-R86）；參數是位置編號，文案用桌號（D-019、D-027） */
 export const tableFullMessage = (tableId: number) => `${tableTitle(tableId)}已滿，請先移出一位。`;
 
-/** 桌次已達 12 位：拖移或「加入人員」時（SEAT-R20、SEAT-R86、D-018）；參數是內部編號，文案用桌號（D-019） */
+/** 桌次已達 12 位：拖移或「加入人員」時（SEAT-R20、SEAT-R86、D-018）；參數是位置編號，文案用桌號（D-019、D-027） */
 export const tableLimitMessage = (tableId: number) => `${tableTitle(tableId)}已達 12 位，請先移出一位。`;

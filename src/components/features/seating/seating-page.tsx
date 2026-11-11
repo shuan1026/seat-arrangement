@@ -7,6 +7,8 @@
 // 頁首的「匯出座位表」是共用的 ExportSeatingButton（export.md）；「發布」開啟發布對話框（permissions.md 第 2.2 節）。
 // 只能檢視時（SEAT-R90、D-021）：沒有「新增人員」「發布」「自動排座」、拖移、列操作，桌次詳情沒有修改的入口；
 // 權限在畫面開著時被移除，開著的對話框跟著關閉，畫面切換成只能檢視（AUTH-R13）。
+// 桌子與位置分開（D-027）：拖桌子的把手到另一個位置的桌、「未放桌」的位置或暫存區（SEAT-R35）；暫存的桌與「未放桌」不接受人員；
+// 點「未放桌」的位置開啟面板（新增桌），桌次詳情有「移到暫存區」「刪除桌」，暫存的桌有「放到…」「刪除桌」。
 import { GripVertical, Plus, Share2 } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useAppStore, useIsEditor } from '@/client/app-provider';
@@ -20,14 +22,15 @@ import { PersonDialog } from '../people/person-dialog';
 import { PublishDialog } from '../publish/publish-dialog';
 import { RemovePersonDialog, type RemoveTarget } from '../people/remove-person-dialog';
 import { SeatingDnd, type DragSource, type DropTarget, type ResolveDrop } from './drag';
-import { buildTables, msg, seatMessage, sortPeople } from './model';
+import { buildTables, faceName, msg, positionCode, seatMessage, sortPeople, tableName, type TableInfo } from './model';
 import { PeoplePanel } from './people-panel';
 import { PersonActionsContext, type PersonActions } from './person-actions';
 import { SeatingUiContext, type SeatingUi } from './person-menu';
-import { AddPeopleDialog, AutoArrangeDialog, ClearDialog, SwapDialog } from './seating-dialogs';
+import { AddPeopleDialog, AutoArrangeDialog, ClearDialog, DeleteTableDialog, PlaceDialog, SwapDialog } from './seating-dialogs';
 import { SeatingSkeleton } from './seating-skeleton';
 import { clampPct, SeatMap } from './seat-map';
-import { TableDetail } from './table-detail';
+import { EmptySlotPanel, TableDetail } from './table-detail';
+import { stagedInOrder } from '@/domain/tables';
 import { TableSelectDialog } from './table-select-dialog';
 import { useSeatingOps } from './use-seating-ops';
 import { useIsMobile, useViewPrefs, useWideDesktop } from './view-prefs';
@@ -43,17 +46,19 @@ function useMounted() {
   );
 }
 
-export function SeatingPage({ initialTable }: { initialTable: number | null }) {
+/** initialTable 是網址 /?table={桌號} 的位置編號（1–30）；initialStaged 是 /?staged={id} 的暫存的桌（D-027） */
+export function SeatingPage({ initialTable, initialStaged }: { initialTable: number | null; initialStaged?: number | null }) {
   const mounted = useMounted();
   if (!mounted) return <SeatingSkeleton />;
-  return <Seating initialTable={initialTable} />;
+  return <Seating initialPosition={initialTable} initialStaged={initialStaged ?? null} />;
 }
 
-type Selected = number | 'staff' | null;
+/** 選取的桌（桌子 id）、工作人員桌，或「未放桌」的位置（D-027） */
+type Selected = number | 'staff' | { position: number } | null;
 type PersonDialogState = { mode: 'create' } | { mode: 'edit'; participantId: number };
 type Hit = { tableIds: number[]; nonce: number } | null;
 
-function Seating({ initialTable }: { initialTable: number | null }) {
+function Seating({ initialPosition, initialStaged }: { initialPosition: number | null; initialStaged: number | null }) {
   const data = useAppStore((s) => s.data);
   const dir = useAppStore((s) => s.dir);
   const isEditor = useIsEditor();
@@ -64,16 +69,28 @@ function Seating({ initialTable }: { initialTable: number | null }) {
 
   const sorted = useMemo(() => sortPeople(data, dir), [data, dir]);
   const tables = useMemo(() => buildTables(data, dir, sorted), [data, dir, sorted]);
-  const stats = useMemo(() => seatingStats(data.participants), [data.participants]);
+  const stats = useMemo(() => seatingStats(data.participants, data.tables), [data.participants, data.tables]);
   const byId = useMemo(() => new Map(data.participants.map((p) => [p.id, p])), [data.participants]);
+  const staged = useMemo(() => stagedInOrder(data.tables).map((t) => tables.get(t.id)!), [data.tables, tables]);
+  const byPosition = useMemo(
+    () => new Map([...tables.values()].filter((t) => !t.isStaff && t.position !== null).map((t) => [t.position!, t])),
+    [tables],
+  );
 
-  // 網址 /?table={桌號}：顯示那一桌的詳情並標示那一桌（PPL-R33、SEAT-R62）；initialTable 是內部編號
-  const [selected, setSelected] = useState<Selected>(initialTable);
-  const [hit, setHit] = useState<Hit>(initialTable ? { tableIds: [initialTable], nonce: 1 } : null);
+  // 網址 /?table={桌號}：顯示那個位置上的桌的詳情並標示（PPL-R33、SEAT-R62）；/?staged={id}：顯示那張暫存的桌（D-027）
+  const [initialId] = useState<number | null>(() => {
+    if (initialStaged !== null && data.tables.some((t) => t.id === initialStaged && t.kind === 'NORMAL' && t.position === null)) {
+      return initialStaged;
+    }
+    if (initialPosition === null) return null;
+    return data.tables.find((t) => t.kind === 'NORMAL' && t.position === initialPosition)?.id ?? null;
+  });
+  const [selected, setSelected] = useState<Selected>(initialId);
+  const [hit, setHit] = useState<Hit>(initialId !== null ? { tableIds: [initialId], nonce: 1 } : null);
   const [mobileTab, setMobileTab] = useState<'map' | 'people'>('map');
   const [seatFor, setSeatFor] = useState<number | null>(null);
   const [seatOpen, setSeatOpen] = useState(false);
-  const [dialog, setDialog] = useState<'add' | 'swap' | 'clear' | 'auto' | null>(null);
+  const [dialog, setDialog] = useState<'add' | 'swap' | 'clear' | 'auto' | 'place' | 'delete' | null>(null);
   // 新增、編輯人員對話框與取消報名、刪除的確認（參與人員的元件）
   const [personDialog, setPersonDialog] = useState<PersonDialogState | null>(null);
   const [removeTarget, setRemoveTarget] = useState<RemoveTarget | null>(null);
@@ -108,9 +125,15 @@ function Seating({ initialTable }: { initialTable: number | null }) {
     (p: Participant) => {
       const name = displayName(p, dir);
       if (p.tableId === null) return;
-      ops.run({ type: 'unseat', participantId: p.id }, p.tableId === STAFF_TABLE_ID ? msg.unstaffed(name) : msg.unseated(name, p.tableId));
+      const text =
+        p.tableId === STAFF_TABLE_ID
+          ? msg.unstaffed(name)
+          : tables.get(p.tableId)?.staged
+            ? msg.leftStaged(name)
+            : msg.unseated(name, tableName(data.tables, p.tableId));
+      ops.run({ type: 'unseat', participantId: p.id }, text);
     },
-    [dir, ops],
+    [dir, ops, tables, data.tables],
   );
 
   const ui = useMemo<SeatingUi>(
@@ -137,17 +160,32 @@ function Seating({ initialTable }: { initialTable: number | null }) {
   );
 
   // ---- 拖移（docs/spec/seating.md 3.3～3.8）
+  /** 拖桌子的把手放在哪裡（SEAT-R35、R38）：另一個位置的桌、「未放桌」的位置或暫存區；放到暫存的桌上等於放到暫存區 */
+  const tableDrop = (sourceId: number, target: DropTarget): DropTarget | null => {
+    const source = tables.get(sourceId);
+    if (!source) return null;
+    if (target.kind === 'slot') return target;
+    const toStaging = target.kind === 'staging' || (target.kind === 'table' && !!tables.get(target.tableId)?.staged);
+    if (toStaging) return source.staged ? null : { kind: 'staging' };
+    if (target.kind !== 'table' || target.area !== 'map' || target.tableId === sourceId) return null;
+    return { kind: 'table', tableId: target.tableId, area: 'map' };
+  };
+
   const resolve: ResolveDrop = (source, target) => {
     if (source.kind === 'table') {
-      // 把手只能放到另一桌；放到自己、工作人員桌、地標、空白處或人員面板都沒有作用（SEAT-R38）
-      if (target.kind !== 'table' || target.area !== 'map' || target.tableId === source.tableId) return null;
-      return { target: { kind: 'table', tableId: target.tableId, area: 'map' }, blocked: false };
+      const t = tableDrop(source.tableId, target);
+      return t ? { target: t, blocked: false } : null;
     }
     const p = byId.get(source.participantId);
     if (!p) return null;
+    // 「未放桌」的位置不接受人員（2.1.9、SEAT-R95）；暫存區本身沒有作用
+    if (target.kind === 'slot') return { target, blocked: true };
+    if (target.kind === 'staging') return null;
     if (target.kind === 'table') {
       const info = tables.get(target.tableId);
       if (!info) return null;
+      // 暫存的桌不接受人員，桌內也不能調整順序（SEAT-R92）
+      if (info.staged) return p.tableId === info.id ? null : { target, blocked: true };
       // 拖移可以放到 12 位：已滿或超過、但還不到 12 位的桌照常可以放（SEAT-R20、2.1.9）
       return { target, blocked: info.max && p.tableId !== target.tableId };
     }
@@ -157,25 +195,52 @@ function Seating({ initialTable }: { initialTable: number | null }) {
     return { target, blocked: false };
   };
 
+  /** 搬動桌子（SEAT-R35）：依目標組出 moveTable 與 Sonner */
+  const moveTable = (info: TableInfo, to: number | 'staging') => {
+    if (to === 'staging') {
+      if (info.staged) return false;
+      return ops.run({ type: 'moveTable', tableId: info.id, to: 'staging', expectedTableId: null }, msg.staged(positionCode(info.position!)));
+    }
+    const occupant = byPosition.get(to) ?? null;
+    const code = positionCode(to);
+    const text = info.staged
+      ? occupant
+        ? msg.placedSwap(info.noteName, code)
+        : msg.placed(info.noteName, code)
+      : occupant
+        ? msg.swapped(faceName(info), faceName(occupant))
+        : msg.movedToEmpty(positionCode(info.position!), code);
+    return ops.run({ type: 'moveTable', tableId: info.id, to, expectedTableId: occupant?.id ?? null }, text);
+  };
+
   const onDrop = (source: DragSource, target: DropTarget) => {
     if (source.kind === 'table') {
-      if (target.kind !== 'table') return;
-      ops.run({ type: 'swap', tableA: source.tableId, tableB: target.tableId }, msg.swapped(source.tableId, target.tableId));
+      const info = tables.get(source.tableId);
+      const t = tableDrop(source.tableId, target);
+      if (!info || !t) return;
+      if (t.kind === 'staging') moveTable(info, 'staging');
+      else if (t.kind === 'slot') moveTable(info, t.position);
+      else if (t.kind === 'table') {
+        const other = tables.get(t.tableId);
+        if (other?.position != null) moveTable(info, other.position);
+      }
       return;
     }
     const p = byId.get(source.participantId);
     if (!p) return;
     const name = displayName(p, dir);
     if (target.kind === 'panel') return unseat(p);
+    if (target.kind === 'slot' || target.kind === 'staging') return;
     // 拖移帶 allowOverflow：一般桌與工作人員桌都可以放到 12 位（SEAT-R20、SEAT-R42、SEAT-R88）
     if (target.kind === 'staff') {
       ops.run(
         { type: 'seat', participantId: p.id, tableId: STAFF_TABLE_ID, allowOverflow: true },
-        p.tableId === null ? msg.toStaff(name) : msg.tableToStaff(name, p.tableId),
+        p.tableId === null || tables.get(p.tableId)?.staged ? msg.toStaff(name) : msg.tableToStaff(name, tableName(data.tables, p.tableId)),
       );
       return;
     }
     const t = target.tableId;
+    if (tables.get(t)?.staged) return;
     if (p.tableId === t) {
       // 同一桌內：放在某一列就是調整順序（SEAT-R32）；放在圓形上沒有作用（SEAT-Q03）
       if (target.index === undefined) return;
@@ -183,7 +248,7 @@ function Seating({ initialTable }: { initialTable: number | null }) {
       const next = roster.filter((id) => id !== p.id);
       next.splice(Math.min(target.index, next.length), 0, p.id);
       if (next.every((id, i) => id === roster[i])) return;
-      ops.run({ type: 'reorder', tableId: t, participantIds: next }, msg.reordered(t));
+      ops.run({ type: 'reorder', tableId: t, participantIds: next }, msg.reordered(tableName(data.tables, t)));
       return;
     }
     ops.run(
@@ -194,7 +259,7 @@ function Seating({ initialTable }: { initialTable: number | null }) {
         ...(target.index === undefined ? {} : { index: target.index }),
         allowOverflow: true,
       },
-      seatMessage(p, name, t),
+      seatMessage(data.tables, p, name, t),
     );
   };
 
@@ -235,23 +300,45 @@ function Seating({ initialTable }: { initialTable: number | null }) {
     };
   }, [mobile]);
 
-  const detailInfo = selected === null ? null : tables.get(selected === 'staff' ? STAFF_TABLE_ID : selected);
-  const detail =
-    detailInfo && selected !== null ? (
-      <TableDetail
-        key={String(selected)}
-        info={detailInfo}
-        mobile={mobile}
-        draggable={draggable}
-        readOnly={!isEditor}
-        onClose={() => setSelected(null)}
-        onAddPeople={() => setDialog('add')}
-        onSwap={() => setDialog('swap')}
-        onClear={() => setDialog('clear')}
-      />
-    ) : null;
+  // 選了「未放桌」的位置：那個位置有桌（例如剛新增）時顯示那一桌的詳情，沒有時顯示「未放桌」的面板（SEAT-R95、R96）
+  const slotPosition = typeof selected === 'object' && selected !== null ? selected.position : null;
+  const detailInfo =
+    selected === null
+      ? null
+      : slotPosition !== null
+        ? (byPosition.get(slotPosition) ?? null)
+        : (tables.get(selected === 'staff' ? STAFF_TABLE_ID : (selected as number)) ?? null);
+  const detail = detailInfo ? (
+    <TableDetail
+      key={`table-${detailInfo.id}`}
+      info={detailInfo}
+      mobile={mobile}
+      draggable={draggable}
+      readOnly={!isEditor}
+      onClose={() => setSelected(null)}
+      onAddPeople={() => setDialog('add')}
+      onSwap={() => setDialog('swap')}
+      onClear={() => setDialog('clear')}
+      onMoveToStaging={() => {
+        if (moveTable(detailInfo, 'staging')) setSelected(null);
+      }}
+      onPlace={() => setDialog('place')}
+      onDelete={() => setDialog('delete')}
+    />
+  ) : slotPosition !== null && isEditor ? (
+    <EmptySlotPanel
+      key={`slot-${slotPosition}`}
+      position={slotPosition}
+      mobile={mobile}
+      onClose={() => setSelected(null)}
+      onCreate={() => {
+        ops.run({ type: 'createTable', position: slotPosition }, msg.created(positionCode(slotPosition)));
+      }}
+    />
+  ) : null;
 
-  const noted = data.tables.filter((t) => t.id !== STAFF_TABLE_ID && t.noteName).length;
+  // 自動排座「有備註名稱的 {k} 桌不動」只算場上的桌（ARR-R02、D-027）
+  const noted = data.tables.filter((t) => t.id !== STAFF_TABLE_ID && t.position !== null && t.noteName).length;
 
   return (
     <PersonActionsContext.Provider value={personActions}>
@@ -305,6 +392,9 @@ function Seating({ initialTable }: { initialTable: number | null }) {
             {!mobile || mobileTab === 'map' ? (
               <SeatMap
                 tables={tables}
+                showSlots
+                onOpenSlot={isEditor ? (position) => setSelected({ position }) : undefined}
+                staged={staged}
                 expanded={prefs.expanded}
                 manualPct={manualPct}
                 onManualPct={(pct) => setManualPct(pct === null ? null : clampPct(pct))}
@@ -315,7 +405,7 @@ function Seating({ initialTable }: { initialTable: number | null }) {
                 }}
                 onAutoArrange={isEditor ? () => setDialog('auto') : undefined}
                 onShowPanel={!mobile && !panelOpen ? () => setPrefs({ panel: true }) : undefined}
-                covered={!mobile && selected !== null}
+                covered={!mobile && detail !== null}
                 selected={selected}
                 hit={hit}
                 onOpen={(target) => setSelected(target)}
@@ -332,10 +422,33 @@ function Seating({ initialTable }: { initialTable: number | null }) {
         {isEditor ? (
           <>
             {seatFor !== null ? <TableSelectDialog open={seatOpen} onOpenChange={setSeatOpen} participantId={seatFor} /> : null}
-            {detailInfo && typeof selected === 'number' ? (
+            {detailInfo && !detailInfo.isStaff ? (
               <>
-                <SwapDialog open={dialog === 'swap'} onOpenChange={(o) => setDialog(o ? 'swap' : null)} tableId={selected} tables={tables} />
+                {detailInfo.position !== null ? (
+                  <SwapDialog
+                    key={`swap-${detailInfo.id}`}
+                    open={dialog === 'swap'}
+                    onOpenChange={(o) => setDialog(o ? 'swap' : null)}
+                    tableId={detailInfo.id}
+                    tables={tables}
+                  />
+                ) : (
+                  <PlaceDialog
+                    key={`place-${detailInfo.id}`}
+                    open={dialog === 'place'}
+                    onOpenChange={(o) => setDialog(o ? 'place' : null)}
+                    tableId={detailInfo.id}
+                    tables={tables}
+                    onPlaced={() => setSelected(null)}
+                  />
+                )}
                 <ClearDialog open={dialog === 'clear'} onOpenChange={(o) => setDialog(o ? 'clear' : null)} info={detailInfo} />
+                <DeleteTableDialog
+                  open={dialog === 'delete'}
+                  onOpenChange={(o) => setDialog(o ? 'delete' : null)}
+                  info={detailInfo}
+                  onDeleted={() => setSelected(null)}
+                />
               </>
             ) : null}
             {detailInfo ? (

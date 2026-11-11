@@ -3,6 +3,7 @@ import type { Employee, Participant, SeatTable } from '@/contracts/entities';
 import type { AutoArrangeSummary, SeatingOperation, SeatingResult, SeatingSnapshot } from '@/contracts/seating';
 import { autoArrange as arrangeSeats } from '@/domain/auto-arrange';
 import { applySeatingOperation, normalizeTables } from '@/domain/seating-rules';
+import { nextTableId } from '@/domain/tables';
 import { Prisma } from '@/generated/prisma/client';
 import { prisma } from '../db';
 import { AppError } from '../http';
@@ -14,6 +15,7 @@ import { toEmployee, toParticipant, toSeatTable } from './state';
 // 拿到鎖之後才讀資料，再用 src/domain/seating-rules.ts 的同一份規則驗證，只寫入有改變的列。
 // 兩人同時搶最後一個位子時，後拿到鎖的一方看到已滿，回 409：從選單入座（上限 10 位）是 TABLE_FULL，
 // 拖移或「加入人員」（allowOverflow，上限 12 位）是 TABLE_LIMIT；工作人員桌是 STAFF_TABLE_FULL／STAFF_TABLE_LIMIT（D-018）。
+// 搬動、新增、刪除桌子也在同一個鎖下（D-027）：新增桌的 id 取目前最大的 id 加 1（從 31 起），兩人同時新增也不會撞號。
 
 type Tx = Prisma.TransactionClient;
 
@@ -60,7 +62,7 @@ export async function runSeatingOperation(op: SeatingOperation, ctx: { requestId
 
       if (op.type === 'autoArrange') return autoArrange(tx, op.mode, participants, tables);
 
-      const r = applySeatingOperation({ participants, tables }, op);
+      const r = applySeatingOperation({ participants, tables }, op, { now: new Date().toISOString(), nextTableId: nextTableId(tables) });
       if (!r.ok) throw new AppError(r.violation, VIOLATION_MESSAGE[r.violation]);
       return write(tx, participants, tables, r.data.participants, r.data.tables, r.undo);
     },
@@ -73,7 +75,7 @@ export async function runSeatingOperation(op: SeatingOperation, ctx: { requestId
     userId: ctx.userId,
     operation: op.type,
     affectedParticipants: result.participants.length,
-    affectedTables: result.tables.length,
+    affectedTables: result.tables.length + result.deletedTableIds.length,
   });
   return result;
 }
@@ -92,7 +94,7 @@ async function autoArrange(
     mode,
   });
   // 一位都沒排進去：座位都不變，清空後重排也不清空（ARR-Q02 的目前假設）
-  if (summary.placed === 0) return { participants: [], tables: [], undo: { participants: [], tables: [] }, summary };
+  if (summary.placed === 0) return { participants: [], tables: [], deletedTableIds: [], undo: { participants: [], tables: [] }, summary };
 
   const byId = new Map(participants.map((p) => [p.id, p]));
   const after = participants.map((p) => ({ ...p }));
@@ -102,7 +104,10 @@ async function autoArrange(
   for (const c of changes) {
     const p = afterById.get(c.participantId);
     if (!p) throw new AppError('NOT_FOUND', VIOLATION_MESSAGE.NOT_FOUND);
-    if (c.tableId !== null && !tables.some((t) => t.id === c.tableId)) throw new AppError('CONFLICT', 'unknown table');
+    // 只能排進場上的桌（ARR-R02、D-027）
+    if (c.tableId !== null && !tables.some((t) => t.id === c.tableId && t.kind === 'NORMAL' && t.position !== null)) {
+      throw new AppError('CONFLICT', 'unknown table');
+    }
     if (p.tableId !== null) touched.add(p.tableId);
     if (c.tableId !== null) touched.add(c.tableId);
     if (c.tableId !== null && c.tableId !== p.tableId) gained.add(c.tableId);
@@ -132,6 +137,30 @@ async function write(
   afterTables: SeatTable[],
   undo: SeatingSnapshot,
 ): Promise<SeatingResult> {
+  const prevTables = new Map(beforeTables.map((t) => [t.id, t]));
+  const afterIds = new Set(afterTables.map((t) => t.id));
+  const created = afterTables.filter((t) => !prevTables.has(t.id));
+  const deleted = beforeTables.filter((t) => !afterIds.has(t.id));
+  const changedTables = afterTables.filter((t) => {
+    const b = prevTables.get(t.id);
+    return b && (b.position !== t.position || b.stagedAt !== t.stagedAt || b.noteName !== t.noteName);
+  });
+
+  // 桌子（D-027）：先新增（參與人員可能要坐進復原重建的桌），位置 unique，對調時先把動到的桌移開再放上去
+  const moved = changedTables.filter((t) => prevTables.get(t.id)!.position !== t.position);
+  for (const t of moved) await tx.seatTable.update({ where: { id: t.id }, data: { position: null } });
+  for (const t of created) {
+    await tx.seatTable.create({
+      data: { id: t.id, kind: t.kind, position: t.position, stagedAt: t.stagedAt ? new Date(t.stagedAt) : null, noteName: t.noteName },
+    });
+  }
+  for (const t of changedTables) {
+    await tx.seatTable.update({
+      where: { id: t.id },
+      data: { position: t.position, stagedAt: t.stagedAt ? new Date(t.stagedAt) : null, noteName: t.noteName },
+    });
+  }
+
   const prevById = new Map(before.map((p) => [p.id, p]));
   const changed = after.filter((p) => {
     const b = prevById.get(p.id);
@@ -142,16 +171,18 @@ async function write(
     // 這段期間被別人刪除（刪除人員不經過桌次鎖）
     if (count === 0) throw new AppError('NOT_FOUND', VIOLATION_MESSAGE.NOT_FOUND);
   }
-
-  const prevTables = new Map(beforeTables.map((t) => [t.id, t]));
-  const changedTables = afterTables.filter((t) => prevTables.get(t.id)?.noteName !== t.noteName);
-  for (const t of changedTables) await tx.seatTable.update({ where: { id: t.id }, data: { noteName: t.noteName } });
+  // 刪除桌放在最後：桌上的人已經改成未入座
+  if (deleted.length) await tx.seatTable.deleteMany({ where: { id: { in: deleted.map((t) => t.id) } } });
 
   // 回傳寫入後的完整資料（含 createdAt 等欄位），讓前端用來校正畫面
   const fresh = changed.length
     ? (await tx.participant.findMany({ where: { id: { in: changed.map((p) => p.id) } }, orderBy: { id: 'asc' } })).map(toParticipant)
     : [];
-  return { participants: fresh, tables: changedTables, undo };
+  const touchedTableIds = [...created, ...changedTables].map((t) => t.id);
+  const freshTables = touchedTableIds.length
+    ? (await tx.seatTable.findMany({ where: { id: { in: touchedTableIds } }, orderBy: { id: 'asc' } })).map(toSeatTable)
+    : [];
+  return { participants: fresh, tables: freshTables, deletedTableIds: deleted.map((t) => t.id), undo };
 }
 
 /** 修改桌次的備註名稱（SEAT-R12）；不能復原，兩人先後修改時以後改的為準（COM-R09）。工作人員桌沒有備註名稱（SEAT-R48） */

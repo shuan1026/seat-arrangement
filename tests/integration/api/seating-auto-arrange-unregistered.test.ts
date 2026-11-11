@@ -61,10 +61,20 @@ class Stored {
 }
 
 /**
- * 把 Scenario 原樣寫進資料庫：員工名單順序（sortOrder）、參與人員（依加入先後建立）、眷屬的所屬員工、座位與座號、備註名稱。
- * 資料庫的 id 和 Scenario 的 id 不同，用顯示名稱對照。
+ * 把 Scenario 原樣寫進資料庫：桌子（位置、暫存區、刪掉與新增的桌，D-027）、員工名單順序（sortOrder）、參與人員（依加入先後建立）、
+ * 眷屬的所屬員工、座位與座號、備註名稱。桌子的 id 和 Scenario 相同；參與人員的 id 和 Scenario 不同，用顯示名稱對照。
  */
 async function store(s: Scenario): Promise<Stored> {
+  // 桌子先寫好（參與人員的 tableId 參照桌子）：position 有 unique，先清成 null 再逐一設定
+  const ids = new Set(s.tables.map((t) => t.id));
+  await prisma.seatTable.updateMany({ where: { kind: 'NORMAL' }, data: { position: null } });
+  await prisma.seatTable.deleteMany({ where: { kind: 'NORMAL', id: { notIn: [...ids] } } });
+  for (const t of s.tables) {
+    if (t.kind !== 'NORMAL') continue;
+    const data = { position: t.position, stagedAt: t.stagedAt ? new Date(t.stagedAt) : null, noteName: t.noteName };
+    await prisma.seatTable.upsert({ where: { id: t.id }, update: data, create: { id: t.id, kind: 'NORMAL', ...data } });
+  }
+
   const employeeIds = new Map<number, number>();
   for (const e of s.employees) {
     const row = await prisma.employee.create({
@@ -92,19 +102,18 @@ async function store(s: Scenario): Promise<Stored> {
     idOf.set(name, row.id);
     nameOf.set(row.id, name);
   }
-  for (const t of s.tables) {
-    if (t.noteName !== null) await prisma.seatTable.update({ where: { id: t.id }, data: { noteName: t.noteName } });
-  }
   return new Stored(s, idOf, nameOf);
 }
 
 const arrange = (mode: ArrangeMode): Promise<SeatingResult> => operate({ type: 'autoArrange', mode });
 
-/** 排座之後每一次都要成立：每桌最多 10 位、座號從 0 起連續、未入座沒有座號（SEAT-R06、docs/architecture.md 第 7.2 節） */
+/** 排座之後每一次都要成立：場上每桌最多 10 位、座號從 0 起連續、未入座沒有座號（SEAT-R06、docs/architecture.md 第 7.2 節） */
 async function expectValidSeats() {
   await expectAllContiguous();
   for (let t = 1; t <= TABLE_COUNT; t++) {
-    expect(await prisma.participant.count({ where: { tableId: t } }), `${codeOf(t)} 桌`).toBeLessThanOrEqual(10);
+    const table = await prisma.seatTable.findFirst({ where: { position: t, kind: 'NORMAL' } });
+    if (!table) continue;
+    expect(await prisma.participant.count({ where: { tableId: table.id } }), `${codeOf(t)} 桌`).toBeLessThanOrEqual(10);
   }
 }
 
@@ -457,4 +466,70 @@ describe('2026 年示範資料的結構（auto-arrange.md 第 5.2 節、ARR-AC19
     },
     120_000,
   );
+});
+
+// D-027（auto-arrange.md v1.3）：伺服器把桌子的位置交給演算法；「未放桌」的位置跳過、不新增桌；暫存區的桌與上面的人不動
+describe('「未放桌」與暫存區（ARR-R02～R04、R12、R15、ARR-AC23～AC25、D-027）', () => {
+  it('ARR-AC23：B1 是「未放桌」，業1–業12 未入座 → 只排未入座：業1–業10 在 A1 桌、業11–業12 在 B4 桌；B1 仍是「未放桌」，桌數不變；「已把 12 位安排到 2 桌。」的數字', async () => {
+    const db = await store(new Scenario().addGroup('業務部', null, range('業', 1, 12)).removeTable(1));
+    const tablesBefore = await prisma.seatTable.count();
+
+    const result = await arrange('unseatedOnly');
+
+    expect(await db.table(2)).toEqual(range('業', 1, 10));
+    expect(await db.table(3)).toEqual(['業11', '業12']);
+    expect(await prisma.seatTable.findFirst({ where: { position: 1 } })).toBeNull();
+    expect(await prisma.seatTable.count()).toBe(tablesBefore);
+    expect(result.summary).toEqual({ placed: 12, tableIds: [2, 3], left: 0 });
+    expect(result.tables).toEqual([]);
+    expect(result.deletedTableIds).toEqual([]);
+    await expectValidSeats();
+  });
+
+  it('ARR-AC24：暫存區有一桌坐研1、研2；業1 未入座 → 只排未入座：B1 桌為業1，暫存的桌仍坐研1、研2；「已把 1 位安排到 1 桌。」的數字', async () => {
+    const db = await store(
+      new Scenario().addGroup('研發部', null, ['研1', '研2']).addGroup('業務部', null, ['業1']).addStagedTable(31).seat(31, ['研1', '研2']),
+    );
+
+    const result = await arrange('unseatedOnly');
+
+    expect(await db.table(1)).toEqual(['業1']);
+    expect(await db.table(31)).toEqual(['研1', '研2']);
+    expect(await prisma.seatTable.findUniqueOrThrow({ where: { id: 31 } })).toMatchObject({ position: null });
+    expect(result.summary).toEqual({ placed: 1, tableIds: [1], left: 0 });
+    await expectValidSeats();
+  });
+
+  it('ARR-AC25：暫存區有一桌坐研1、研2；A1 桌坐業1 → 清空後重排：業1 排回 B1；暫存的桌不清空，研1、研2 不在暫存區以外出現；復原一次回到排座之前', async () => {
+    const db = await store(
+      new Scenario()
+        .addGroup('研發部', null, ['研1', '研2'])
+        .addGroup('業務部', null, ['業1'])
+        .addStagedTable(31)
+        .seat(31, ['研1', '研2'])
+        .seat(2, ['業1']),
+    );
+    const before = await allPositions();
+
+    const result = await arrange('rebuild');
+
+    expect(await db.table(1)).toEqual(['業1']);
+    expect(await db.table(2)).toEqual([]);
+    expect(await db.table(31)).toEqual(['研1', '研2']);
+    for (const name of ['研1', '研2']) expect((await db.position(name)).tableId, name).toBe(31);
+    expect(result.summary).toEqual({ placed: 1, tableIds: [1], left: 0 });
+
+    await operate({ type: 'restore', snapshot: result.undo });
+    expect(await allPositions()).toEqual(before);
+  });
+
+  it('依所在位置的填桌順序：B1 的桌移到暫存區、id 5 的桌搬到 B1 → 先填 id 5 那一桌（在 B1 的位置）', async () => {
+    const db = await store(new Scenario().addGroup('業務部', null, range('業', 1, 3)).stage(1).place(5, 1));
+
+    const result = await arrange('unseatedOnly');
+
+    expect(await db.table(5)).toEqual(range('業', 1, 3));
+    expect(await db.table(1)).toEqual([]);
+    expect(result.summary).toEqual({ placed: 3, tableIds: [5], left: 0 });
+  });
 });

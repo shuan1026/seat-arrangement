@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 版本 | v0.3（階段 3 加入檢視者權限，D-026） |
+| 版本 | v0.4（階段 3 加入桌子的新增、刪除、搬動與暫存區，D-027） |
 | 日期 | 2026-11-11 |
 | 依據 | `docs/spec/`（正式規格）、`docs/architecture.md`（技術架構）、`docs/decision-record.md` |
 | 讀者 | 使用者、主 agent、各線的實作與測試 agent |
@@ -157,7 +157,14 @@
       - 做法見 `docs/architecture.md` 第 7.1、8、9.3、11.5 節。
     - 照流程先由 test-writer 依 `docs/spec/permissions.md` v1.2、`README.md` 第 2、8 節（AUTH-R11～R17、AUTH-AC15～AC27）更新與補測試。測試工具的預設帳號仍是編輯者；檢視者的情境改用以 `VIEWER` 寫進 `Member` 的帳號，另用一個不在名單上的帳號測沒有權限。
     - **部署這一版後**，名單上只有原本的編輯者，其他同仁會立刻看不到三頁；使用者部署前先準備好要加的檢視者，部署後馬上在權限頁加入。
-12. 全部測試通過。
+12. 桌子可以新增、刪除、搬動，場地旁加暫存區（D-027）。
+    - 資料：Prisma migration 給 `SeatTable` 加 `position`（unique，null 是暫存區）與 `stagedAt`，既有 30 桌 `position = id`；新增的桌由服務層取最大 id 加 1（從 31 起）。
+    - 指令：座位異動指令的 `swap` 改成 `moveTable`（含 `expectedTableId` 防止多人衝突），新增 `createTable`、`deleteTable`；`restore` 的快照包含桌子的位置與被刪除的桌；暫存的桌不能入座。
+    - 畫面：座位圖畫「未放桌」與暫存區；拖桌子的把手到位置或暫存區；桌次詳情加「移到暫存區」「刪除桌」；暫存的桌的詳情與「放到…」；「未放桌」的面板與「新增桌」；人員面板與參與人員頁的「暫存」徽章。
+    - 連動：統計列、選擇桌次與桌次篩選只算場上的桌；自動排座跳過「未放桌」、不動暫存區；匯出「未放桌」空白、暫存區的人列在未入座；發布頁不顯示「未放桌」與暫存區。
+    - 照流程先由 test-writer 依 `docs/spec/seating.md` v1.7（SEAT-R01、R04、R23、R35～R39、R57、R64、R69、R75～R78、R82、R84、R85、R90～R98，SEAT-AC21、AC30、AC107～AC128）、`auto-arrange.md`（ARR-AC23～25）、`export.md`（EXP-R24、EXP-AC24、25）、`participants.md`（PPL-AC91～93）、`permissions.md`（PRM-AC45）補測試，並更新用到 `swap` 的既有測試。
+13. 全部測試通過。
+
 
 ## 7. 階段 4：上線
 

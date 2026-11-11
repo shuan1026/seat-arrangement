@@ -1,13 +1,15 @@
-// 30 桌與工作人員桌的排列與桌號：docs/spec/seating.md 第 2.1.4 節（桌號與位置、欄與列）；SEAT-R01、R03～R05；
-// docs/decision-record.md D-019（內部編號 1–30 ↔ 桌號 A1～A15、B1～B15 的對應、清單順序、填桌順序）；
-// docs/architecture.md「桌號」（資料庫與 API 用內部編號，畫面、匯出與網址參數用桌號，對應寫在 src/domain/layout.ts）；
+// 30 個位置與工作人員桌的排列與桌號：docs/spec/seating.md 第 2.1.4 節（桌號與位置、欄與列）；SEAT-R01、R03～R05；
+// docs/decision-record.md D-019（位置編號 1–30 ↔ 桌號 A1～A15、B1～B15 的對應、清單順序、填桌順序）；
+// docs/architecture.md「桌號」（資料庫與 API 用位置編號 position，畫面、匯出與網址參數用桌號，對應寫在 src/domain/layout.ts）；
 // docs/spec/auto-arrange.md「填桌順序」。
+// D-027 起桌子和位置分開：這個檔案的函式名稱不變，但參數的意思是「位置編號 1–30」（SeatTable.position），不是桌子的 id。
+// 部署時 1–30 桌的 position = id，所以既有的對應表照用；桌子搬到別的位置，桌號就換成那個位置的代碼（SEAT-R04）。
 //
 // 假設 src/domain/layout.ts 另外匯出（實作請照這個介面）：
-//   export function tableCodeOf(tableId: number): string | undefined;   // 內部編號 → 桌號，例如 1 → 'B1'；工作人員桌與 1–30 以外是 undefined
-//   export function tableIdOfCode(code: string): number | undefined;    // 桌號 → 內部編號，例如 'A1' → 2；不是 A1～A15、B1～B15 是 undefined
+//   export function tableCodeOf(position: number): string | undefined;  // 位置編號 → 桌號，例如 1 → 'B1'；1–30 以外（含工作人員桌 0）是 undefined
+//   export function tableIdOfCode(code: string): number | undefined;    // 桌號 → 位置編號，例如 'A1' → 2；不是 A1～A15、B1～B15 是 undefined
 //   export const TABLE_CODES_IN_ORDER: readonly string[];               // 清單順序：A1～A15，再 B1～B15（SEAT-R04）
-//   export const FILL_ORDER: readonly number[];                         // 自動排座的填桌順序（內部編號）：1、2、3…30
+//   export const FILL_ORDER: readonly number[];                         // 自動排座的填桌順序（位置編號）：1、2、3…30
 // 預期值照規格寫死（tests/helpers/table-codes.ts），不從實作推導。
 import { describe, expect, it } from 'vitest';
 import { STAFF_TABLE_ID, TABLE_COUNT } from '@/contracts/entities';
@@ -51,14 +53,14 @@ for (const { row, cells } of GRID) {
 
 const tableIds = Array.from({ length: TABLE_COUNT }, (_, i) => i + 1);
 
-describe('30 桌（SEAT-R01）', () => {
-  it('共 30 桌，內部編號 1–30 各一桌', () => {
+describe('30 個位置（SEAT-R01、D-027）', () => {
+  it('共 30 個位置，位置編號 1–30 各一個；數量與排列固定', () => {
     expect(TABLE_COUNT).toBe(30);
     expect(TABLE_LAYOUT).toHaveLength(30);
     expect(TABLE_LAYOUT.map((t) => t.id).sort((a, b) => a - b)).toEqual(tableIds);
   });
 
-  it('不在 30 桌與工作人員桌裡的內部編號沒有位置', () => {
+  it('1–30 以外的編號不是位置（新增的桌從 id 31 起，但位置仍只有 30 個；暫存區不是位置）', () => {
     expect(placementOf(31)).toBeUndefined();
     expect(placementOf(-1)).toBeUndefined();
   });

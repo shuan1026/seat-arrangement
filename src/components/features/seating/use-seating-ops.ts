@@ -23,15 +23,29 @@ const OPERATIONS_URL = '/api/seating/operations';
 
 const postOperation = (op: SeatingOperation) => apiFetch<SeatingResult>(OPERATIONS_URL, { method: 'POST', json: op });
 
-/** 用伺服器回應覆蓋 store 中對應的人與桌 */
-export function mergeResult(data: AppState, res: { participants: SeatingResult['participants']; tables: SeatTable[] }): AppState {
-  if (!res.participants.length && !res.tables.length) return data;
+/**
+ * 用伺服器回應覆蓋 store 中對應的人與桌（D-027：桌子可能新增或刪除）。
+ * 回應裡的桌覆蓋或加進來；deletedTableIds 拿掉；和回應裡的桌在同一個位置、但回應裡沒有的桌是畫面上先放的暫時資料
+ * （例如新增桌時伺服器給了不同的 id），一併拿掉，同一個位置不會有兩張桌。
+ */
+export function mergeResult(
+  data: AppState,
+  res: { participants: SeatingResult['participants']; tables: SeatTable[]; deletedTableIds?: readonly number[] },
+): AppState {
+  const deleted = new Set(res.deletedTableIds ?? []);
+  if (!res.participants.length && !res.tables.length && !deleted.size) return data;
   const people = new Map(res.participants.map((p) => [p.id, p]));
-  const tables = new Map(res.tables.map((t) => [t.id, t]));
+  const fresh = new Map(res.tables.map((t) => [t.id, t]));
+  const freshPositions = new Set(res.tables.filter((t) => t.position !== null).map((t) => t.position));
+  const kept = data.tables
+    .filter((t) => !deleted.has(t.id))
+    .filter((t) => fresh.has(t.id) || t.position === null || !freshPositions.has(t.position))
+    .map((t) => fresh.get(t.id) ?? t);
+  const added = res.tables.filter((t) => !data.tables.some((x) => x.id === t.id));
   return {
     ...data,
     participants: data.participants.map((p) => people.get(p.id) ?? p),
-    tables: data.tables.map((t) => tables.get(t.id) ?? t),
+    tables: [...kept, ...added],
   };
 }
 
@@ -53,11 +67,18 @@ let boundStore: unknown = null;
 // store 的 undo 上一次的值：只在它從有值變成 null（衝突後重新載入）時清掉，元件掛載時不清
 let lastSeenUndo: unknown = null;
 
-/** 桌次已滿的提示：從選單入座到 10 位「已滿」，拖移或「加入人員」到 12 位「已達 12 位」（SEAT-R20、SEAT-R23、SEAT-R86） */
+/** 目前畫面上的桌（提示要用桌號）：useSeatingOps 每次繪製時更新 */
+let currentTables: readonly SeatTable[] = [];
+
+/**
+ * 桌次已滿的提示：從選單入座到 10 位「已滿」，拖移或「加入人員」到 12 位「已達 12 位」（SEAT-R20、SEAT-R23、SEAT-R86）。
+ * 指令裡是桌子 id，提示用那張桌所在位置的桌號（D-027）
+ */
 function tableMessage(code: SeatingViolation | ErrorCode, op: SeatingOperation): string | undefined {
   if (op.type !== 'seat' && op.type !== 'seatMany') return undefined;
-  if (code === 'TABLE_FULL') return tableFullMessage(op.tableId);
-  if (code === 'TABLE_LIMIT') return tableLimitMessage(op.tableId);
+  const position = currentTables.find((t) => t.id === op.tableId)?.position ?? op.tableId;
+  if (code === 'TABLE_FULL') return tableFullMessage(position);
+  if (code === 'TABLE_LIMIT') return tableLimitMessage(position);
   return undefined;
 }
 
@@ -96,6 +117,7 @@ export function useSeatingOps() {
   const latest = useRef(data);
   useLayoutEffect(() => {
     latest.current = data;
+    currentTables = data.tables;
   });
   useEffect(() => {
     if (storeUndo === null && lastSeenUndo !== null) latestUndo = null;

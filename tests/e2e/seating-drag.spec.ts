@@ -7,9 +7,10 @@
 import { expect, test } from '@playwright/test';
 import { signIn } from './helpers/auth';
 import { isMobileWidth, requireBaseURL } from './helpers/page-checks';
-import { noteNameOf, participantCount, rosterNames, seed } from './helpers/seating-data';
+import { noteNameAt, noteNameOf, participantCount, rosterNames, rosterNamesAt, seed } from './helpers/seating-data';
 import {
   blankPointIn,
+  emptySlot,
   cardRows,
   cursorAt,
   detailRows,
@@ -351,8 +352,10 @@ test.describe('拖移後部門標示立即更新（SEAT-R07、R08、R10）', () 
   });
 });
 
+// D-027：對調時兩桌交換位置（名單與備註名稱跟著桌子），畫面上的結果和原本相同：B4 的位置上是原本 B2 的名單。
+// 資料庫用位置查（rosterNamesAt、noteNameAt），不用桌子的 id。搬到「未放桌」、暫存區等見 seating-tables.spec.ts。
 test.describe('拖移把手對調桌次（SEAT-R35～R38）', () => {
-  test('拖 B4 桌的把手到 B2 桌：名單與備註名稱整組對調，桌號與位置不變，Sonner「已把 B4 桌和 B2 桌對調。」帶「復原」（SEAT-AC30）', async ({
+  test('拖 B4 桌的把手到 B2 桌：名單與備註名稱整組對調，桌號與位置不變，B4、B2 都還有桌，Sonner「已把 B4 桌和 B2 桌對調。」帶「復原」（SEAT-AC30）', async ({
     page,
   }) => {
     await seed(async (s) => {
@@ -367,12 +370,14 @@ test.describe('拖移把手對調桌次（SEAT-R35～R38）', () => {
     await dragAndDrop(page, tableHandle(page, 3), tableButton(page, 7));
 
     await expectToast(page, '已把 B4 桌和 B2 桌對調。', { undo: true });
-    await expect.poll(() => rosterNames(3)).toEqual(['丙', '丁', '戊']);
-    expect(await rosterNames(7)).toEqual(['甲', '乙']);
-    expect(await noteNameOf(3)).toBeNull();
-    expect(await noteNameOf(7)).toBe('主桌');
+    await expect.poll(() => rosterNamesAt(3)).toEqual(['丙', '丁', '戊']);
+    expect(await rosterNamesAt(7)).toEqual(['甲', '乙']);
+    expect(await noteNameAt(3)).toBeNull();
+    expect(await noteNameAt(7)).toBe('主桌');
     await expect(mapTable(page, 3)).toContainText('3/10');
     await expect(mapTable(page, 7)).toContainText('2/10');
+    await expect(emptySlot(page, 3)).toHaveCount(0);
+    await expect(emptySlot(page, 7)).toHaveCount(0);
     expect(await mapTable(page, 3).boundingBox()).toEqual(box3);
     expect(await mapTable(page, 7).boundingBox()).toEqual(box7);
   });
@@ -399,11 +404,11 @@ test.describe('拖移把手對調桌次（SEAT-R35～R38）', () => {
     await openSeating(page);
     await dragAndDrop(page, tableHandle(page, 3), tableButton(page, 7));
     await expectToast(page, '已把 B4 桌和 B2 桌對調。', { undo: true });
-    await expect.poll(() => rosterNames(3)).toEqual(['甲']);
-    expect(await rosterNames(7)).toHaveLength(10);
+    await expect.poll(() => rosterNamesAt(3)).toEqual(['甲']);
+    expect(await rosterNamesAt(7)).toHaveLength(10);
   });
 
-  test('拖到空桌：整桌（名單與備註名稱）搬過去，原本的桌變成空桌、沒有備註名稱（SEAT-R36、SEAT-AC32）', async ({ page }) => {
+  test('拖到空桌：整桌（名單與備註名稱）搬過去，B4 的位置變成空桌、沒有備註名稱（SEAT-R36、SEAT-AC32）', async ({ page }) => {
     await seed(async (s) => {
       await s.noteName(3, '主桌');
       for (const name of ['甲', '乙']) await s.employee(name, { tableId: 3 });
@@ -411,10 +416,10 @@ test.describe('拖移把手對調桌次（SEAT-R35～R38）', () => {
     await openSeating(page);
     await dragAndDrop(page, tableHandle(page, 3), tableButton(page, 9));
     await expectToast(page, '已把 B4 桌和 B8 桌對調。', { undo: true });
-    await expect.poll(() => rosterNames(9)).toEqual(['甲', '乙']);
-    expect(await noteNameOf(9)).toBe('主桌');
-    expect(await rosterNames(3)).toEqual([]);
-    expect(await noteNameOf(3)).toBeNull();
+    await expect.poll(() => rosterNamesAt(9)).toEqual(['甲', '乙']);
+    expect(await noteNameAt(9)).toBe('主桌');
+    expect(await rosterNamesAt(3)).toEqual([]);
+    expect(await noteNameAt(3)).toBeNull();
     await expect(mapTable(page, 3)).toContainText('0/10');
   });
 

@@ -17,6 +17,7 @@ import { prisma, resetData } from '../../helpers/db';
 import { createGuest } from '../../helpers/factory';
 import {
   allPositions,
+  allTableRows,
   expectAllContiguous,
   expectError,
   newUnseated,
@@ -72,6 +73,23 @@ describe('autoArrange：呼叫登記的排座函式', () => {
     expect(input.employees.map((e) => e.name)).toContain('王小明');
     expect(input.tables).toHaveLength(31);
     expect(input.tables.find((t) => t.id === 1)?.noteName).toBe('主桌');
+  });
+
+  it('D-027：桌次帶 position 與 stagedAt 交給排座函式；暫存的桌與新增的桌都在，刪掉的桌不在', async () => {
+    const stagedAt = new Date('2026-11-01T08:00:00.000Z');
+    await prisma.seatTable.update({ where: { id: 1 }, data: { position: null, stagedAt } });
+    await prisma.seatTable.delete({ where: { id: 9 } });
+    await prisma.seatTable.create({ data: { id: 31, kind: 'NORMAL', position: 9 } });
+    arranger.mockReturnValue({ changes: [], summary: { placed: 0, tableIds: [], left: 0 } });
+
+    await operate({ type: 'autoArrange', mode: 'unseatedOnly' });
+
+    const input = arranger.mock.calls[0]![0];
+    expect(input.tables).toHaveLength(31);
+    expect(input.tables.find((t) => t.id === 1)).toEqual({ id: 1, kind: 'NORMAL', position: null, stagedAt: stagedAt.toISOString(), noteName: null });
+    expect(input.tables.find((t) => t.id === 31)).toEqual({ id: 31, kind: 'NORMAL', position: 9, stagedAt: null, noteName: null });
+    expect(input.tables.find((t) => t.id === 9)).toBeUndefined();
+    expect(input.tables.find((t) => t.id === 3)).toMatchObject({ position: 3, stagedAt: null });
   });
 
   it('範圍「只排未入座」也原樣交給排座函式', async () => {
@@ -155,6 +173,24 @@ describe('autoArrange：套用與復原（ARR-R13、SEAT-R76、SEAT-R78）', () 
     expect(await noteNameOf(2)).toBeNull();
     expect(result.undo.tables).toEqual([]);
     expect(await staffIds()).toEqual(staff);
+  });
+
+  it('不搬動、新增或刪除桌子，暫存的桌與上面的人不變（ARR-R12、D-027）', async () => {
+    await prisma.seatTable.update({ where: { id: 1 }, data: { position: null, stagedAt: new Date('2026-11-01T08:00:00.000Z') } });
+    const onStaged = await seatNewEmployees(1, 2);
+    const a = await newUnseated();
+    const tables = await allTableRows();
+    arranger.mockReturnValue({
+      changes: [{ participantId: a, tableId: 2, seatOrder: 0 }],
+      summary: { placed: 1, tableIds: [2], left: 0 },
+    });
+
+    const result = await operate({ type: 'autoArrange', mode: 'rebuild' });
+
+    expect(await allTableRows()).toEqual(tables);
+    expect(result.tables).toEqual([]);
+    expect(result.deletedTableIds).toEqual([]);
+    expect(await roster(1)).toEqual(onStaged);
   });
 
   it('排不下的人留在未入座，摘要原樣回傳（ARR-R11、ARR-R14）', async () => {

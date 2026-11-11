@@ -107,6 +107,11 @@ const countAt = (tx: Db, tableId: number, except?: number) =>
 
 /** 排到這一桌名單的最後；已滿時 TABLE_FULL／STAFF_TABLE_FULL（呼叫前要先鎖住這一桌） */
 async function seatAtEnd(tx: Db, tableId: number, except?: number): Promise<Seat> {
+  if (tableId !== STAFF_TABLE_ID) {
+    // 只能選場上的桌：桌已被刪除或移到暫存區時，當作別人剛改過資料（PPL-R56、D-027）
+    const table = await tx.seatTable.findUnique({ where: { id: tableId }, select: { kind: true, position: true } });
+    if (!table || table.kind !== 'NORMAL' || table.position === null) throw new AppError('CONFLICT', 'table is not on the floor');
+  }
   const n = await countAt(tx, tableId, except);
   if (tableId === STAFF_TABLE_ID) {
     if (n >= STAFF_TABLE_CAPACITY) throw new AppError('STAFF_TABLE_FULL', 'staff table is full');

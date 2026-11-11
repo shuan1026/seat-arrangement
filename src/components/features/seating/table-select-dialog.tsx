@@ -8,11 +8,11 @@ import { useMemo, useState } from 'react';
 import { useAppStore } from '@/client/app-provider';
 import { STAFF_TABLE_ID } from '@/contracts/entities';
 import { displayName } from '@/domain/display';
-import { TABLE_IDS_IN_ORDER, tableTitle } from '@/domain/layout';
+import { placedInListOrder } from '@/domain/tables';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogBody, DialogContent, DialogFooter } from '@/components/ui/dialog';
 import { Select } from '@/components/ui/select';
-import { buildTables, CAPACITY, seatMessage, sortPeople, tableDesc } from './model';
+import { buildTables, CAPACITY, faceName, seatMessage, sortPeople, tableDesc } from './model';
 import { useSeatingOps } from './use-seating-ops';
 
 export interface TableSelectDialogProps {
@@ -30,25 +30,27 @@ export function TableSelectDialog({ open, onOpenChange, participantId }: TableSe
 
   const person = data.participants.find((p) => p.id === participantId);
   const tables = useMemo(() => buildTables(data, dir, sortPeople(data, dir)), [data, dir]);
-  const seated = person?.tableId != null && person.tableId !== STAFF_TABLE_ID;
+  // 暫存的桌上的人算未入座：標題是「安排 {顯示名稱} 入座」（SEAT-R94、D-027）
+  const seated = person?.tableId != null && person.tableId !== STAFF_TABLE_ID && !tables.get(person.tableId)?.staged;
 
   const options = useMemo(() => {
     const out = [];
-    // 依 A1～A15、B1～B15 排列（SEAT-R04、SEAT-R23）；value 仍是內部編號
-    for (const n of TABLE_IDS_IN_ORDER) {
+    // 只列場上的桌，依 A1～A15、B1～B15 排列（SEAT-R04、SEAT-R23）；不列「未放桌」的位置與暫存的桌（D-027）。value 是桌子 id
+    for (const placed of placedInListOrder(data.tables)) {
+      const n = placed.id;
       if (n === person?.tableId) continue;
       const t = tables.get(n)!;
       const desc = tableDesc(t);
       out.push({
         value: String(n),
         // 剩餘位數最少 0：拖移或「加入人員」可以讓一桌有 11、12 位
-        label: `${tableTitle(n)}（剩 ${Math.max(0, CAPACITY - t.count)} 位）${desc ? `・${desc}` : ''}`,
+        label: `${faceName(t)}（剩 ${Math.max(0, CAPACITY - t.count)} 位）${desc ? `・${desc}` : ''}`,
         disabled: t.full,
         disabledReason: t.full ? '已滿' : undefined,
       });
     }
     return out;
-  }, [tables, person?.tableId]);
+  }, [tables, data.tables, person?.tableId]);
 
   const close = (next: boolean) => {
     if (!next) {
@@ -64,12 +66,12 @@ export function TableSelectDialog({ open, onOpenChange, participantId }: TableSe
 
   const confirm = () => {
     const tableId = Number(value);
-    if (!value || !tables.get(tableId) || tables.get(tableId)!.full) {
+    if (!value || !tables.get(tableId) || tables.get(tableId)!.full || tables.get(tableId)!.staged) {
       setError('請選擇桌次。');
       return;
     }
     // 排到該桌名單最後（SEAT-R25）
-    ops.run({ type: 'seat', participantId: person.id, tableId }, seatMessage(person, name, tableId));
+    ops.run({ type: 'seat', participantId: person.id, tableId }, seatMessage(data.tables, person, name, tableId));
     close(false);
   };
 

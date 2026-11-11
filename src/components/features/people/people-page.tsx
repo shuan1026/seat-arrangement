@@ -22,7 +22,8 @@ import { SearchInput } from '@/components/ui/input';
 import { Pagination } from '@/components/ui/pagination';
 import { Select, type SelectOption } from '@/components/ui/select';
 import type { Participant, ParticipantKind } from '@/contracts/entities';
-import { TABLE_IDS_IN_ORDER, tableCodeLabel } from '@/domain/layout';
+import { tableCodeLabel } from '@/domain/layout';
+import { placedInListOrder } from '@/domain/tables';
 import {
   departmentOptions,
   filterParticipants,
@@ -69,7 +70,15 @@ export function PeoplePage({ initialEmployeeId }: { initialEmployeeId: number | 
   const [seatOpen, setSeatOpen] = useState(false);
 
   const sorted = useMemo(() => sortParticipants(data.participants, dir), [data.participants, dir]);
-  const visible = useMemo(() => filterParticipants(sorted, dir, query, filters), [sorted, dir, query, filters]);
+  const visible = useMemo(
+    () => filterParticipants(sorted, dir, query, filters, data.tables),
+    [sorted, dir, query, filters, data.tables],
+  );
+  // 桌次篩選的選項：只列場上的桌，依 A1～A15、B1～B15 排列，只寫桌號；value 是桌子 id（PPL-R26、D-019、D-027）
+  const tableOptions = useMemo(
+    () => placedInListOrder(data.tables).map((t) => ({ value: String(t.id), label: tableCodeLabel(t.position!) })),
+    [data.tables],
+  );
   const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const current = Math.min(page, pages);
   const rows = visible.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
@@ -105,7 +114,7 @@ export function PeoplePage({ initialEmployeeId }: { initialEmployeeId: number | 
   };
 
   const departments = useMemo(() => departmentOptions(data.employees), [data.employees]);
-  const chips = filterChips(filters);
+  const chips = filterChips(filters, tableOptions);
   const empty = data.participants.length === 0;
 
   return (
@@ -162,7 +171,7 @@ export function PeoplePage({ initialEmployeeId }: { initialEmployeeId: number | 
             <FilterSelect
               label="桌次"
               value={filters.tableId == null ? null : String(filters.tableId)}
-              options={TABLE_OPTIONS}
+              options={tableOptions}
               onChange={(v) => changeFilter('tableId', v == null ? null : Number(v))}
               searchPlaceholder="搜尋桌號"
             />
@@ -253,19 +262,19 @@ export function PeoplePage({ initialEmployeeId }: { initialEmployeeId: number | 
   );
 }
 
-/** 桌次篩選的選項：依 A1～A15、B1～B15 排列，只寫桌號；value 是內部編號（PPL-R26、D-019） */
-const TABLE_OPTIONS = TABLE_IDS_IN_ORDER.map((id) => ({ value: String(id), label: tableCodeLabel(id) }));
-
 type Chip = { key: keyof ParticipantFilters; label: string };
 
 /** 已套用的篩選（PPL-R27），依工具列的順序 */
-function filterChips(f: ParticipantFilters): Chip[] {
+function filterChips(f: ParticipantFilters, tableOptions: readonly { value: string; label: string }[]): Chip[] {
   if (!hasFilters(f)) return [];
   const chips: Chip[] = [];
   if (f.kind) chips.push({ key: 'kind', label: KIND_NAMES[f.kind] });
   if (f.department) chips.push({ key: 'department', label: f.department });
   if (f.seat) chips.push({ key: 'seat', label: SEAT_NAMES[f.seat] });
-  if (f.tableId != null) chips.push({ key: 'tableId', label: `桌次：${tableCodeLabel(f.tableId)}` });
+  if (f.tableId != null) {
+    const label = tableOptions.find((o) => o.value === String(f.tableId))?.label;
+    if (label) chips.push({ key: 'tableId', label: `桌次：${label}` });
+  }
   return chips;
 }
 

@@ -2,6 +2,7 @@
 // （ARR-AC01～AC09、AC11～AC16、AC21、AC22）。員工與眷屬一定同桌依 D-009；待確認依 D-008 照目前假設
 // （ARR-Q02 一位都沒排進去時座位都不變、ARR-Q03 只排進一桌、ARR-Q05 部門順序、ARR-Q06 只看填桌順序與空位）。
 // 5.2 節的示範資料（ARR-AC19、AC20）在 auto-arrange-2026.test.ts。
+// D-027（auto-arrange.md v1.3）：「未放桌」的位置跳過、暫存區的桌與上面的人不動（ARR-R02～R04、R12、R15、ARR-AC23～AC25），見檔案最後一組。
 //
 // 不在這裡：第 2 節的對話框（ARR-AC16 的選項停用、AC17 取消、AC18 手機版面）、Sonner 的文字與「復原」（ARR-AC10、ARR-R13
 // 的復原由座位異動 API 的 restore 處理）。Sonner 文字由摘要組成，這裡驗摘要：summary.placed 是 {n}、tableIds 的個數是
@@ -935,5 +936,144 @@ describe('ARR-R17 自動排座每桌最多只排到 10 位', () => {
     expect(o.table(29)).toHaveLength(11);
     expect(o.table(30)).toHaveLength(12);
     expect(o.summary).toEqual({ placed: 0, tableIds: [], left: 1 });
+  });
+});
+
+// D-027：桌子可以新增、刪除、搬動，場地旁有暫存區。tables 的每一張桌帶 position（null 是暫存區）；
+// 可用的桌是場上、沒有備註名稱的桌，依所在位置的填桌順序（ARR-R02）；「未放桌」的位置跳過、不新增桌；
+// 暫存區的桌與上面的人都不動，不是候選人，「清空後重排」也不清空（ARR-R03、R04、R12、R15）。
+describe('D-027「未放桌」與暫存區（ARR-R02～R04、R12、R15、ARR-AC23～AC25）', () => {
+  it('ARR-AC23 B1 是「未放桌」，A1、B4 桌是空桌；業1–業12 未入座 → 只排未入座：業1–業10 在 A1 桌、業11–業12 在 B4 桌；B1 仍是「未放桌」，沒有新增桌；「已把 12 位安排到 2 桌。」', () => {
+    const s = new Scenario().addGroup('業務部', null, range('業', 1, 12)).removeTable(1);
+
+    const o = s.run('unseatedOnly');
+
+    expect(o.table(2)).toEqual(range('業', 1, 10));
+    expect(o.table(3)).toEqual(['業11', '業12']);
+    expect(o.changes.every((c) => c.tableId === 2 || c.tableId === 3), '只排進 A1、B4 桌').toBe(true);
+    expect(o.changes.some((c) => c.tableId === 1), '不會排進已刪除的桌（B1 沒有桌）').toBe(false);
+    expect(o.summary).toEqual({ placed: 12, tableIds: [2, 3], left: 0 });
+  });
+
+  it('ARR-AC23 清空後重排也一樣跳過「未放桌」的位置', () => {
+    const s = new Scenario().addGroup('業務部', null, range('業', 1, 12)).removeTable(1).seat(4, ['業1', '業2']);
+
+    const o = s.run('rebuild');
+
+    expect(o.table(2)).toEqual(range('業', 1, 10));
+    expect(o.table(3)).toEqual(['業11', '業12']);
+    expect(o.table(4)).toEqual([]);
+    expect(o.summary).toEqual({ placed: 12, tableIds: [2, 3], left: 0 });
+  });
+
+  it('ARR-AC24 暫存區有一桌坐研發部 研1、研2（沒有備註名稱）；業務部 業1 未入座 → 對話框是「只排未入座的 1 位」→ 只排未入座：B1 桌為業1；暫存的桌仍坐研1、研2；「已把 1 位安排到 1 桌。」', () => {
+    const s = new Scenario()
+      .addGroup('研發部', null, ['研1', '研2'])
+      .addGroup('業務部', null, ['業1'])
+      .addStagedTable(31)
+      .seat(31, ['研1', '研2']);
+
+    const o = s.run('unseatedOnly');
+
+    // 對話框的 {n} 是只排未入座的候選人人數（placed + left），不含暫存的桌上的人（ARR-R15）
+    expect(o.summary.placed + o.summary.left).toBe(1);
+    expect(o.table(1)).toEqual(['業1']);
+    expect(o.table(31)).toEqual(['研1', '研2']);
+    expect(o.changedNames()).toEqual(['業1']);
+    expect(o.summary).toEqual({ placed: 1, tableIds: [1], left: 0 });
+  });
+
+  it('ARR-AC25 暫存區有一桌坐研1、研2；A1 桌坐業1 → 清空後重排：業1 排回填桌順序最前面的可用桌（B1）；暫存的桌不清空，研1、研2 仍在暫存的桌，也不在其他桌出現', () => {
+    const s = new Scenario()
+      .addGroup('研發部', null, ['研1', '研2'])
+      .addGroup('業務部', null, ['業1'])
+      .addStagedTable(31)
+      .seat(31, ['研1', '研2'])
+      .seat(2, ['業1']);
+
+    const o = s.run('rebuild');
+
+    expect(o.table(1)).toEqual(['業1']);
+    expect(o.table(2)).toEqual([]);
+    expect(o.table(31)).toEqual(['研1', '研2']);
+    expect(o.changedNames()).toEqual(['業1']);
+    expect(o.summary).toEqual({ placed: 1, tableIds: [1], left: 0 });
+  });
+
+  it('暫存的桌沒有人、也沒有備註名稱，仍不是可用的桌（ARR-R02）', () => {
+    const s = new Scenario().addGroup('業務部', null, range('業', 1, 3)).addStagedTable(31);
+    for (let t = 1; t <= 30; t++) s.note(t, `保留${t}`);
+
+    const o = s.run('unseatedOnly');
+
+    expect(o.table(31)).toEqual([]);
+    expect(o.unseated()).toEqual(range('業', 1, 3));
+    expect(o.summary).toEqual({ placed: 0, tableIds: [], left: 3 });
+  });
+
+  it('暫存的桌上的人不是候選人：只排未入座的人數不含他們，清空後重排也不把他們拆開排進場上（ARR-R03、R04、R15）', () => {
+    const s = new Scenario()
+      .addGroup('研發部', '前端組', ['研1', '研2', '研3'], ['研1'])
+      .addStagedTable(31)
+      .seat(31, ['研1', dep('研1'), '研2']);
+
+    for (const mode of ['unseatedOnly', 'rebuild'] as const) {
+      const o = s.run(mode);
+      expect(o.table(31), mode).toEqual(['研1', dep('研1'), '研2']);
+      expect(o.table(1), mode).toEqual(['研3']);
+      expect(o.summary.placed + o.summary.left, mode).toBe(1);
+    }
+  });
+
+  it('暫存的桌上的外部貴賓也不動（清空後重排不會把他移到未入座，ARR-R04、R12）', () => {
+    const s = new Scenario().addGroup('業務部', null, ['業1']).addGuest('賓1').addStagedTable(31).seat(31, ['賓1']);
+
+    const o = s.run('rebuild');
+
+    expect(o.table(31)).toEqual(['賓1']);
+    expect(o.table(1)).toEqual(['業1']);
+  });
+
+  it('依所在位置的填桌順序用桌，不是依桌子的 id：B1 的桌移到暫存區、B10 的桌（id 5）搬到 B1 → 先填 B1 位置上的 id 5 那一桌', () => {
+    const s = new Scenario().addGroup('業務部', null, range('業', 1, 12)).stage(1).place(5, 1);
+
+    const o = s.run('unseatedOnly');
+
+    expect(o.table(5)).toEqual(range('業', 1, 10));
+    expect(o.table(2)).toEqual(['業11', '業12']);
+    expect(o.table(1), '暫存的桌不用').toEqual([]);
+    expect([...o.summary.tableIds].sort((a, b) => a - b)).toEqual([2, 5]);
+    expect(o.summary.placed).toBe(12);
+  });
+
+  it('新增的桌（id 31 起）放在位置上：依那個位置的填桌順序使用', () => {
+    // B1 的桌刪掉，在 B1 新增 id 31 的桌
+    const s = new Scenario().addGroup('業務部', null, range('業', 1, 3)).removeTable(1).addStagedTable(31).place(31, 1);
+
+    const o = s.run('unseatedOnly');
+
+    expect(o.table(31)).toEqual(range('業', 1, 3));
+    expect(o.summary).toEqual({ placed: 3, tableIds: [31], left: 0 });
+  });
+
+  it('有備註名稱的桌搬到別的位置後仍不用（ARR-R02）', () => {
+    const s = new Scenario().addGroup('業務部', null, ['業1']).note(2, '主桌').removeTable(1).place(2, 1);
+
+    const o = s.run('unseatedOnly');
+
+    expect(o.table(2)).toEqual([]);
+    expect(o.table(3)).toEqual(['業1']);
+  });
+
+  it('不搬動、新增或刪除桌子：結果只有人的位置（changes 的 tableId 都是傳入的場上的桌，ARR-R12）', () => {
+    const s = new Scenario().addGroup('業務部', null, range('業', 1, 25)).removeTable(1).removeTable(2).addStagedTable(31);
+    const placedIds = new Set(s.tables.filter((t) => t.kind === 'NORMAL' && t.position !== null).map((t) => t.id));
+
+    const o = s.run('unseatedOnly');
+
+    for (const c of o.changes) if (c.tableId !== null) expect(placedIds.has(c.tableId), `id ${c.tableId}`).toBe(true);
+    expect(o.table(3)).toEqual(range('業', 1, 10));
+    expect(o.table(4)).toEqual(range('業', 11, 20));
+    expect(o.table(5)).toEqual(range('業', 21, 25));
   });
 });

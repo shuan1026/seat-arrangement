@@ -5,7 +5,7 @@
 import { TABLE_CAPACITY, type Employee, type Participant, type SeatTable } from '@/contracts/entities';
 import type { AutoArrangeSummary } from '@/contracts/seating';
 import { buildDirectory, departmentOf, teamOf, type Directory } from './display';
-import { FILL_ORDER } from './layout';
+import { placedInFillOrder } from './tables';
 import { participantComparator } from './participants';
 
 export type AutoArrangeMode = 'unseatedOnly' | 'rebuild';
@@ -66,15 +66,18 @@ export function autoArrange(input: AutoArrangeInput): AutoArrangeResult {
   const { employees, participants, tables, mode } = input;
   const dir = directoryOf({ employees, participants });
 
-  // ARR-R02：可用的桌是沒有備註名稱的一般桌，依填桌順序（B1、A1、B4、B7…A13，也就是內部編號 1–30，D-019）；
-  // 工作人員桌不是可用的桌
-  const usableIds = new Set(tables.filter((t) => t.kind === 'NORMAL' && !t.noteName).map((t) => t.id));
-  const usable = FILL_ORDER.filter((id) => usableIds.has(id));
+  // ARR-R02：可用的桌是放在位置上、沒有備註名稱的一般桌，依所在位置的填桌順序（B1、A1、B4、B7…A13，D-019）；
+  // 工作人員桌、暫存區的桌都不是可用的桌，「未放桌」的位置自然跳過（D-027）
+  const usable = placedInFillOrder(tables)
+    .filter((t) => !t.noteName)
+    .map((t) => t.id);
+  const positionOf = new Map(tables.map((t) => [t.id, t.position ?? 0]));
   const usableSet = new Set(usable);
   const onUsable = (p: Participant) => p.tableId !== null && usableSet.has(p.tableId);
 
   // ARR-R01、R03、R04：候選人是未入座的員工與眷屬；清空後重排再加上可用桌上的員工與眷屬。
   // 外部貴賓一律不排；工作人員在工作人員桌，不是未入座也不在可用的桌，所以不會是候選人。
+  // 暫存區的桌上的人 tableId 是那張暫存的桌，也不是候選人：整組先放旁邊，不拆開（D-027）。
   const isCandidate = (p: Participant) =>
     p.kind !== 'GUEST' && (p.tableId === null || (mode === 'rebuild' && onUsable(p)));
   const candidates = participants.filter(isCandidate).sort(participantComparator(dir));
@@ -154,7 +157,9 @@ export function autoArrange(input: AutoArrangeInput): AutoArrangeResult {
   }
 
   const placed = placements.size;
-  const tableIds = [...new Set([...placements.values()].map((x) => x.tableId))].sort((a, b) => a - b);
+  const tableIds = [...new Set([...placements.values()].map((x) => x.tableId))].sort(
+    (a, b) => (positionOf.get(a) ?? 0) - (positionOf.get(b) ?? 0),
+  );
   // ARR-R11：排不下的人留在未入座
   const summary: AutoArrangeSummary = { placed, tableIds, left: candidates.length - placed };
 

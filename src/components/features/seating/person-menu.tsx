@@ -5,7 +5,7 @@
 // 項目全都會修改資料，只能檢視時整個列操作按鈕不顯示（SEAT-R90、COM-R19）。
 import { ArrowRightLeft, Armchair, Pencil, Trash2, UserMinus, UserX } from 'lucide-react';
 import { createContext, useContext } from 'react';
-import { useIsEditor } from '@/client/app-provider';
+import { useAppStore, useIsEditor } from '@/client/app-provider';
 import { STAFF_TABLE_ID, type Participant } from '@/contracts/entities';
 import { ActionMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { usePersonActions } from './person-actions';
@@ -28,6 +28,8 @@ export function PersonMenu({ person, place }: { person: Participant; place: 'pan
   const isEditor = useIsEditor();
   const staff = person.tableId === STAFF_TABLE_ID;
   const seated = person.tableId !== null && !staff;
+  // 暫存的桌上的人算未入座：列操作是「入座…」與「移出桌次」（2.2.3、SEAT-R94、D-027）
+  const staged = useAppStore((s) => seated && s.data.tables.find((t) => t.id === person.tableId)?.position === null);
   const withRemoval = place === 'panel';
   if (!isEditor) return null;
   return (
@@ -38,8 +40,8 @@ export function PersonMenu({ person, place }: { person: Participant; place: 'pan
         </DropdownMenuItem>
       ) : (
         <>
-          <DropdownMenuItem icon={seated ? <ArrowRightLeft /> : <Armchair />} onSelect={() => ui.openSeatDialog(person.id)}>
-            {seated ? '移至其他桌次…' : '入座…'}
+          <DropdownMenuItem icon={seated && !staged ? <ArrowRightLeft /> : <Armchair />} onSelect={() => ui.openSeatDialog(person.id)}>
+            {seated && !staged ? '移至其他桌次…' : '入座…'}
           </DropdownMenuItem>
           {seated ? (
             <DropdownMenuItem icon={<UserMinus />} onSelect={() => ui.unseat(person)}>

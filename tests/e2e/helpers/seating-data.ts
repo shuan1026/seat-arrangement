@@ -1,9 +1,12 @@
 // 座位安排 E2E 的測試資料：直接寫進 E2E 伺服器使用的測試資料庫，只用虛構資料（docs/architecture.md 第 6 節）。
 // 用 mariadb driver 下 SQL（同 tests/helpers/test-database.ts 的連線方式），不經過 src/server/db.ts：
 // 那個模組 import 'server-only'，在 Playwright 的 Node 行程裡載入會丟錯。
-// 欄位與表名依 prisma/migrations 的第一個 migration。
+// 欄位與表名依 prisma/migrations（D-027 起 SeatTable 有 position、stagedAt：position 1–30 是位置，null 是暫存區）。
+// seed() 每次先把桌子恢復成 1–30 桌在原位置、暫存區沒有桌、刪掉 id > 30 的桌（tests/helpers/table-reset.ts），
+// 所以測試資料的 tableId 1–30 一開始就是同號的位置；搬動之後要看某個位置上的名單用 rosterNamesAt(位置)。
 import { createConnection, type Connection } from 'mariadb';
 import { databaseConfigFromEnv } from '../../../src/server/database-config';
+import { RESET_TABLES_SQL } from '../../helpers/table-reset';
 import { loadTestEnv } from '../../helpers/test-database';
 
 export const STAFF = 0;
@@ -140,15 +143,53 @@ export class SeatingSeeder {
       tableId,
     ]);
   }
+
+  // ---- 桌子與位置（D-027）
+
+  private stagedSeq = 0;
+  /** 暫存區的時間：依呼叫順序遞增的過去時間，先呼叫的排在暫存區上面 */
+  private nextStagedAt(): string {
+    this.stagedSeq += 1;
+    return `2026-01-01 00:00:${String(this.stagedSeq).padStart(2, '0')}.000`;
+  }
+
+  /** 刪掉這個位置（1–30）上的桌：位置變成「未放桌」。要在讓人坐那一桌之前呼叫 */
+  async emptyPosition(position: number): Promise<void> {
+    await this.conn.query('DELETE FROM `SeatTable` WHERE `position` = ? AND `kind` = ?', [position, 'NORMAL']);
+  }
+
+  /** 新增一張暫存的桌（排在暫存區最下面），回傳桌子的 id（目前最大的 id 加 1，31 起）；之後用 tableId 讓人坐上去 */
+  async stagedTable(noteName: string | null = null): Promise<number> {
+    const rows = await this.conn.query<{ next: number }[]>('SELECT GREATEST(COALESCE(MAX(`id`), 0), 30) + 1 AS `next` FROM `SeatTable`');
+    const id = Number(rows[0]?.next ?? 31);
+    await this.conn.query(
+      'INSERT INTO `SeatTable` (`id`, `kind`, `position`, `stagedAt`, `noteName`, `updatedAt`) VALUES (?, ?, NULL, ?, ?, CURRENT_TIMESTAMP(3))',
+      [id, 'NORMAL', this.nextStagedAt(), noteName],
+    );
+    return id;
+  }
+
+  /** 把既有的桌（例如 1–30 桌）移到暫存區最下面：原位置變成「未放桌」 */
+  async stage(tableId: number): Promise<void> {
+    await this.conn.query('UPDATE `SeatTable` SET `position` = NULL, `stagedAt` = ?, `updatedAt` = CURRENT_TIMESTAMP(3) WHERE `id` = ?', [
+      this.nextStagedAt(),
+      tableId,
+    ]);
+  }
 }
 
-/** 清空資料（員工、參與人員、備註名稱），再用 build 建立這個測試要的資料 */
+/** 桌子恢復成 1–30 桌在原位置、沒有備註名稱、暫存區沒有桌，刪掉 id > 30 的桌（要先刪掉參與人員） */
+export async function resetTablesWith(conn: Connection): Promise<void> {
+  for (const sql of RESET_TABLES_SQL) await conn.query(sql);
+}
+
+/** 清空資料（員工、參與人員、備註名稱），桌子恢復成部署時的樣子（D-027），再用 build 建立這個測試要的資料 */
 export async function seed<T>(build: (s: SeatingSeeder) => Promise<T>): Promise<T> {
   return withConnection(async (conn) => {
     await conn.query('DELETE FROM `Participant` WHERE `hostId` IS NOT NULL');
     await conn.query('DELETE FROM `Participant`');
     await conn.query('DELETE FROM `Employee`');
-    await conn.query('UPDATE `SeatTable` SET `noteName` = NULL, `updatedAt` = CURRENT_TIMESTAMP(3)');
+    await resetTablesWith(conn);
     return build(new SeatingSeeder(conn));
   });
 }
@@ -187,6 +228,59 @@ export async function rosterNames(tableId: number): Promise<string[]> {
       [tableId],
     );
     return rows.map((r) => (r.kind === 'GUEST' ? (r.guestName ?? '') : r.kind === 'DEPENDENT' ? `${r.hname ?? ''}_眷屬` : (r.ename ?? '')));
+  });
+}
+
+// ---- 位置（D-027）：位置編號 1–30 與桌號的對應同 tests/helpers/table-codes.ts（3 = B4、7 = B2、9 = B8…）
+
+/** 這個位置上的桌的 id；「未放桌」是 null */
+export async function tableIdAt(position: number): Promise<number | null> {
+  return withConnection(async (conn) => {
+    const rows = await conn.query<{ id: number }[]>('SELECT `id` FROM `SeatTable` WHERE `position` = ? AND `kind` = ?', [position, 'NORMAL']);
+    return rows[0] ? Number(rows[0].id) : null;
+  });
+}
+
+/** 這個位置上的桌的名單（依座號的顯示名稱）；「未放桌」是空陣列 */
+export async function rosterNamesAt(position: number): Promise<string[]> {
+  const id = await tableIdAt(position);
+  return id === null ? [] : rosterNames(id);
+}
+
+/** 這個位置上的桌的備註名稱；「未放桌」是 undefined */
+export async function noteNameAt(position: number): Promise<string | null | undefined> {
+  const id = await tableIdAt(position);
+  return id === null ? undefined : noteNameOf(id);
+}
+
+/** 這張桌所在的位置；暫存區是 null；桌子不存在時是 undefined */
+export async function positionOfTable(tableId: number): Promise<number | null | undefined> {
+  return withConnection(async (conn) => {
+    const rows = await conn.query<{ position: number | null }[]>('SELECT `position` FROM `SeatTable` WHERE `id` = ?', [tableId]);
+    const row = rows[0];
+    if (!row) return undefined;
+    return row.position === null ? null : Number(row.position);
+  });
+}
+
+/** 暫存區的桌，依移入的先後由上往下：id、備註名稱與名單 */
+export async function stagedTables(): Promise<{ id: number; noteName: string | null; names: string[] }[]> {
+  const rows = await withConnection((conn) =>
+    conn.query<{ id: number; noteName: string | null }[]>(
+      'SELECT `id`, `noteName` FROM `SeatTable` WHERE `kind` = ? AND `position` IS NULL ORDER BY `stagedAt`, `id`',
+      ['NORMAL'],
+    ),
+  );
+  const out: { id: number; noteName: string | null; names: string[] }[] = [];
+  for (const r of rows) out.push({ id: Number(r.id), noteName: r.noteName, names: await rosterNames(Number(r.id)) });
+  return out;
+}
+
+/** 一般桌（場上與暫存）的張數 */
+export async function normalTableCount(): Promise<number> {
+  return withConnection(async (conn) => {
+    const rows = await conn.query<{ n: number }[]>('SELECT COUNT(*) AS `n` FROM `SeatTable` WHERE `kind` = ?', ['NORMAL']);
+    return Number(rows[0]?.n ?? 0);
   });
 }
 

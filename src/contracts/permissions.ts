@@ -36,7 +36,10 @@ export type PublishedPerson = { displayName: string; group: string };
 
 /** 發布頁的一桌：內部編號 1–30，工作人員桌 0；部門標示由伺服器算好（「研發一部＋貴賓」「空桌」） */
 export type PublishedTable = {
+  /** 桌子的 id，工作人員桌 0 */
   id: number;
+  /** 所在位置 1–30（桌號由 src/domain/layout.ts 對應）；工作人員桌是 null。暫存的桌不在發布頁（D-027） */
+  position: number | null;
   noteName: string | null;
   departmentLabel: string;
   people: PublishedPerson[];

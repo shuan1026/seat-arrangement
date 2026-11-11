@@ -16,6 +16,15 @@
 //   列操作 button「更多操作」；「全部」分頁已入座的人有 button，名稱正好是桌號（例如「B4」，SEAT-R57）。
 // - 名單列的小徽章：貴賓「賓」是文字；兒童椅、素食的圖示徽章有 aria-label「兒童椅」「素食」；滑過都顯示 Tooltip（role tooltip）。
 // - Sonner 依 src/components/ui/toaster.tsx：region「通知 …」裡的 listitem，「復原」是 button。
+// - D-027（桌子可以新增、刪除、搬動，場地旁有暫存區）：
+//   - 桌號就是桌子所在位置的代碼；TableRef 的數字是「位置編號」1–30（seed 後 1–30 桌在同號的位置，搬動之後畫面上的桌號跟著位置）。
+//   - 暫存區：region「暫存區」；沒有桌時裡面有「把桌子拖到這裡暫放」。
+//   - 暫存的桌：暫存區裡的 group，開啟詳情的 button 名稱照既有桌次的格式，只是把「{桌號} 桌」換成「暫存」，
+//     例如「暫存，主桌，研發一部，2/10」；拖移把手仍是「拖移調換桌次」；依移入的先後由上往下（DOM 順序）。
+//   - 「未放桌」的位置：編輯者是 button「{代碼} 未放桌」（例如「B8 未放桌」），裡面有「B8」「未放桌」；檢視者不是 button、聚焦不到。
+//   - 暫存的桌的詳情：region（桌面）或 dialog（手機）「暫存區的桌」或「暫存區的桌（{備註名稱}）」。
+//   - 「未放桌」的面板：region 或 dialog，名稱是位置代碼（例如「B8」）。
+//   - 刪除確認：alertdialog，名稱是標題。放到…：dialog「把暫存區的桌放到哪裡？」，combobox「位置」。
 import { expect, type Locator, type Page } from '@playwright/test';
 import { codeOf } from '../../helpers/table-codes';
 import { isMobileWidth } from './page-checks';
@@ -60,6 +69,38 @@ export const rowWithName = (rows: Locator, page: Page, name: string) =>
 export async function openTableDetail(page: Page, n: TableRef): Promise<Locator> {
   await tableButton(page, n).click();
   const detail = tableDetail(page, n);
+  await expect(detail).toBeVisible();
+  return detail;
+}
+
+// ---- 暫存區、暫存的桌、「未放桌」的位置（D-027）
+
+export const stagingArea = (page: Page) => page.getByRole('region', { name: '暫存區', exact: true });
+/** 暫存區裡開啟詳情的 button（依由上往下的順序） */
+export const stagedButtons = (page: Page) => stagingArea(page).getByRole('button', { name: /^暫存，/ });
+/** 暫存的桌（group），依由上往下的順序；note 是備註名稱（有的話用它找那一桌） */
+export const stagedTable = (page: Page, which: number | string = 0) => {
+  const groups = stagingArea(page).getByRole('group');
+  return typeof which === 'number'
+    ? groups.filter({ has: page.getByRole('button', { name: /^暫存，/ }) }).nth(which)
+    : groups.filter({ has: page.getByRole('button', { name: new RegExp(`^暫存，${which}，`) }) });
+};
+export const stagedTableButton = (page: Page, which: number | string = 0) => stagedTable(page, which).getByRole('button', { name: /^暫存，/ });
+export const stagedHandle = (page: Page, which: number | string = 0) => stagedTable(page, which).getByRole('button', { name: '拖移調換桌次' });
+/** 「未放桌」的位置（編輯者是 button「{代碼} 未放桌」） */
+export const emptySlot = (page: Page, n: TableRef) => seatMap(page).getByRole('button', { name: `${codeFor(n)} 未放桌`, exact: true });
+/** 暫存的桌的詳情：「暫存區的桌」或「暫存區的桌（{備註名稱}）」 */
+export const stagedDetail = (page: Page, noteName?: string) => {
+  const name = noteName ? `暫存區的桌（${noteName}）` : '暫存區的桌';
+  return page.getByRole('region', { name, exact: true }).or(page.getByRole('dialog', { name, exact: true }));
+};
+/** 「未放桌」的位置面板，名稱是位置代碼 */
+export const slotPanel = (page: Page, n: TableRef) =>
+  page.getByRole('region', { name: codeFor(n), exact: true }).or(page.getByRole('dialog', { name: codeFor(n), exact: true }));
+
+export async function openStagedDetail(page: Page, which: number | string = 0, noteName?: string): Promise<Locator> {
+  await stagedTableButton(page, which).click();
+  const detail = stagedDetail(page, noteName ?? (typeof which === 'string' ? which : undefined));
   await expect(detail).toBeVisible();
   return detail;
 }
@@ -219,8 +260,23 @@ export async function openSeating(page: Page, path = '/') {
 
 // ---- 拖移（dnd-kit：要分多步移動才會觸發）
 
+/**
+ * 只捲到剛好看得到（block、inline 都是 nearest），和使用者自己捲動一樣：已經看得到就不捲。
+ * Playwright 的 scrollIntoViewIfNeeded 會把元素捲到可視範圍的中間，同一個捲動區裡的另一個目標（例如詳情名單的第 1 列）
+ * 可能因此被推到標題列底下。捲完還量不到位置時，才退回 scrollIntoViewIfNeeded。
+ */
+async function scrollNearest(loc: Locator) {
+  try {
+    await loc.evaluate((el) => el.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+  } catch {
+    await loc.scrollIntoViewIfNeeded();
+    return;
+  }
+  if (!(await loc.boundingBox())) await loc.scrollIntoViewIfNeeded();
+}
+
 async function centerOf(loc: Locator, pos?: { x: number; y: number }) {
-  await loc.scrollIntoViewIfNeeded();
+  await scrollNearest(loc);
   const box = await loc.boundingBox();
   if (!box) throw new Error('量不到元素的位置');
   return { x: box.x + (pos?.x ?? box.width / 2), y: box.y + (pos?.y ?? box.height / 2) };
@@ -255,9 +311,9 @@ export async function drop(page: Page) {
   await page.mouse.up();
 }
 
-/** 先把目標捲到看得到的地方，再從 source 拖到 target 放開 */
+/** 先把目標捲到剛好看得到的地方（nearest），再從 source 拖到 target 放開 */
 export async function dragAndDrop(page: Page, source: Locator, target: Locator, pos?: { x: number; y: number }) {
-  await target.scrollIntoViewIfNeeded();
+  await scrollNearest(target);
   await startDrag(page, source);
   await dragOver(page, target, pos);
   await drop(page);

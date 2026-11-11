@@ -450,11 +450,38 @@ describe('POST /api/participants：輸入格式', () => {
     });
   });
 
-  it('桌次不在 1–30：400 VALIDATION_FAILED', async () => {
-    expect(await errorOf(await create({ kind: 'GUEST', guestName: '林董', tableId: 31 }))).toMatchObject({
+  // D-027：桌子的 id 沒有上限（新增的桌從 31 起，docs/architecture.md 第 7.1 節）；格式不對的是 0（工作人員桌用「工作人員」指定）、負數、小數
+  it.each([0, -1, 2.5])('桌次是 %s：400 VALIDATION_FAILED', async (tableId) => {
+    expect(await errorOf(await create({ kind: 'GUEST', guestName: '林董', tableId }))).toMatchObject({
       status: 400,
       code: 'VALIDATION_FAILED',
     });
+  });
+
+  it('桌次 31 的桌不存在（還沒新增或已被別人刪除）：409 CONFLICT，不新增（D-027、COM-R07）', async () => {
+    const before = await prisma.participant.count();
+    expect(await errorOf(await create({ kind: 'GUEST', guestName: '林董', tableId: 31 }))).toMatchObject({
+      status: 409,
+      code: 'CONFLICT',
+    });
+    expect(await prisma.participant.count()).toBe(before);
+  });
+
+  it('桌次是暫存區的桌：409 CONFLICT，不新增（PPL-R56 只列場上的桌、SEAT-R92，D-027）', async () => {
+    await prisma.seatTable.update({ where: { id: 3 }, data: { position: null, stagedAt: new Date('2026-11-01T08:00:00.000Z') } });
+    const before = await prisma.participant.count();
+    expect(await errorOf(await create({ kind: 'GUEST', guestName: '林董', tableId: 3 }))).toMatchObject({
+      status: 409,
+      code: 'CONFLICT',
+    });
+    expect(await prisma.participant.count()).toBe(before);
+  });
+
+  it('新增的桌（id 31）放在 B8 的位置：可以選它，入座那一桌（PPL-R56、D-027）', async () => {
+    await prisma.seatTable.delete({ where: { id: 9 } });
+    await prisma.seatTable.create({ data: { id: 31, kind: 'NORMAL', position: 9 } });
+    const { participants } = await okJson(await create({ kind: 'GUEST', guestName: '林董', tableId: 31 }), participantsResultSchema);
+    expect(single(participants)).toMatchObject({ tableId: 31, seatOrder: 0 });
   });
 
   it('本體不是 JSON：400 VALIDATION_FAILED', async () => {
@@ -916,10 +943,32 @@ describe('PATCH /api/participants/{id}：找不到或格式不對', () => {
     expect(await errorOf(await edit(lin.id, { vegetarian: true }))).toMatchObject({ status: 404, code: 'NOT_FOUND' });
   });
 
-  it('桌次不在 1–30：400 VALIDATION_FAILED，不變', async () => {
+  // D-027：桌子的 id 沒有上限（新增的桌從 31 起）；格式不對的是 0、負數、小數
+  it.each([0, -1, 2.5])('桌次是 %s：400 VALIDATION_FAILED，不變', async (tableId) => {
     const lin = await createGuest({ guestName: '林董' });
-    expect(await errorOf(await edit(lin.id, { tableId: 31 }))).toMatchObject({ status: 400, code: 'VALIDATION_FAILED' });
+    expect(await errorOf(await edit(lin.id, { tableId }))).toMatchObject({ status: 400, code: 'VALIDATION_FAILED' });
     expect(await findP(lin.id)).toMatchObject({ tableId: null });
+  });
+
+  it('桌次 31 的桌不存在：409 CONFLICT，不變（D-027、COM-R07）', async () => {
+    const lin = await createGuest({ guestName: '林董' });
+    expect(await errorOf(await edit(lin.id, { tableId: 31 }))).toMatchObject({ status: 409, code: 'CONFLICT' });
+    expect(await findP(lin.id)).toMatchObject({ tableId: null });
+  });
+
+  it('桌次是暫存區的桌：409 CONFLICT，不變（D-027）', async () => {
+    await prisma.seatTable.update({ where: { id: 3 }, data: { position: null, stagedAt: new Date('2026-11-01T08:00:00.000Z') } });
+    const lin = await createGuest({ guestName: '林董' });
+    expect(await errorOf(await edit(lin.id, { tableId: 3 }))).toMatchObject({ status: 409, code: 'CONFLICT' });
+    expect(await findP(lin.id)).toMatchObject({ tableId: null });
+  });
+
+  it('改到新增的桌（id 31，放在 B8）：入座那一桌（D-027）', async () => {
+    await prisma.seatTable.delete({ where: { id: 9 } });
+    await prisma.seatTable.create({ data: { id: 31, kind: 'NORMAL', position: 9 } });
+    const lin = await createGuest({ guestName: '林董' });
+    await okJson(await edit(lin.id, { tableId: 31 }), participantsResultSchema);
+    expect(await findP(lin.id)).toMatchObject({ tableId: 31, seatOrder: 0 });
   });
 });
 

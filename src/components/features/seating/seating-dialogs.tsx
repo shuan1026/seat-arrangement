@@ -1,12 +1,13 @@
 'use client';
 
 // 桌次詳情開出的對話框：調換桌次（2.3.3、SEAT-R39）、加入人員到桌次（2.3.4、SEAT-R30、R31）、
-// 加入人員到工作人員桌（2.5.3、SEAT-R50）、清空確認（2.3.5、SEAT-R29），以及自動排座的範圍（auto-arrange.md 2.2）。
+// 加入人員到工作人員桌（2.5.3、SEAT-R50）、清空確認（2.3.5、SEAT-R29）、暫存的桌的「放到…」（2.3.9、SEAT-R93）、
+// 刪除確認（2.3.10、SEAT-R97），以及自動排座的範圍（auto-arrange.md 2.2）。
 import { useId, useMemo, useState } from 'react';
 import { useAppStore } from '@/client/app-provider';
 import { STAFF_TABLE_ID, type Participant } from '@/contracts/entities';
 import { departmentOf, displayName, teamOf } from '@/domain/display';
-import { TABLE_IDS_IN_ORDER, tableTitle } from '@/domain/layout';
+import { TABLE_IDS_IN_ORDER } from '@/domain/layout';
 import { AlertDialog, AlertDialogContent } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -15,30 +16,47 @@ import { Dialog, DialogBody, DialogContent, DialogFooter } from '@/components/ui
 import { EmptyState } from '@/components/ui/empty-state';
 import { SearchInput } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { CAPACITY, detailMeta, MAX_SEATS, msg, searchMatch, tableDesc, type TableInfo } from './model';
+import { CAPACITY, detailMeta, faceName, isUnseatedIn, MAX_SEATS, msg, positionCode, searchMatch, tableDesc, type TableInfo } from './model';
 import { NameLine } from './person-parts';
 import { useSeatingOps } from './use-seating-ops';
 
 type OpenProps = { open: boolean; onOpenChange: (open: boolean) => void };
 
-/**
- * 調換桌次：依 A1～A15、B1～B15 列出自己以外的 29 桌「{目標桌號} 桌（{人數}/10）・{備註名稱或部門}」，
- * 已滿與超過的桌也能選（SEAT-R39、SEAT-R88）
- */
-export function SwapDialog({ open, onOpenChange, tableId, tables }: OpenProps & { tableId: number; tables: Map<number, TableInfo> }) {
-  const ops = useSeatingOps();
+/** 依 A1～A15、B1～B15 列出位置的選項：有桌的位置「{桌號} 桌（{人數}/10）・{備註名稱或部門}」，「未放桌」的位置「{代碼}（未放桌）」 */
+function positionOptions(tables: Map<number, TableInfo>, skip: number | null) {
+  const byPosition = new Map([...tables.values()].filter((t) => t.position !== null).map((t) => [t.position!, t]));
+  const out: { value: string; label: string }[] = [];
+  for (const position of TABLE_IDS_IN_ORDER) {
+    if (position === skip) continue;
+    const t = byPosition.get(position);
+    if (!t) {
+      out.push({ value: String(position), label: `${positionCode(position)}（未放桌）` });
+      continue;
+    }
+    const desc = tableDesc(t);
+    out.push({ value: String(position), label: `${faceName(t)}（${t.count}/${CAPACITY}）${desc ? `・${desc}` : ''}` });
+  }
+  return { out, byPosition };
+}
+
+/** 選一個位置的對話框（調換桌次、放到…）：沒選就按確認時顯示「請選擇{noun}。」 */
+function PositionDialog({
+  open,
+  onOpenChange,
+  title,
+  label,
+  confirmLabel,
+  options,
+  onConfirm,
+}: OpenProps & {
+  title: string;
+  label: string;
+  confirmLabel: string;
+  options: { value: string; label: string }[];
+  onConfirm: (position: number) => void;
+}) {
   const [value, setValue] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const options = useMemo(() => {
-    const out = [];
-    for (const n of TABLE_IDS_IN_ORDER) {
-      if (n === tableId) continue;
-      const t = tables.get(n)!;
-      const desc = tableDesc(t);
-      out.push({ value: String(n), label: `${tableTitle(n)}（${t.count}/${CAPACITY}）${desc ? `・${desc}` : ''}` });
-    }
-    return out;
-  }, [tables, tableId]);
   const close = (next: boolean) => {
     if (!next) {
       setValue(null);
@@ -48,16 +66,15 @@ export function SwapDialog({ open, onOpenChange, tableId, tables }: OpenProps & 
   };
   const confirm = () => {
     if (!value) {
-      setError('請選擇桌次。');
+      setError(`請選擇${label}。`);
       return;
     }
-    const other = Number(value);
-    ops.run({ type: 'swap', tableA: tableId, tableB: other }, msg.swapped(tableId, other));
+    onConfirm(Number(value));
     close(false);
   };
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent title={`把 ${tableTitle(tableId)}和哪一桌對調？`}>
+      <DialogContent title={title}>
         <form
           className="contents"
           onSubmit={(e) => {
@@ -67,8 +84,8 @@ export function SwapDialog({ open, onOpenChange, tableId, tables }: OpenProps & 
         >
           <DialogBody>
             <Select
-              label="桌次"
-              placeholder="選擇桌次"
+              label={label}
+              placeholder={`選擇${label}`}
               options={options}
               value={value}
               onValueChange={(v) => {
@@ -83,12 +100,94 @@ export function SwapDialog({ open, onOpenChange, tableId, tables }: OpenProps & 
               取消
             </Button>
             <Button type="submit" variant="primary">
-              確認對調
+              {confirmLabel}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * 調換桌次：依 A1～A15、B1～B15 列出自己以外的 29 個位置；已滿與超過的桌也能選（SEAT-R39、SEAT-R88）。
+ * 選「未放桌」的位置就是把整桌搬過去（D-027）
+ */
+export function SwapDialog({ open, onOpenChange, tableId, tables }: OpenProps & { tableId: number; tables: Map<number, TableInfo> }) {
+  const ops = useSeatingOps();
+  const self = tables.get(tableId)!;
+  const { out: options, byPosition } = useMemo(() => positionOptions(tables, self.position), [tables, self.position]);
+  return (
+    <PositionDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`把 ${faceName(self)}和哪一桌對調？`}
+      label="桌次"
+      confirmLabel="確認對調"
+      options={options}
+      onConfirm={(position) => {
+        const occupant = byPosition.get(position) ?? null;
+        ops.run(
+          { type: 'moveTable', tableId, to: position, expectedTableId: occupant?.id ?? null },
+          occupant ? msg.swapped(faceName(self), faceName(occupant)) : msg.movedToEmpty(positionCode(self.position!), positionCode(position)),
+        );
+      }}
+    />
+  );
+}
+
+/** 暫存的桌的「放到…」（2.3.9、SEAT-R93）：依 A1～A15、B1～B15 列出 30 個位置；選有桌的位置就是交換 */
+export function PlaceDialog({
+  open,
+  onOpenChange,
+  tableId,
+  tables,
+  onPlaced,
+}: OpenProps & { tableId: number; tables: Map<number, TableInfo>; onPlaced?: () => void }) {
+  const ops = useSeatingOps();
+  const self = tables.get(tableId)!;
+  const { out: options, byPosition } = useMemo(() => positionOptions(tables, null), [tables]);
+  return (
+    <PositionDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="把暫存區的桌放到哪裡？"
+      label="位置"
+      confirmLabel="確認放置"
+      options={options}
+      onConfirm={(position) => {
+        const occupant = byPosition.get(position) ?? null;
+        const code = positionCode(position);
+        const sent = ops.run(
+          { type: 'moveTable', tableId, to: position, expectedTableId: occupant?.id ?? null },
+          occupant ? msg.placedSwap(self.noteName, code) : msg.placed(self.noteName, code),
+        );
+        if (sent) onPlaced?.();
+      }}
+    />
+  );
+}
+
+/** 刪除確認（2.3.10、SEAT-R97）：桌上的人回到未入座，備註名稱一併刪除；場上的桌刪除後那個位置變「未放桌」 */
+export function DeleteTableDialog({ open, onOpenChange, info, onDeleted }: OpenProps & { info: TableInfo; onDeleted?: () => void }) {
+  const ops = useSeatingOps();
+  const staged = info.position === null;
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent
+        title={staged ? '要刪除暫存區的這一桌嗎？' : `要刪除 ${faceName(info)}嗎？`}
+        description={info.count ? `桌上的 ${info.count} 位會回到未入座，備註名稱也會一併刪除。` : '這一桌沒有人。'}
+        confirmLabel="刪除桌"
+        destructive
+        onConfirm={() => {
+          const sent = ops.run(
+            { type: 'deleteTable', tableId: info.id },
+            staged ? msg.deletedStaged : msg.deleted(positionCode(info.position!)),
+          );
+          if (sent) onDeleted?.();
+        }}
+      />
+    </AlertDialog>
   );
 }
 
@@ -117,9 +216,9 @@ export function AddPeopleDialog({
   const free = Math.max(0, CAPACITY - info.count);
   const all = isStaff
     ? sorted.filter((p) => p.kind === 'EMPLOYEE' && p.tableId !== STAFF_TABLE_ID)
-    : sorted.filter((p) => p.tableId === null);
+    : sorted.filter((p) => isUnseatedIn(tables, p));
   const rows = all.filter((p) => searchMatch(p, dir, q));
-  const title = isStaff ? '加入人員到工作人員桌' : `加入人員到 ${tableTitle(target)}`;
+  const title = isStaff ? '加入人員到工作人員桌' : `加入人員到 ${faceName(info)}`;
 
   const close = (next: boolean) => {
     if (!next) {
@@ -144,13 +243,14 @@ export function AddPeopleDialog({
   const meta = (p: Participant) => {
     if (!isStaff) return detailMeta(p, dir);
     const team = teamOf(p, dir);
-    return `${departmentOf(p, dir) ?? ''}${team ? `・${team}` : ''}${p.tableId !== null ? `・${tableTitle(p.tableId)}` : ''}`;
+    const at = p.tableId !== null ? tables.get(p.tableId) : undefined;
+    return `${departmentOf(p, dir) ?? ''}${team ? `・${team}` : ''}${at ? `・${faceName(at)}` : ''}`;
   };
   const confirm = () => {
     if (!picked.length) return;
     ops.run(
       { type: 'seatMany', tableId: target, participantIds: picked, allowOverflow: true },
-      isStaff ? msg.addedStaff(picked.length) : msg.added(picked.length, target),
+      isStaff ? msg.addedStaff(picked.length) : msg.added(picked.length, faceName(info)),
     );
     close(false);
   };
@@ -220,11 +320,11 @@ export function ClearDialog({ open, onOpenChange, info }: OpenProps & { info: Ta
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent
-        title={`要清空 ${tableTitle(info.id)}嗎？`}
+        title={`要清空 ${faceName(info)}嗎？`}
         description={`${info.count} 位人員會變成未入座，名單不會刪除。`}
         confirmLabel="清空桌次"
         destructive
-        onConfirm={() => ops.run({ type: 'clear', tableId: info.id }, msg.cleared(info.id))}
+        onConfirm={() => ops.run({ type: 'clear', tableId: info.id }, msg.cleared(faceName(info)))}
       />
     </AlertDialog>
   );

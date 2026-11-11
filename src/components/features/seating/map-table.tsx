@@ -6,6 +6,9 @@
 // 人數：0–9 位「{n}/10」，10 位正向徽章「已滿」，11、12 位待處理徽章「超過」（triangle-alert 圖示，SEAT-R11、2.1.9）。
 // 發布頁 /seats 也用這個元件（docs/spec/permissions.md 第 2.3 節、D-025）：沒有拖移把手，hideCounts 時不顯示人數與「已滿」「超過」，
 // 無障礙名稱也不含人數；展開時用 PublicCard（名單只有座號與顯示名稱）。收合時只讀 TableFace。
+// 暫存區的桌（D-027）：放桌號的地方寫「暫存」，無障礙名稱也用「暫存」開頭。
+// EmptySlot 是「未放桌」的位置（2.1.9、D-027）：虛線外框、沒有底色與陰影，中間是位置代碼與「未放桌」；編輯者可以點開面板，
+// 也是拖桌子的放置目標（data-drop="slot:{位置}"）。
 import { GripVertical, TriangleAlert } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useAppStore } from '@/client/app-provider';
@@ -30,6 +33,9 @@ import {
 import { SeatMarks } from './person-parts';
 
 export type TableMode = 'collapsed' | 'compact' | 'expanded';
+
+/** 暫存的桌在放桌號的地方寫「暫存」（2.1.9、D-027） */
+export const STAGED_LABEL = '暫存';
 
 export interface MapTableProps {
   /** 展開模式要有名單（TableInfo）；收合與精簡顯示只要 TableFace */
@@ -160,8 +166,8 @@ export function MapTable(props: MapTableProps) {
   const { info, x, y, mode, scale, draggable } = props;
   const drop = useDropState(info);
   // 收合時只顯示桌號「A1」，展開與無障礙名稱寫「A1 桌」（SEAT-R04、D-019）
-  const code = tableCodeLabel(info.id);
-  const name = info.isStaff ? '工作人員桌' : tableTitle(info.id);
+  const code = info.position === null ? STAGED_LABEL : tableCodeLabel(info.position);
+  const name = info.isStaff ? '工作人員桌' : info.position === null ? STAGED_LABEL : tableTitle(info.position);
   const tooltip = info.isStaff ? `工作人員桌・${info.label}` : tableTooltip(info);
   const ariaLabel = info.isStaff
     ? tooltip
@@ -408,5 +414,61 @@ function CardRow({
       <span className="shrink-0 whitespace-nowrap">{name}</span>
       <SeatMarks person={person} />
     </li>
+  );
+}
+
+export interface EmptySlotProps {
+  /** 位置編號 1–30 */
+  position: number;
+  x: number;
+  y: number;
+  mode: TableMode;
+  selected: boolean;
+  /** 編輯者點開「未放桌」的面板（SEAT-R95）；檢視者沒有，這時不能點也聚焦不到（SEAT-R90） */
+  onOpen?: () => void;
+}
+
+/**
+ * 「未放桌」的位置（2.1.9、SEAT-R95、D-027）：和桌子同樣大小的虛線外框（--border），沒有底色、陰影與拖移把手；
+ * 中間是變淡的位置代碼與「未放桌」；精簡顯示時位置代碼放大、「未放桌」用 Text-lg。拖桌子經過時虛線改實線、邊框 --primary、陰影 --shadow-md；
+ * 拖人員到上面時游標 not-allowed（放置規則由座位安排頁判斷）。
+ */
+export function EmptySlot({ position, x, y, mode, selected, onOpen }: EmptySlotProps) {
+  const code = tableCodeLabel(position);
+  const state = useDragState((s) => {
+    const over = s.target?.kind === 'slot' && s.target.position === position;
+    return { over: over && !s.blocked, blocked: over && s.blocked };
+  });
+  const frame = cn(
+    'flex flex-col items-center justify-center gap-px text-center text-muted-foreground outline-none',
+    state.over
+      ? 'border border-primary [box-shadow:var(--shadow-md)]'
+      : selected
+        ? 'border border-primary'
+        : 'border border-dashed border-border',
+    state.blocked && 'cursor-not-allowed',
+    mode === 'expanded' ? 'h-[220px] w-[256px] rounded-xl' : 'size-[88px] rounded-full',
+    onOpen && !state.blocked && 'cursor-pointer',
+    // 拖桌子經過時用放置樣式，不被滑過的邊框蓋掉
+    onOpen && !state.over && !selected && 'hover:border-border-hover',
+    onOpen && 'focus-visible:[box-shadow:var(--shadow-focus-ring)]',
+  );
+  const content = (
+    <>
+      <span className={cn('whitespace-nowrap', codeFont(code, mode, false))}>{code}</span>
+      {/* 精簡顯示時位置代碼放大，「未放桌」用 Text-lg（和桌次的人數同一級，2.1.6、2.1.9） */}
+      <span className={mode === 'compact' ? 'type-lg-medium' : 'type-xs-regular'}>未放桌</span>
+    </>
+  );
+  return (
+    <div data-drop={dropAttr.slot(position)} className="absolute" style={{ left: x, top: y }}>
+      {onOpen ? (
+        <button type="button" aria-label={`${code} 未放桌`} onClick={onOpen} className={frame}>
+          {content}
+        </button>
+      ) : (
+        <div className={frame}>{content}</div>
+      )}
+    </div>
   );
 }

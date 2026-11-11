@@ -5,16 +5,18 @@
 // - undo 由操作前後的差異算出：只列位置有改變的人、備註名稱有改變的桌，值是操作前的狀態。
 // - 每桌（含工作人員桌）標準 10 位、最多 12 位（SEAT-R02、SEAT-R88、D-018）：seat、seatMany 帶 allowOverflow（拖移、「加入人員」）
 //   時上限 12 位，超過回 TABLE_LIMIT／STAFF_TABLE_LIMIT；不帶時（選擇桌次對話框）上限 10 位，回 TABLE_FULL／STAFF_TABLE_FULL。
-//   restore、swap 上限 12 位。
+//   restore、moveTable 上限 12 位（搬動桌子不改變人數）。
+// - 桌子與位置分開（D-027）：桌子的 position 是位置 1–30，null 是暫存區。暫存的桌不能入座（SEAT-R92）；
+//   moveTable、createTable、deleteTable 改桌子，undo 記下動到的桌的原樣（新增的桌 exists 是 false）。
 import {
   STAFF_TABLE_CAPACITY,
   STAFF_TABLE_ID,
   TABLE_CAPACITY,
-  TABLE_COUNT,
   type Participant,
   type SeatTable,
 } from '@/contracts/entities';
 import { TABLE_MAX_SEATS, type SeatingOperation, type SeatingSnapshot } from '@/contracts/seating';
+import { isPlaced, nextTableId } from './tables';
 
 export type SeatingData = { participants: Participant[]; tables: SeatTable[] };
 export type SeatingViolation =
@@ -37,8 +39,13 @@ export type SeatingRuleResult =
 export type RuleOperation = Exclude<SeatingOperation, { type: 'autoArrange' }>;
 
 type Position = { tableId: number | null; seatOrder: number | null };
+type TableState = Pick<SeatTable, 'kind' | 'position' | 'stagedAt' | 'noteName'>;
 
-const isNormalTable = (tableId: number | null): tableId is number => tableId !== null && tableId >= 1 && tableId <= TABLE_COUNT;
+/** 指令的時間與新增桌的 id；省略時用現在的時間與目前最大的 id 加 1（伺服器在交易內算好傳入） */
+export type ApplyOptions = { now?: string; nextTableId?: number };
+
+/** 一般桌的 id 是 1 以上（工作人員桌是 0） */
+const isNormalTableId = (tableId: number | null): tableId is number => tableId !== null && tableId !== STAFF_TABLE_ID;
 
 /** 一桌的名單（依座號；座號相同時依 id），回傳參與人員 id */
 export function rosterOf(participants: readonly Participant[], tableId: number): number[] {
@@ -51,13 +58,47 @@ export function rosterOf(participants: readonly Participant[], tableId: number):
 /** 執行中的指令：在一份位置表上改，最後和操作前比對 */
 class Draft {
   readonly pos = new Map<number, Position>();
-  readonly notes = new Map<number, string | null>();
+  /** 目前的桌（刪除的桌拿掉、新增的桌加進來） */
+  readonly tables = new Map<number, TableState>();
   readonly byId: Map<number, Participant>;
 
-  constructor(readonly before: SeatingData) {
+  constructor(
+    readonly before: SeatingData,
+    readonly now: string,
+    readonly newTableId: number,
+  ) {
     this.byId = new Map(before.participants.map((p) => [p.id, p]));
     for (const p of before.participants) this.pos.set(p.id, { tableId: p.tableId, seatOrder: p.seatOrder });
-    for (const t of before.tables) this.notes.set(t.id, t.noteName);
+    for (const t of before.tables) this.tables.set(t.id, { kind: t.kind, position: t.position, stagedAt: t.stagedAt, noteName: t.noteName });
+  }
+
+  /** 一般桌（場上或暫存） */
+  isNormal(tableId: number | null): tableId is number {
+    return isNormalTableId(tableId) && this.tables.get(tableId)?.kind === 'NORMAL';
+  }
+
+  /** 暫存的桌：人不能放進去（SEAT-R92） */
+  isStaged(tableId: number): boolean {
+    const t = this.tables.get(tableId);
+    return !!t && t.kind === 'NORMAL' && t.position === null;
+  }
+
+  /** 在這個位置上的桌 id */
+  occupant(position: number): number | null {
+    for (const [id, t] of this.tables) if (t.kind === 'NORMAL' && t.position === position) return id;
+    return null;
+  }
+
+  /** 移到暫存區最下面 */
+  stage(tableId: number) {
+    const t = this.tables.get(tableId)!;
+    this.tables.set(tableId, { ...t, position: null, stagedAt: this.now });
+  }
+
+  /** 放到位置上 */
+  place(tableId: number, position: number) {
+    const t = this.tables.get(tableId)!;
+    this.tables.set(tableId, { ...t, position, stagedAt: null });
   }
 
   /** 目前（改到一半）的名單，依座號 */
@@ -77,7 +118,7 @@ class Draft {
   leave(id: number) {
     const from = this.pos.get(id)?.tableId ?? null;
     this.pos.set(id, { tableId: null, seatOrder: null });
-    if (isNormalTable(from)) this.setRoster(from, this.roster(from));
+    if (this.isNormal(from)) this.setRoster(from, this.roster(from));
   }
 
   /** 放進工作人員桌，接在最後 */
@@ -94,20 +135,27 @@ class Draft {
       undo.participants.push({ id: p.id, tableId: p.tableId, seatOrder: p.seatOrder });
       return { ...p, tableId: next.tableId, seatOrder: next.seatOrder };
     });
-    const tables = this.before.tables.map((t) => {
-      const noteName = this.notes.get(t.id) ?? null;
-      if (noteName === t.noteName) return t;
-      undo.tables.push({ id: t.id, noteName: t.noteName });
-      return { ...t, noteName };
-    });
+    const tables: SeatTable[] = [];
+    for (const t of this.before.tables) {
+      const cur = this.tables.get(t.id);
+      const same = cur && cur.position === t.position && cur.stagedAt === t.stagedAt && cur.noteName === t.noteName;
+      if (!same) undo.tables.push({ id: t.id, kind: t.kind, position: t.position, stagedAt: t.stagedAt, noteName: t.noteName, exists: true });
+      if (cur) tables.push(same ? t : { ...t, ...cur });
+    }
+    const beforeIds = new Set(this.before.tables.map((t) => t.id));
+    for (const [id, cur] of this.tables) {
+      if (beforeIds.has(id)) continue;
+      undo.tables.push({ id, kind: cur.kind, position: null, stagedAt: null, noteName: null, exists: false });
+      tables.push({ id, ...cur });
+    }
     return { ok: true, data: { participants, tables }, undo };
   }
 }
 
 const fail = (violation: SeatingViolation): SeatingRuleResult => ({ ok: false, violation });
 
-export function applySeatingOperation(data: SeatingData, op: RuleOperation): SeatingRuleResult {
-  const d = new Draft(data);
+export function applySeatingOperation(data: SeatingData, op: RuleOperation, options: ApplyOptions = {}): SeatingRuleResult {
+  const d = new Draft(data, options.now ?? new Date().toISOString(), options.nextTableId ?? nextTableId(data.tables));
   switch (op.type) {
     case 'seat':
       return seat(d, op.participantId, op.tableId, op.index, op.allowOverflow === true);
@@ -119,6 +167,8 @@ export function applySeatingOperation(data: SeatingData, op: RuleOperation): Sea
       return d.result();
     }
     case 'reorder': {
+      if (!d.isNormal(op.tableId)) return fail('NOT_FOUND');
+      if (d.isStaged(op.tableId)) return fail('CONFLICT');
       const current = d.roster(op.tableId);
       const next = op.participantIds;
       const same =
@@ -128,18 +178,25 @@ export function applySeatingOperation(data: SeatingData, op: RuleOperation): Sea
       return d.result();
     }
     case 'clear': {
+      if (!d.isNormal(op.tableId)) return fail('NOT_FOUND');
+      if (d.isStaged(op.tableId)) return fail('CONFLICT');
       for (const id of d.roster(op.tableId)) d.pos.set(id, { tableId: null, seatOrder: null });
       return d.result();
     }
-    case 'swap': {
-      if (op.tableA === op.tableB) return d.result();
-      const a = d.roster(op.tableA);
-      const b = d.roster(op.tableB);
-      d.setRoster(op.tableB, a);
-      d.setRoster(op.tableA, b);
-      const noteA = d.notes.get(op.tableA) ?? null;
-      d.notes.set(op.tableA, d.notes.get(op.tableB) ?? null);
-      d.notes.set(op.tableB, noteA);
+    case 'moveTable':
+      return moveTable(d, op.tableId, op.to, op.expectedTableId);
+    case 'createTable': {
+      // 這個位置已有桌（例如別人剛新增或放上去）：不新增（SEAT-R85）
+      if (d.occupant(op.position) !== null) return fail('CONFLICT');
+      d.tables.set(d.newTableId, { kind: 'NORMAL', position: op.position, stagedAt: null, noteName: null });
+      return d.result();
+    }
+    case 'deleteTable': {
+      if (!d.tables.has(op.tableId)) return fail('NOT_FOUND');
+      if (!d.isNormal(op.tableId)) return fail('CONFLICT');
+      // 桌上的人變成一般的未入座（不刪除人員，SEAT-R97），備註名稱跟著桌子一起刪除
+      for (const id of d.roster(op.tableId)) d.pos.set(id, { tableId: null, seatOrder: null });
+      d.tables.delete(op.tableId);
       return d.result();
     }
     case 'restore':
@@ -156,9 +213,50 @@ function capacity(tableId: number, allowOverflow: boolean): { max: number; viola
     : { max: TABLE_CAPACITY, violation: 'TABLE_FULL' };
 }
 
+/**
+ * 搬動桌子（SEAT-R35、R36、D-027）：名單與備註名稱跟著桌子（id），只改 position 與 stagedAt。
+ * expectedTableId 是畫面上目標位置的桌（「未放桌」是 null）；和現在不同表示別人剛改過，不搬（SEAT-R85）。
+ */
+function moveTable(d: Draft, tableId: number, to: number | 'staging', expectedTableId: number | null): SeatingRuleResult {
+  if (!d.tables.has(tableId)) return fail('NOT_FOUND');
+  if (!d.isNormal(tableId)) return fail('CONFLICT');
+  const from = d.tables.get(tableId)!.position;
+
+  if (to === 'staging') {
+    // 暫存的桌放回暫存區：沒有作用（SEAT-R38）
+    if (from === null) return d.result();
+    d.stage(tableId);
+    return d.result();
+  }
+
+  const occupant = d.occupant(to);
+  if (occupant !== expectedTableId) return fail('CONFLICT');
+  // 放回自己所在的位置：沒有作用（SEAT-R38）
+  if (occupant === tableId) return d.result();
+  if (occupant === null) {
+    d.place(tableId, to);
+    return d.result();
+  }
+  if (from === null) {
+    // 暫存的桌放到有桌的位置：交換，原本那桌移到暫存區最下面
+    d.stage(occupant);
+    d.place(tableId, to);
+    return d.result();
+  }
+  // 場上兩桌對調位置
+  d.place(occupant, from);
+  d.place(tableId, to);
+  return d.result();
+}
+
 function seat(d: Draft, participantId: number, tableId: number, index: number | undefined, allowOverflow: boolean): SeatingRuleResult {
   const person = d.byId.get(participantId);
   if (!person) return fail('NOT_FOUND');
+  if (tableId !== STAFF_TABLE_ID) {
+    if (!d.isNormal(tableId)) return fail('NOT_FOUND');
+    // 暫存的桌不能放人（SEAT-R92）
+    if (d.isStaged(tableId)) return fail('CONFLICT');
+  }
   const from = d.pos.get(participantId)!.tableId;
   const cap = capacity(tableId, allowOverflow);
 
@@ -193,6 +291,10 @@ function seat(d: Draft, participantId: number, tableId: number, index: number | 
 function seatMany(d: Draft, tableId: number, participantIds: readonly number[], allowOverflow: boolean): SeatingRuleResult {
   const ids = [...new Set(participantIds)];
   if (ids.some((id) => !d.byId.has(id))) return fail('NOT_FOUND');
+  if (tableId !== STAFF_TABLE_ID) {
+    if (!d.isNormal(tableId)) return fail('NOT_FOUND');
+    if (d.isStaged(tableId)) return fail('CONFLICT');
+  }
   const incoming = ids.filter((id) => d.pos.get(id)!.tableId !== tableId);
   const cap = capacity(tableId, allowOverflow);
 
@@ -214,11 +316,29 @@ function seatMany(d: Draft, tableId: number, participantIds: readonly number[], 
 }
 
 function restore(d: Draft, snapshot: SeatingSnapshot): SeatingRuleResult {
-  const tableIds = new Set(d.before.tables.map((t) => t.id));
   if (snapshot.participants.some((s) => !d.byId.has(s.id))) return fail('NOT_FOUND');
-  if (snapshot.participants.some((s) => s.tableId !== null && !tableIds.has(s.tableId))) return fail('CONFLICT');
-  if (snapshot.tables.some((t) => !tableIds.has(t.id))) return fail('CONFLICT');
 
+  // 先還原桌子（D-027）：這次新增的桌刪掉、這次刪掉的桌以原本的 id 重建、搬動的桌放回原位
+  for (const t of snapshot.tables) {
+    const cur = d.tables.get(t.id);
+    if (!t.exists) {
+      if (!cur) continue;
+      // 新增之後已經有人坐進去（別人做的）：不能復原
+      if (d.roster(t.id).length > 0) return fail('CONFLICT');
+      d.tables.delete(t.id);
+      continue;
+    }
+    d.tables.set(t.id, { kind: cur?.kind ?? t.kind, position: t.position, stagedAt: t.stagedAt, noteName: t.noteName });
+  }
+  // 位置被別的桌佔走（例如別人在這之間放了桌）：不能復原
+  const used = new Map<number, number>();
+  for (const [id, t] of d.tables) {
+    if (t.kind !== 'NORMAL' || t.position === null) continue;
+    if (used.has(t.position)) return fail('CONFLICT');
+    used.set(t.position, id);
+  }
+
+  if (snapshot.participants.some((s) => s.tableId !== null && !d.tables.has(s.tableId))) return fail('CONFLICT');
   const restored = new Set<number>();
   const touched = new Set<number>();
   for (const s of snapshot.participants) {
@@ -228,9 +348,9 @@ function restore(d: Draft, snapshot: SeatingSnapshot): SeatingRuleResult {
     d.pos.set(s.id, { tableId: s.tableId, seatOrder: s.tableId === null ? null : s.seatOrder });
     restored.add(s.id);
   }
-  for (const t of snapshot.tables) d.notes.set(t.id, t.noteName);
 
   for (const tableId of touched) {
+    if (!d.tables.has(tableId)) continue;
     const members = [...d.pos.entries()].filter(([, p]) => p.tableId === tableId);
     // 復原可以回到最多 12 位的狀態（SEAT-R88）；別人在這之間坐進來、會超過 12 位時不能復原
     if (tableId === STAFF_TABLE_ID) {
@@ -272,19 +392,21 @@ export type SeatingStats = {
 };
 
 /**
- * 統計列（SEAT-R75）：已入座是 30 桌上的人數；總人數是不是工作人員的參與人員；未入座是總人數減已入座；
- * 空位每桌只算到 10 位；已滿是 10 位以上的桌數；超過是 11、12 位的桌數。工作人員桌的人與空位都不算（SEAT-R47）。
+ * 統計列（SEAT-R75）：已入座是場上的桌（放在位置上的桌）上的人數；總人數是不是工作人員的參與人員；未入座是總人數減已入座
+ * （含暫存的桌上的人，SEAT-R94）；空位只算場上的桌，每桌只算到 10 位；已滿是 10 位以上的桌數；超過是 11、12 位的桌數。
+ * 工作人員桌、暫存的桌與「未放桌」的位置都不算（SEAT-R47、D-027）。
  */
-export function seatingStats(participants: readonly Participant[]): SeatingStats {
-  const perTable = new Map<number, number>();
+export function seatingStats(participants: readonly Participant[], tables: readonly SeatTable[]): SeatingStats {
+  const placed = tables.filter(isPlaced);
+  const perTable = new Map<number, number>(placed.map((t) => [t.id, 0]));
   let seated = 0;
   let total = 0;
   for (const p of participants) {
     if (p.tableId === STAFF_TABLE_ID) continue;
     total++;
-    if (isNormalTable(p.tableId)) {
+    if (p.tableId !== null && perTable.has(p.tableId)) {
       seated++;
-      perTable.set(p.tableId, (perTable.get(p.tableId) ?? 0) + 1);
+      perTable.set(p.tableId, perTable.get(p.tableId)! + 1);
     }
   }
   const counts = [...perTable.values()];
@@ -293,7 +415,7 @@ export function seatingStats(participants: readonly Participant[]): SeatingStats
     seated,
     total,
     unseated: total - seated,
-    emptySeats: TABLE_COUNT * TABLE_CAPACITY - filled,
+    emptySeats: placed.length * TABLE_CAPACITY - filled,
     fullTables: counts.filter((n) => tableStatus(n) !== 'open').length,
     overflowTables: counts.filter((n) => tableStatus(n) === 'over').length,
   };
@@ -310,7 +432,7 @@ export function normalizeTables(
   gained?: ReadonlySet<number>,
 ): { overfull: number | null } {
   for (const tableId of tableIds) {
-    if (!isNormalTable(tableId)) continue;
+    if (!isNormalTableId(tableId)) continue;
     const members = participants
       .filter((p) => p.tableId === tableId)
       .sort((a, b) => (a.seatOrder ?? 0) - (b.seatOrder ?? 0) || a.id - b.id);

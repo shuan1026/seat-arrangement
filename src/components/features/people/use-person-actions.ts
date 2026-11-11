@@ -13,7 +13,7 @@ import { STAFF_TABLE_ID, type AppState, type Participant } from '@/contracts/ent
 import type { ParticipantDeleteResult } from '@/contracts/participants';
 import { displayName } from '@/domain/display';
 import { mergeParticipants, removeParticipants, withDependent } from '@/domain/participants';
-import { msg } from '../seating/model';
+import { msg, tableName } from '../seating/model';
 import { useSeatingOps } from '../seating/use-seating-ops';
 
 const withParticipants = (fn: (list: Participant[]) => Participant[]) => (d: AppState): AppState => ({
@@ -37,7 +37,11 @@ export function usePersonActions() {
     (p: Participant) => {
       const from = p.tableId;
       if (from == null || from === STAFF_TABLE_ID) return;
-      ops.run({ type: 'unseat', participantId: p.id }, msg.unseated(displayName(p, dir), from));
+      // 暫存的桌上的人：「已把 {顯示名稱} 移出暫存區的桌。」（第 2.2 節、D-027）
+      const tables = latest.current.tables;
+      const staged = tables.find((t) => t.id === from)?.position === null;
+      const name = displayName(p, dir);
+      ops.run({ type: 'unseat', participantId: p.id }, staged ? msg.leftStaged(name) : msg.unseated(name, tableName(tables, from)));
     },
     [dir, ops],
   );

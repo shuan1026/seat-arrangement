@@ -229,7 +229,49 @@ describe('編輯者會成功的寫入，檢視者與沒有權限的人都被拒�
       build: (s) => ({ file: routeFile('seating', 'operations'), method: 'POST', json: { type: 'unseat', participantId: s.wang.participant.id } }),
     },
     { name: '座位異動：清空', build: () => ({ file: routeFile('seating', 'operations'), method: 'POST', json: { type: 'clear', tableId: 3 } }) },
-    { name: '座位異動：對調', build: () => ({ file: routeFile('seating', 'operations'), method: 'POST', json: { type: 'swap', tableA: 3, tableB: 7 } }) },
+    // D-027：對調改用 moveTable；另有搬到「未放桌」、移到暫存區、從暫存區放回、新增桌、刪除桌（SEAT-R90、AUTH-R12）
+    {
+      name: '座位異動：對調（moveTable 到有桌的位置）',
+      build: () => ({ file: routeFile('seating', 'operations'), method: 'POST', json: { type: 'moveTable', tableId: 3, to: 7, expectedTableId: 7 } }),
+    },
+    {
+      name: '座位異動：移到暫存區',
+      build: () => ({ file: routeFile('seating', 'operations'), method: 'POST', json: { type: 'moveTable', tableId: 3, to: 'staging', expectedTableId: null } }),
+    },
+    {
+      name: '座位異動：搬到「未放桌」的位置',
+      build: async () => {
+        await prisma.seatTable.delete({ where: { id: 9 } });
+        return { file: routeFile('seating', 'operations'), method: 'POST', json: { type: 'moveTable', tableId: 3, to: 9, expectedTableId: null } };
+      },
+    },
+    {
+      name: '座位異動：從暫存區放回',
+      build: async () => {
+        await prisma.seatTable.delete({ where: { id: 9 } });
+        await prisma.seatTable.create({ data: { id: 31, kind: 'NORMAL', position: null, stagedAt: new Date('2026-11-01T08:00:00.000Z') } });
+        return { file: routeFile('seating', 'operations'), method: 'POST', json: { type: 'moveTable', tableId: 31, to: 9, expectedTableId: null } };
+      },
+    },
+    {
+      name: '座位異動：新增桌',
+      build: async () => {
+        await prisma.seatTable.delete({ where: { id: 9 } });
+        return { file: routeFile('seating', 'operations'), method: 'POST', json: { type: 'createTable', position: 9 } };
+      },
+    },
+    { name: '座位異動：刪除桌', build: () => ({ file: routeFile('seating', 'operations'), method: 'POST', json: { type: 'deleteTable', tableId: 3 } }) },
+    {
+      name: '復原（桌子）',
+      build: () => ({
+        file: routeFile('seating', 'operations'),
+        method: 'POST',
+        json: {
+          type: 'restore',
+          snapshot: { participants: [], tables: [{ id: 3, kind: 'NORMAL', position: null, stagedAt: '2026-11-01T08:00:00.000Z', noteName: null, exists: true }] },
+        },
+      }),
+    },
     {
       name: '自動排座',
       build: () => ({ file: routeFile('seating', 'operations'), method: 'POST', json: { type: 'autoArrange', mode: 'rebuild' } }),
@@ -285,6 +327,16 @@ describe('編輯者會成功的寫入，檢視者與沒有權限的人都被拒�
     expect(res.status).toBe(200);
     expect((await prisma.seatTable.findUnique({ where: { id: 3 } }))?.noteName).toBe('供應商');
   });
+
+  it.each(CASES.filter((c) => c.name.startsWith('座位異動') || c.name.startsWith('復原')).map((c) => [c.name, c] as const))(
+    '對照：%s 由編輯者送出會成功（確認上面用的是正確的本體）',
+    async (_name, c) => {
+      currentUser.mockResolvedValue(EDITOR);
+      const sample = await seedSample();
+      const res = await call(await c.build(sample));
+      expect(res.status, await res.clone().text()).toBe(200);
+    },
+  );
 
   it('對照：編輯者新增帳號、改權限都會儲存', async () => {
     currentUser.mockResolvedValue(EDITOR);

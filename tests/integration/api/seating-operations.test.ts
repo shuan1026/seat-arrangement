@@ -10,16 +10,21 @@ import { prisma, resetData } from '../../helpers/db';
 import { createDependent, createGuest, createRegisteredEmployee } from '../../helpers/factory';
 import {
   allPositions,
+  allTableRows,
   expectAllContiguous,
   expectError,
   newUnseated,
   noteNameOf,
   operate,
   positionOf,
+  positionOfTable,
   postOperation,
   roster,
+  rosterAt,
   seatNewEmployees,
   staffIds,
+  tableAt,
+  tableRow,
 } from '../../helpers/seating-api';
 
 vi.mock('@/server/auth', () => ({
@@ -95,9 +100,19 @@ describe('seat：入座（SEAT-R16～R18、COM-R01）', () => {
 
   it('輸入格式不對：400 VALIDATION_FAILED', async () => {
     const wang = await newUnseated();
-    await expectError(await postOperation({ type: 'seat', participantId: wang, tableId: 31 }), 400, 'VALIDATION_FAILED');
+    // D-027 起桌子的 id 不限 1–30（新增的桌從 31 起），格式不對的是負數、小數與桌號字串
+    await expectError(await postOperation({ type: 'seat', participantId: wang, tableId: -1 }), 400, 'VALIDATION_FAILED');
+    await expectError(await postOperation({ type: 'seat', participantId: wang, tableId: 'B4' }), 400, 'VALIDATION_FAILED');
     await expectError(await postOperation({ type: 'teleport', participantId: wang }), 400, 'VALIDATION_FAILED');
+    await expectError(await postOperation({ type: 'swap', tableA: 3, tableB: 7 }), 400, 'VALIDATION_FAILED');
     await expectError(await postOperation('not json'), 400, 'VALIDATION_FAILED');
+    expect(await positionOf(wang)).toEqual(unseated);
+  });
+
+  it('桌子不存在（例如 id 31 還沒新增、或已被別人刪除）：被拒（404 NOT_FOUND 或 409 CONFLICT），不入座（SEAT-R85、COM-R07）', async () => {
+    const wang = await newUnseated();
+    const res = await postOperation({ type: 'seat', participantId: wang, tableId: 31 });
+    expect([404, 409], JSON.stringify(await res.clone().json())).toContain(res.status);
     expect(await positionOf(wang)).toEqual(unseated);
   });
 });
@@ -380,65 +395,85 @@ describe('clear：清空桌次（SEAT-R28、R29）', () => {
   });
 });
 
-describe('swap：對調桌次（SEAT-R35、R36、R38、R48）', () => {
-  it('兩桌的名單（含順序）與備註名稱整組對調，回應包含兩桌的新備註名稱；復原後回到對調前（SEAT-R35、SEAT-AC30、SEAT-AC76）', async () => {
+// D-027：原本的 swap 拿掉，對調改用 moveTable（兩桌交換 position；名單與備註名稱跟著桌子的 id，不搬人）。
+// 畫面上的結果和原本的對調相同：B4 的位置上是原本 B2 的名單與備註名稱，反之亦然（SEAT-AC30～AC35、AC76）。
+// 其他搬動（「未放桌」、暫存區）、新增與刪除見 seating-tables.test.ts。
+describe('moveTable：對調桌次（SEAT-R35、R36、R38、R48）', () => {
+  it('B4（3）拖到 B2（7）：兩桌交換位置，B4 的位置上是丙丁戊、B2 的位置上是甲乙與「主桌」；回應有兩桌的新位置；復原後回到對調前（SEAT-AC30、SEAT-AC76）', async () => {
     const table3 = await seatNewEmployees(3, 2);
     const table7 = await seatNewEmployees(7, 3);
     await prisma.seatTable.update({ where: { id: 3 }, data: { noteName: '主桌' } });
+    const peopleBefore = await allPositions();
 
-    const result = await operate({ type: 'swap', tableA: 3, tableB: 7 });
-    expect(await roster(3)).toEqual(table7);
-    expect(await roster(7)).toEqual(table3);
-    expect(await noteNameOf(3)).toBeNull();
-    expect(await noteNameOf(7)).toBe('主桌');
+    const result = await operate({ type: 'moveTable', tableId: 3, to: 7, expectedTableId: 7 });
+    expect(await rosterAt(3)).toEqual(table7);
+    expect(await rosterAt(7)).toEqual(table3);
+    expect(await tableRow(3)).toMatchObject({ position: 7, stagedAt: null, noteName: '主桌' });
+    expect(await tableRow(7)).toMatchObject({ position: 3, stagedAt: null, noteName: null });
+    expect(await allPositions(), '名單跟著桌子，人不搬').toEqual(peopleBefore);
+    expect(result.participants).toEqual([]);
+    expect(result.deletedTableIds).toEqual([]);
     expect(result.tables).toEqual(
       expect.arrayContaining([
-        { id: 3, kind: 'NORMAL', noteName: null },
-        { id: 7, kind: 'NORMAL', noteName: '主桌' },
+        { id: 3, kind: 'NORMAL', position: 7, stagedAt: null, noteName: '主桌' },
+        { id: 7, kind: 'NORMAL', position: 3, stagedAt: null, noteName: null },
       ]),
     );
     expect(result.undo.tables).toEqual(
       expect.arrayContaining([
-        { id: 3, noteName: '主桌' },
-        { id: 7, noteName: null },
+        { id: 3, kind: 'NORMAL', position: 3, stagedAt: null, noteName: '主桌', exists: true },
+        { id: 7, kind: 'NORMAL', position: 7, stagedAt: null, noteName: null, exists: true },
       ]),
     );
 
     const restored = await operate({ type: 'restore', snapshot: result.undo });
-    expect(await roster(3)).toEqual(table3);
-    expect(await roster(7)).toEqual(table7);
-    expect(await noteNameOf(3)).toBe('主桌');
-    expect(await noteNameOf(7)).toBeNull();
-    expect(restored.tables).toEqual(expect.arrayContaining([{ id: 3, kind: 'NORMAL', noteName: '主桌' }]));
+    expect(await rosterAt(3)).toEqual(table3);
+    expect(await rosterAt(7)).toEqual(table7);
+    expect(await tableRow(3)).toMatchObject({ position: 3, noteName: '主桌' });
+    expect(await tableRow(7)).toMatchObject({ position: 7, noteName: null });
+    expect(restored.tables).toEqual(expect.arrayContaining([{ id: 3, kind: 'NORMAL', position: 3, stagedAt: null, noteName: '主桌' }]));
   });
 
   it('已滿的桌次也可以對調（SEAT-R35、SEAT-AC35）', async () => {
     const table3 = await seatNewEmployees(3, 4);
     const table7 = await seatNewEmployees(7, 10);
-    await operate({ type: 'swap', tableA: 3, tableB: 7 });
-    expect(await roster(3)).toEqual(table7);
-    expect(await roster(7)).toEqual(table3);
+    await operate({ type: 'moveTable', tableId: 3, to: 7, expectedTableId: 7 });
+    expect(await rosterAt(3)).toEqual(table7);
+    expect(await rosterAt(7)).toEqual(table3);
   });
 
-  it('拖到空桌：整桌搬過去，原本的桌變成空桌、沒有備註名稱（SEAT-R36、SEAT-AC32）', async () => {
+  it('拖到空桌：整桌搬過去，B4 的位置變成空桌、沒有備註名稱（SEAT-R36、SEAT-AC32）', async () => {
     const table3 = await seatNewEmployees(3, 2);
     await prisma.seatTable.update({ where: { id: 3 }, data: { noteName: '主桌' } });
-    await operate({ type: 'swap', tableA: 3, tableB: 9 });
-    expect(await roster(9)).toEqual(table3);
-    expect(await noteNameOf(9)).toBe('主桌');
-    expect(await roster(3)).toEqual([]);
-    expect(await noteNameOf(3)).toBeNull();
+    await operate({ type: 'moveTable', tableId: 3, to: 9, expectedTableId: 9 });
+    expect(await rosterAt(9)).toEqual(table3);
+    expect(await tableRow(await tableAt(9) ?? -1)).toMatchObject({ noteName: '主桌' });
+    expect(await rosterAt(3)).toEqual([]);
+    expect(await tableRow(await tableAt(3) ?? -1)).toMatchObject({ id: 9, noteName: null });
   });
 
-  it('和自己對調：沒有作用（SEAT-R38）', async () => {
+  it('放回自己的位置：沒有作用（SEAT-R38）', async () => {
     const table3 = await seatNewEmployees(3, 2);
-    const result = await operate({ type: 'swap', tableA: 3, tableB: 3 });
+    const tables = await allTableRows();
+    const result = await operate({ type: 'moveTable', tableId: 3, to: 3, expectedTableId: 3 });
     expect(result.undo).toEqual({ participants: [], tables: [] });
     expect(await roster(3)).toEqual(table3);
+    expect(await allTableRows()).toEqual(tables);
   });
 
-  it('工作人員桌不能對調：400（SEAT-R48）', async () => {
-    await expectError(await postOperation({ type: 'swap', tableA: 0, tableB: 3 }), 400, 'VALIDATION_FAILED');
+  it('工作人員桌不能對調、不能移到暫存區：被拒，桌子與人都不變（SEAT-R48、SEAT-R98）', async () => {
+    await seatNewEmployees(STAFF_TABLE_ID, 2);
+    const tables = await allTableRows();
+    const people = await allPositions();
+    for (const op of [
+      { type: 'moveTable', tableId: STAFF_TABLE_ID, to: 3, expectedTableId: 3 },
+      { type: 'moveTable', tableId: STAFF_TABLE_ID, to: 'staging', expectedTableId: null },
+    ]) {
+      const res = await postOperation(op);
+      expect([400, 409], JSON.stringify(op)).toContain(res.status);
+    }
+    expect(await allTableRows()).toEqual(tables);
+    expect(await allPositions()).toEqual(people);
   });
 });
 
@@ -511,8 +546,9 @@ describe('立即儲存（COM-R01、COM-R05、SEAT-R85）', () => {
     const others = await seatNewEmployees(3, 2);
     await operate({ type: 'seat', participantId: wang, tableId: 3, index: 0 });
     await operate({ type: 'reorder', tableId: 3, participantIds: [others[1], wang, others[0]] });
-    await operate({ type: 'swap', tableA: 3, tableB: 12 });
-    expect(await roster(12)).toEqual([others[1], wang, others[0]]);
+    await operate({ type: 'moveTable', tableId: 3, to: 12, expectedTableId: 12 });
+    expect(await rosterAt(12)).toEqual([others[1], wang, others[0]]);
+    expect(await positionOfTable(3)).toBe(12);
     await expectAllContiguous();
   });
 });

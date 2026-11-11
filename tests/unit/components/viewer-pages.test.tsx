@@ -103,9 +103,16 @@ const participant = (id: number, data: Partial<Participant> & Pick<Participant, 
 const B4 = 3;
 const B2 = 7;
 
+// D-027：桌子帶 position（1–30 桌在同號的位置）與 stagedAt
 const TABLES: SeatTable[] = [
-  { id: STAFF_TABLE_ID, kind: 'STAFF', noteName: null },
-  ...Array.from({ length: 30 }, (_, i): SeatTable => ({ id: i + 1, kind: 'NORMAL', noteName: i + 1 === B2 ? '主桌' : null })),
+  { id: STAFF_TABLE_ID, kind: 'STAFF', position: null, stagedAt: null, noteName: null },
+  ...Array.from({ length: 30 }, (_, i): SeatTable => ({
+    id: i + 1,
+    kind: 'NORMAL',
+    position: i + 1,
+    stagedAt: null,
+    noteName: i + 1 === B2 ? '主桌' : null,
+  })),
 ];
 
 /** 王小明（研發一部，分機 1234，備註「素食」）已報名、坐 B2 桌、素食；眷屬坐 B2 桌、兒童椅；李小華未報名；陳大文不參加；
@@ -274,5 +281,75 @@ describe('座位安排（SEAT-R90、SEAT-AC99、SEAT-AC101、SEAT-AC106）', () 
     expect(within(detail).queryByRole('textbox', { name: '備註名稱' })).toBeNull();
     expect(within(detail).queryByText('主桌', { exact: true })).toBeNull();
     expect(within(detail).queryByText(/備註名稱/)).toBeNull();
+  });
+});
+
+// D-027（seating.md SEAT-R90、SEAT-AC127）：檢視者看得到暫存區、暫存的桌與「未放桌」的位置，但沒有拖移把手、「新增桌」「刪除桌」
+// 「移到暫存區」「放到…」；「未放桌」的位置不是按鈕、不能聚焦；點暫存的桌開啟只有名單與「關閉」的詳情。
+// 資料：B8（位置 9）是「未放桌」；暫存區有一桌（id 31，坐周同仁）。
+describe('座位安排：暫存區與「未放桌」（D-027、SEAT-R90、SEAT-AC127）', () => {
+  const B8 = 9;
+  const tables: SeatTable[] = [
+    ...TABLES.filter((t) => t.position !== B8),
+    { id: 31, kind: 'NORMAL', position: null, stagedAt: '2026-11-01T08:00:00.000Z', noteName: null },
+  ];
+  const withStaging: AppState = {
+    ...STATE,
+    participants: STATE.participants.map((p) => (p.id === 104 ? { ...p, tableId: 31, seatOrder: 0 } : p)),
+    tables,
+  };
+  const stagingRegion = () => screen.getByRole('region', { name: '暫存區' });
+  const stagedButton = () => within(stagingRegion()).getByRole('button', { name: /^暫存，/ });
+
+  it('檢視者：暫存區與暫存的桌照常顯示；B8 有「B8」「未放桌」文字，但不是按鈕；沒有拖移把手', () => {
+    renderIn(false, <SeatingPage initialTable={null} />, withStaging);
+    expect(stagedButton()).toBeTruthy();
+    expect(screen.queryAllByRole('button', { name: 'B8 未放桌', hidden: true })).toHaveLength(0);
+    expect(screen.queryAllByRole('button', { name: /未放桌/, hidden: true })).toHaveLength(0);
+    expect(screen.getAllByText('未放桌', { exact: true }).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole('button', { name: '拖移調換桌次', hidden: true })).toHaveLength(0);
+  });
+
+  it('檢視者：「未放桌」的位置不能聚焦（沒有 tabindex），點了沒有反應', async () => {
+    const { user } = renderIn(false, <SeatingPage initialTable={null} />, withStaging);
+    const b4 = screen.getByRole('button', { name: /^B4 桌/ });
+    for (const el of screen.getAllByText('未放桌', { exact: true })) {
+      // 往上找到的第一個可以聚焦的元素若存在，只能是包含其他桌的容器（例如座位圖區），不能是這個位置本身
+      const focusable = el.closest('[tabindex]:not([tabindex="-1"]),button,a[href]');
+      expect(focusable === null || focusable.contains(b4), '「未放桌」的位置不能聚焦').toBe(true);
+      await user.click(el);
+    }
+    expect(screen.queryByRole('region', { name: 'B8' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'B8' })).toBeNull();
+    expect(screen.queryByText('這個位置沒有擺桌。')).toBeNull();
+    expect(screen.queryAllByRole('button', { name: '新增桌', hidden: true })).toHaveLength(0);
+  });
+
+  it('檢視者：點暫存的桌 → 詳情只有名單與「關閉」，沒有「放到…」「刪除桌」與備註名稱欄位', async () => {
+    const { user } = renderIn(false, <SeatingPage initialTable={null} />, withStaging);
+    await user.click(stagedButton());
+    const detail = screen.queryByRole('region', { name: '暫存區的桌' }) ?? screen.getByRole('dialog', { name: '暫存區的桌' });
+    expect(within(detail).getByText('周同仁')).toBeTruthy();
+    for (const name of ['放到…', '刪除桌', '加入人員', '調換桌次…', '移到暫存區', '清空桌次']) {
+      expect(within(detail).queryByRole('button', { name }), name).toBeNull();
+    }
+    expect(within(detail).queryByRole('textbox', { name: '備註名稱' })).toBeNull();
+    expect(within(detail).queryAllByRole('button', { name: '更多操作' })).toHaveLength(0);
+    expect(within(detail).getByRole('button', { name: '關閉' })).toBeTruthy();
+  });
+
+  it('檢視者：B4 桌詳情沒有「移到暫存區」「刪除桌」', async () => {
+    const { user } = renderIn(false, <SeatingPage initialTable={null} />, withStaging);
+    await user.click(screen.getByRole('button', { name: /^B4 桌/ }));
+    const detail = screen.queryByRole('region', { name: 'B4 桌' }) ?? screen.getByRole('dialog', { name: 'B4 桌' });
+    for (const name of ['移到暫存區', '刪除桌']) expect(within(detail).queryByRole('button', { name }), name).toBeNull();
+  });
+
+  it('編輯者（對照組）：B8 是按鈕「B8 未放桌」；暫存的桌有拖移把手', () => {
+    renderIn(true, <SeatingPage initialTable={null} />, withStaging);
+    expect(screen.getByRole('button', { name: 'B8 未放桌' })).toBeTruthy();
+    const stagedGroup = stagedButton().closest('[role="group"]');
+    expect(stagedGroup, '暫存的桌是一個 group').not.toBeNull();
+    expect(within(stagedGroup as HTMLElement).getByRole('button', { name: '拖移調換桌次' })).toBeTruthy();
   });
 });

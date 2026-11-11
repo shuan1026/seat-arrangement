@@ -791,6 +791,67 @@ test.describe('已發布：座位圖與桌次名單（PRM-R24～R28、D-025）',
   });
 });
 
+// D-027（permissions.md v1.3）：發布頁不顯示「未放桌」的位置（沒有虛線框與位置代碼），也不畫暫存區；暫存區的桌上的人搜尋不到
+test.describe('已發布：「未放桌」與暫存區（PRM-R24、PRM-R30、PRM-AC45、D-027）', () => {
+  test('PRM-AC45：B8 是「未放桌」、暫存區有一桌坐陳大文 → /seats 的 B8 位置什麼都沒有、沒有暫存區；搜尋「陳大文」→「找不到「陳大文」。」；伺服器回傳的資料不含 B8 與暫存的桌', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const staged = await withDb(async (db) => {
+      await db.reset();
+      await db.registerNew({ name: '王小明', department: '研發一部' }, { tableId: B4 });
+      await db.emptyPosition(B8);
+      const id = await db.stagedTable('暫放');
+      await db.registerNew({ name: '陳大文', department: '研發一部' }, { tableId: id });
+      return id;
+    });
+    await setPublished(true);
+    await asViewer(context, baseURL);
+    await openSeatsMap(page);
+
+    await expect(seatMap(page).getByRole('group', { name: 'B8 桌', exact: true })).toHaveCount(0);
+    await expect(seatMap(page).getByText('B8', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('未放桌')).toHaveCount(0);
+    await expect(page.getByRole('region', { name: '暫存區', exact: true })).toHaveCount(0);
+    await expect(page.getByText('暫存區')).toHaveCount(0);
+    await expect(page.getByText('暫存', { exact: true })).toHaveCount(0);
+    await expect(seatMap(page).getByRole('group', { name: /^[AB]\d{1,2} 桌$/ })).toHaveCount(29);
+    await expect(seatMap(page).getByRole('group', { name: 'B4 桌', exact: true })).toBeVisible();
+
+    await seatSearch(page).fill('陳大文');
+    await expect(notFoundLine(page, '陳大文')).toBeVisible();
+    await expect(page.getByText(/陳大文：/)).toHaveCount(0);
+
+    const { status, body } = await fetchFromPage(page, '/api/seats');
+    expect(status).toBe(200);
+    const tables = (body as { tables: { id: number; position: number | null }[] }).tables;
+    expect(tables.map((t) => t.id)).not.toContain(staged);
+    expect(tables.map((t) => t.id)).not.toContain(B8);
+    expect(tables.map((t) => t.position)).not.toContain(B8);
+    expect(JSON.stringify(body)).not.toContain('陳大文');
+  });
+
+  test('場地圖的寬度和沒有暫存區時相同：暫存區有一桌時，30 個位置與工作人員桌的相對位置不變（PRM-R24）', async ({ page, context, baseURL }) => {
+    desktopOnly(page);
+    await withDb(async (db) => {
+      await db.reset();
+      await db.registerNew({ name: '王小明', department: '研發一部' }, { tableId: B4 });
+    });
+    await setPublished(true);
+    await asViewer(context, baseURL);
+    await openSeatsMap(page);
+    const widthWithout = await seatMap(page).evaluate((el) => el.scrollWidth);
+
+    await withDb(async (db) => {
+      const id = await db.stagedTable('暫放');
+      await db.registerNew({ name: '陳大文', department: '研發一部' }, { tableId: id });
+    });
+    await reloadSeats(page);
+    expect(await seatMap(page).evaluate((el) => el.scrollWidth)).toBe(widthWithout);
+  });
+});
+
 test.describe('已發布：找座位（PRM-R30～R33）', () => {
   test.beforeEach(async ({ context, baseURL }) => {
     await seedSeats();
