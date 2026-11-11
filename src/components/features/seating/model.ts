@@ -210,6 +210,7 @@ export const msg = {
   staffLimit: '工作人員桌已達 12 位，請先移出一位。',
   employeeOnly: '只有員工可以放進工作人員桌。',
   undone: '已復原。',
+  redone: '已重做。',
   saved: '已儲存',
 };
 

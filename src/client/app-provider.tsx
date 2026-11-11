@@ -82,6 +82,8 @@ export function useAppStore<T>(selector: (s: AppStoreState) => T): T {
 }
 
 export const useSaveQueue = () => useCtx().queue;
+/** store 本身：在事件處理（例如 Sonner 的按鈕）裡讀最新的狀態用，不會因為元件已經卸載而讀到舊值 */
+export const useAppStoreApi = () => useCtx().store;
 export const useReload = () => useCtx().reload;
 /** 目前登入者是否為編輯者（COM-R19：只能檢視時隱藏會修改資料的入口） */
 export const useIsEditor = () => useAppStore((s) => s.isEditor);

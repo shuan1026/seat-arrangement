@@ -8,7 +8,7 @@
 // 「全部展開」「自動排座」沒有傳入處理函式時不顯示（只能檢視時也沒有「自動排座」，SEAT-R90）。
 // 桌子與位置分開（D-027）：tables 依桌子 id，桌子畫在它所在的位置（position）；位置上沒有桌時，座位安排頁（showSlots）畫「未放桌」的
 // 虛線框，發布頁什麼都不畫（PRM-R24）。座位安排頁另有暫存區（showStaging，2.1.12）：B 區外側列右邊一欄，暫存的桌依移入的先後由上往下排。
-import { FoldVertical, Maximize, PanelLeftOpen, UnfoldVertical, WandSparkles, ZoomIn, ZoomOut } from 'lucide-react';
+import { FoldVertical, Maximize, PanelLeftOpen, Redo2, Undo2, UnfoldVertical, WandSparkles, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { STAFF_TABLE_ID } from '@/contracts/entities';
 import { STAFF_TABLE_PLACEMENT, TABLE_LAYOUT } from '@/domain/layout';
@@ -97,6 +97,12 @@ export interface SeatMapProps {
   onAutoArrange?: () => void;
   /** 人員面板收合時，工具列的「顯示人員面板」 */
   onShowPanel?: () => void;
+  /** 工具列的「復原」「重做」（SEAT-R77、R99，D-028）；沒有時不顯示（檢視者、發布頁） */
+  onUndo?: () => void;
+  onRedo?: () => void;
+  /** 最新一步的 Sonner 文字（Tooltip「復原：{label}」）；null 時停用（沒有步驟或儲存中） */
+  undoLabel?: string | null;
+  redoLabel?: string | null;
   /** 被桌次詳情蓋住的寬度（桌面打開詳情時） */
   covered: boolean;
   /** 選取的桌（桌子 id）、工作人員桌，或「未放桌」的位置 */
@@ -273,6 +279,28 @@ export function SeatMap(props: SeatMapProps) {
           <Button variant="outline" leadingIcon={<PanelLeftOpen />} onClick={props.onShowPanel} className={cn(mobile && 'flex-auto')}>
             顯示人員面板
           </Button>
+        ) : null}
+        {props.onUndo && props.onRedo ? (
+          <span className="inline-flex items-center gap-1">
+            <IconButton
+              label="復原"
+              variant="outline"
+              tooltip={props.undoLabel ? `復原：${props.undoLabel}` : '復原'}
+              disabled={!props.undoLabel}
+              onClick={props.onUndo}
+            >
+              <Undo2 />
+            </IconButton>
+            <IconButton
+              label="重做"
+              variant="outline"
+              tooltip={props.redoLabel ? `重做：${props.redoLabel}` : '重做'}
+              disabled={!props.redoLabel}
+              onClick={props.onRedo}
+            >
+              <Redo2 />
+            </IconButton>
+          </span>
         ) : null}
         <span className="inline-flex items-center gap-1">
           <IconButton label="縮小" variant="outline" tooltip onClick={() => zoomTo(pct - 10)}>

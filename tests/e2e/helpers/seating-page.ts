@@ -25,6 +25,10 @@
 //   - 暫存的桌的詳情：region（桌面）或 dialog（手機）「暫存區的桌」或「暫存區的桌（{備註名稱}）」。
 //   - 「未放桌」的面板：region 或 dialog，名稱是位置代碼（例如「B8」）。
 //   - 刪除確認：alertdialog，名稱是標題。放到…：dialog「把暫存區的桌放到哪裡？」，combobox「位置」。
+// - D-028（復原與重做）：工具列「縮小」前面有兩個 Icon Button，無障礙名稱正好是「復原」「重做」，沒有步驟時 disabled；
+//   滑過時 Tooltip（role tooltip）是「復原：{那一步的 Sonner 文字}」「重做：{那一步的 Sonner 文字}」，停用時是「復原」「重做」；
+//   檢視者沒有這兩個按鈕。Sonner 的「復原」也是 button「復原」，但在 main 外面的通知區（src/app/layout.tsx 的 <Toaster />），
+//   所以工具列的按鈕用 toolbarUndo、toolbarRedo（限定在 main 裡找）；Sonner 的用 toast(page, text)、clickUndo。
 import { expect, type Locator, type Page } from '@playwright/test';
 import { codeOf } from '../../helpers/table-codes';
 import { isMobileWidth } from './page-checks';
@@ -197,6 +201,42 @@ export async function zoomToCompact(page: Page) {
   await expect(zoomText(page)).toBeVisible();
   for (let i = 0; i < 25 && (await zoomValue(page)) >= 80; i++) await toolbarButton(page, '縮小').click();
   expect(await zoomValue(page)).toBeLessThan(80);
+}
+
+/**
+ * 工具列的「復原」「重做」（2.1.3、D-028）。Sonner 的「復原」也是 button「復原」，在 main 外面的通知區，
+ * 所以限定在 main 裡找，不會比對到 Sonner 的按鈕。
+ */
+export const historyButton = (page: Page, name: '復原' | '重做') =>
+  page.getByRole('main').getByRole('button', { name, exact: true });
+export const toolbarUndo = (page: Page) => historyButton(page, '復原');
+export const toolbarRedo = (page: Page) => historyButton(page, '重做');
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * 滑過工具列的「復原」或「重做」，出現文字正好是 text 的 Tooltip（例如「復原：已把 王小明 安排到 B4 桌。」，停用時是「復原」）。
+ * 先把滑鼠移到 H1 上（離開按鈕，Tooltip 才會重新打開）；滑鼠直接移到按鈕中心（停用的按鈕也一樣，不經過 Playwright 的可點擊檢查）。
+ * 用整段文字比對（^…$），「復原」不會比對到「復原：…」。看完把滑鼠移回 H1。
+ */
+export async function expectHistoryTooltip(page: Page, name: '復原' | '重做', text: string) {
+  const heading = page.getByRole('heading', { level: 1, name: '座位安排' });
+  await heading.hover();
+  const button = historyButton(page, name);
+  await button.scrollIntoViewIfNeeded();
+  const box = await button.boundingBox();
+  if (!box) throw new Error(`量不到工具列的「${name}」`);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });
+  const tip = page.getByRole('tooltip').filter({ hasText: new RegExp(`^\\s*${escapeRegExp(text)}\\s*$`) });
+  await expect(tip, `「${name}」的 Tooltip 是「${text}」`).toHaveCount(1);
+  await heading.hover();
+}
+
+/** 按工具列的「復原」或「重做」，等 restore 送到伺服器並成功 */
+export async function clickHistory(page: Page, name: '復原' | '重做') {
+  const saved = waitForOperation(page);
+  await historyButton(page, name).click();
+  expect((await saved).ok(), `工具列的「${name}」儲存成功`).toBe(true);
 }
 
 /** 全部展開：每一桌換成名單卡片，卡片上有備註名稱與部門（SEAT-R69、2.1.7） */

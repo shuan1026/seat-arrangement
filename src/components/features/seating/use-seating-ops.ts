@@ -3,13 +3,16 @@
 // 座位指令的前端流程（docs/architecture.md 第 10.3 節；docs/spec/seating.md 3.14、3.16）：
 // 1. 先用 src/domain/seating-rules.ts 檢查（例如桌次已滿就直接提示，不送出）；沒有任何改變時什麼都不做。
 // 2. 通過後立即更新畫面，交給儲存佇列依序送出。
-// 3. 伺服器回應後用回應的資料校正畫面，再顯示 Sonner 與「復原」（undo 由回應帶回）。
-// 4. 只能復原最近一次（SEAT-R77）：做了下一個可以復原的操作後，前一則 Sonner 的「復原」就沒有作用。
+// 3. 伺服器回應後用回應的資料校正畫面，把這一步記進復原紀錄（最多 20 步，D-028），再顯示 Sonner 與「復原」（undo 由回應帶回）。
+// 4. 工具列的「復原」「重做」（SEAT-R77、R99）：復原送回 restore，回應的 undo 是重做用的快照；重做同樣送 restore，回應的 undo 放回復原紀錄。
+//    Sonner 的「復原」只在那一步仍是最新一步時有作用；做了下一個可以復原的操作後，前一則就沒有作用。
+//    儲存中（含正在復原或重做）時工具列的兩個按鈕停用，一步要等儲存完成才能復原（SEAT-R77）。
 // 5. 入座、搬移、加入人員、放進工作人員桌後這一桌超過 10 位時，成功的 Sonner 後面加上「這一桌已超過 10 位。」（SEAT-R89），
 //    以伺服器回應的結果為準。
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { apiFetch } from '@/client/api';
-import { useAppStore, useMutation } from '@/client/app-provider';
+import { useAppStore, useAppStoreApi, useMutation } from '@/client/app-provider';
+import type { HistoryStep } from '@/client/store';
 import { tableFullMessage, tableLimitMessage } from '@/client/conflict-messages';
 import { STAFF_TABLE_ID, TABLE_CAPACITY, type AppState, type SeatTable } from '@/contracts/entities';
 import type { ErrorCode } from '@/contracts/errors';
@@ -54,18 +57,19 @@ function applyLocally(data: AppState, op: RuleOperation): AppState {
   return r.ok ? { ...data, participants: r.data.participants, tables: r.data.tables } : data;
 }
 
-// 最近一次可以復原的操作。整個分頁只有一個 store，所以放在模組層級；衝突重新載入時（store 的 undo 變成 null）一併清掉。
-let latestUndo: symbol | null = null;
-// 目前帶「復原」的 Sonner：做了下一個可以復原的操作時先關掉舊的，畫面上只會有一個「復原」（SEAT-R77）
+// 目前帶「復原」的 Sonner 與它代表的那一步：做了下一個可以復原的操作時先關掉舊的，畫面上只會有一個「復原」（SEAT-R77）；
+// 用工具列復原那一步時也關掉（D-028）。整個分頁只有一個 store，所以放在模組層級。
 let undoToast: string | number | null = null;
+let undoToastStep: HistoryStep | null = null;
 function closeUndoToast() {
   if (undoToast !== null) dismissNotify(undoToast);
   undoToast = null;
+  undoToastStep = null;
 }
-// 換了一個 store（重新載入整頁）時，上一個 store 的「復原」都失效
+// 最近一次送出的可以復原的操作：回應回來之前已經送出下一個時，這一次的 Sonner 不帶「復原」
+let latestRun: symbol | null = null;
+// 換了一個 store（重新載入整頁）時，上一個 store 的那則「復原」Sonner 關掉
 let boundStore: unknown = null;
-// store 的 undo 上一次的值：只在它從有值變成 null（衝突後重新載入）時清掉，元件掛載時不清
-let lastSeenUndo: unknown = null;
 
 /** 目前畫面上的桌（提示要用桌號）：useSeatingOps 每次繪製時更新 */
 let currentTables: readonly SeatTable[] = [];
@@ -112,63 +116,83 @@ function overflowed(op: RuleOperation, before: AppState, res: SeatingResult, mer
 export function useSeatingOps() {
   const mutate = useMutation();
   const data = useAppStore((s) => s.data);
-  const storeUndo = useAppStore((s) => s.undo);
-  const setUndo = useAppStore((s) => s.setUndo);
+  const history = useAppStore((s) => s.history);
+  const saving = useAppStore((s) => s.save.state === 'saving');
+  const pushStep = useAppStore((s) => s.pushStep);
+  const undoStep = useAppStore((s) => s.undoStep);
+  const redoStep = useAppStore((s) => s.redoStep);
+  // 復原、重做與 Sonner 的「復原」都直接讀 store 的最新紀錄：觸發那一步的元件（例如刪除確認）可能已經卸載
+  const storeApi = useAppStoreApi();
   const latest = useRef(data);
   useLayoutEffect(() => {
     latest.current = data;
     currentTables = data.tables;
   });
   useEffect(() => {
-    if (storeUndo === null && lastSeenUndo !== null) latestUndo = null;
-    lastSeenUndo = storeUndo;
-  }, [storeUndo]);
-  useEffect(() => {
-    if (boundStore === setUndo) return;
+    if (boundStore === pushStep) return;
     if (boundStore !== null) closeUndoToast();
-    boundStore = setUndo;
-    latestUndo = null;
-    lastSeenUndo = null;
-  }, [setUndo]);
+    boundStore = pushStep;
+    latestRun = null;
+  }, [pushStep]);
 
-  /** 按下 Sonner 的「復原」：把 undo 送回 restore（SEAT-R78、SEAT-R79） */
-  const restore = useCallback(
-    (snapshot: SeatingSnapshot) => {
+  /** 送出 restore；成功後 onDone 拿到回應的 undo（反方向用的快照） */
+  const sendRestore = useCallback(
+    (snapshot: SeatingSnapshot, onDone: (undo: SeatingSnapshot) => void, done: string) => {
       const op: RuleOperation = { type: 'restore', snapshot };
-      latestUndo = null;
-      setUndo(null);
-      closeUndoToast();
       mutate<SeatingResult>({
         optimistic: (d) => applyLocally(d, op),
         send: () => postOperation(op),
         onSuccess: (res, s) => {
           s.update((d) => mergeResult(d, res));
-          notify(msg.undone);
+          onDone(res.undo);
+          notify(done);
         },
         conflictMessage: conflictFor(op),
       });
     },
-    [mutate, setUndo],
+    [mutate],
   );
 
+  /** 復原最近一步（工具列或 Sonner 的「復原」，SEAT-R77、R78、R79）：Sonner「已復原。」，這一步移到重做紀錄 */
+  const undo = useCallback(() => {
+    const { history: h, save } = storeApi.getState();
+    const step = h.undo.at(-1);
+    // 儲存中（含上一次復原或重做還沒完成）不送出，避免同一步送兩次
+    if (!step || save.state === 'saving') return;
+    if (undoToastStep === step) closeUndoToast();
+    sendRestore(step.snapshot, (redo) => undoStep({ snapshot: redo, label: step.label }), msg.undone);
+  }, [sendRestore, undoStep, storeApi]);
+
+  /** 重做最近一次復原的那一步（SEAT-R99）：Sonner「已重做。」，這一步放回復原紀錄 */
+  const redo = useCallback(() => {
+    const { history: h, save } = storeApi.getState();
+    const step = h.redo.at(-1);
+    if (!step || save.state === 'saving') return;
+    sendRestore(step.snapshot, (back) => redoStep({ snapshot: back, label: step.label }), msg.redone);
+  }, [sendRestore, redoStep, storeApi]);
+
+  /** 記進復原紀錄並顯示 Sonner；回應回來之前已經送出下一個可以復原的操作時，Sonner 不帶「復原」（SEAT-R77） */
   const offerUndo = useCallback(
     (token: symbol, text: string, snapshot: SeatingSnapshot) => {
-      const entry = {
-        run: () => {
-          if (latestUndo !== token) return;
-          restore(snapshot);
-        },
-      };
-      // 回應回來之前已經做了下一個可以復原的操作：這一次只顯示結果，不帶「復原」（SEAT-R77）
-      if (latestUndo !== token) {
+      const step: HistoryStep = { snapshot, label: text };
+      pushStep(step);
+      if (latestRun !== token) {
         notify(text);
         return;
       }
-      setUndo(entry);
       closeUndoToast();
-      undoToast = notify(text, { action: { label: '復原', onClick: entry.run } });
+      undoToastStep = step;
+      undoToast = notify(text, {
+        action: {
+          label: '復原',
+          // 只在這一步仍是最新一步時有作用
+          onClick: () => {
+            if (storeApi.getState().history.undo.at(-1) === step) undo();
+          },
+        },
+      });
     },
-    [restore, setUndo],
+    [pushStep, undo, storeApi],
   );
 
   /**
@@ -186,7 +210,7 @@ export function useSeatingOps() {
       if (!check.undo.participants.length && !check.undo.tables.length) return false;
       const token = Symbol(op.type);
       const before = latest.current;
-      latestUndo = token;
+      latestRun = token;
       mutate<SeatingResult>({
         optimistic: (d) => applyLocally(d, op),
         send: () => postOperation(op),
@@ -207,13 +231,13 @@ export function useSeatingOps() {
     (mode: 'unseatedOnly' | 'rebuild') => {
       const op: SeatingOperation = { type: 'autoArrange', mode };
       const token = Symbol(op.type);
-      latestUndo = token;
+      latestRun = token;
       mutate<SeatingResult>({
         send: () => postOperation(op),
         onSuccess: (res, s) => {
           const summary = res.summary ?? { placed: 0, tableIds: [], left: 0 };
           if (summary.placed === 0) {
-            if (latestUndo === token) latestUndo = null;
+            if (latestRun === token) latestRun = null;
             notify(autoArrangeMessage(summary), { type: 'warning' });
             return;
           }
@@ -243,6 +267,10 @@ export function useSeatingOps() {
     [mutate],
   );
 
-  return { run, autoArrange, setNoteName };
+  // 工具列的「復原」「重做」：儲存中停用；label 是那一步的 Sonner 文字（Tooltip「復原：{label}」，D-028）
+  const undoLabel = saving ? null : (history.undo.at(-1)?.label ?? null);
+  const redoLabel = saving ? null : (history.redo.at(-1)?.label ?? null);
+
+  return { run, autoArrange, setNoteName, undo, redo, undoLabel, redoLabel };
 }
 

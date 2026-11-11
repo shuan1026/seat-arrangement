@@ -1,6 +1,6 @@
 // 只能檢視時三頁隱藏的操作（元件層級）：docs/spec/README.md COM-R19（資料和編輯者相同；會修改資料的入口隱藏，不是停用；
 // 列操作選單一個項目都沒有時不顯示列操作按鈕）；docs/spec/seating.md SEAT-R90、2.1.1（編輯者的頁首依序是「新增人員」「匯出座位表」「發布」）；
-// docs/spec/participants.md PPL-R86；docs/spec/employees.md EMP-R67；驗收條件 SEAT-AC99、SEAT-AC101、SEAT-AC106、PPL-AC85、PPL-AC87、
+// docs/spec/participants.md PPL-R86；docs/spec/employees.md EMP-R67；驗收條件 SEAT-AC99、SEAT-AC101、SEAT-AC106、SEAT-AC138（D-028）、PPL-AC85、PPL-AC87、
 // EMP-AC89～AC91 的畫面部分；D-021。走真的伺服器的完整情境（拖不動、資料不變、手機）在 tests/e2e/viewer-*.spec.ts。
 //
 // 假設：AppProvider 的 isEditor prop（tests/unit/client/app-provider-permissions.test.tsx）決定這三頁顯示哪些操作；
@@ -242,6 +242,9 @@ describe('座位安排（SEAT-R90、SEAT-AC99、SEAT-AC101、SEAT-AC106）', () 
     expect(screen.queryAllByRole('button', { name: '拖移調換桌次', hidden: true })).toHaveLength(0);
     expect(screen.queryAllByRole('button', { name: '更多操作', hidden: true })).toHaveLength(0);
     expect(screen.queryAllByRole('button', { name: '自動排座', hidden: true })).toHaveLength(0);
+    // 工具列的「復原」「重做」也隱藏，不是停用（SEAT-R90、SEAT-AC138、D-028）
+    expect(screen.queryAllByRole('button', { name: '復原', hidden: true })).toHaveLength(0);
+    expect(screen.queryAllByRole('button', { name: '重做', hidden: true })).toHaveLength(0);
   });
 
   it('編輯者：頁首依序是「新增人員」「匯出座位表」「發布」；工具列有「自動排座」；桌次有拖移把手（對照組，SEAT-AC106）', () => {
@@ -254,6 +257,11 @@ describe('座位安排（SEAT-R90、SEAT-AC99、SEAT-AC101、SEAT-AC106）', () 
     expect(exportButton.compareDocumentPosition(publish) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(button('自動排座')).toHaveLength(1);
     expect(screen.queryAllByRole('button', { name: '拖移調換桌次' }).length).toBeGreaterThan(0);
+    // 工具列有「復原」「重做」，剛開啟時沒有步驟、都停用（2.1.3、SEAT-AC129、D-028）
+    for (const name of ['復原', '重做']) {
+      expect(button(name), name).toHaveLength(1);
+      expect((button(name)[0] as HTMLButtonElement).disabled, `${name} 停用`).toBe(true);
+    }
   });
 
   it('只能檢視：B2 桌詳情有「主桌」文字、部門、名單與第二行的分機；沒有備註名稱欄位、常用選項、名單說明、列操作、「加入人員」「調換桌次…」「清空桌次」', async () => {

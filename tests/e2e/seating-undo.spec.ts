@@ -1,6 +1,7 @@
-// 復原（桌面）：docs/spec/seating.md 3.14；SEAT-R76～R80；SEAT-AC75～AC80；
-// docs/spec/README.md 第 14 節（「復原」按鈕、「已復原。」）、COM-R01（復原也立即儲存）；
-// SEAT-Q15（只能按 Sonner 上的「復原」，做了下一個可以復原的操作後前一個就不能再復原）。
+// 復原（桌面，Sonner 的「復原」）：docs/spec/seating.md 3.14；SEAT-R76～R80；SEAT-AC75～AC80；
+// docs/spec/README.md 第 14 節（「復原」按鈕、「已復原。」）、COM-R01（復原也立即儲存）。
+// SEAT-R77（v1.8，D-028）：最多可以復原最近 20 步，Sonner 的「復原」等於復原最近一步，做了下一個可以復原的操作後，
+// 前一則 Sonner 的「復原」就沒有作用（SEAT-Q15 已移除）。工具列的「復原」「重做」與 20 步的紀錄見 seating-undo-redo.spec.ts。
 // 每次操作先等伺服器回應（undo 由回應帶回），再按「復原」。
 // 桌號 A1～A15、B1～B15（D-019）：測試資料用內部編號（3 = B4、7 = B2），畫面上的字用桌號。
 import { expect, test } from '@playwright/test';
@@ -112,7 +113,7 @@ test('清空後按「復原」：6 位回到 B4 桌原本的座號，「未入�
   expect(await rosterNames(3)).toEqual(['清1', '清2', '清3', '清4', '清5', '清6']);
 });
 
-test('先把甲安排到 B4 桌、再把乙安排到 B2 桌：甲的入座不能再復原；按乙的「復原」只還原乙（SEAT-R77、SEAT-AC78、SEAT-Q15）', async ({
+test('先把甲安排到 B4 桌、再把乙安排到 B2 桌：甲那一則 Sonner 的「復原」已經沒有作用；按乙的「復原」只還原乙（SEAT-R77、SEAT-AC78）', async ({
   page,
 }) => {
   await seed(async (s) => {

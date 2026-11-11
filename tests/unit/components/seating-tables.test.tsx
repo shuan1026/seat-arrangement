@@ -135,6 +135,13 @@ const findPanel = async (name: string) => {
 };
 const noPanel = (name: string) => expect(screen.queryByRole('region', { name }) ?? screen.queryByRole('dialog', { name })).toBeNull();
 
+/**
+ * Sonner 的「復原」：工具列也有名稱是「復原」的按鈕（D-028），所以限定在 Sonner 的通知區（containerAriaLabel「通知」）裡找。
+ * 這一則 Sonner 出現後才找得到。
+ */
+const toastUndo = () => within(screen.getByRole('region', { name: /^通知/ })).getByRole('button', { name: '復原' });
+const findToastUndo = () => waitFor(() => toastUndo());
+
 const stagingRegion = () => screen.getByRole('region', { name: '暫存區' });
 const stagedButtons = () => within(stagingRegion()).queryAllByRole('button', { name: /^暫存，/ });
 const labelOf = (el: Element) => (el.textContent ?? '').replace(/\s+/g, ' ').trim();
@@ -208,7 +215,7 @@ describe('「未放桌」的位置（2.1.9、2.3.8、SEAT-R95、SEAT-R96、SEAT-
     await waitFor(() => expect(operations).toHaveLength(1));
     expect(operations[0]).toEqual({ type: 'createTable', position: B8 });
     expect(await screen.findByText('已在 B8 新增一桌。')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '復原' })).toBeTruthy();
+    expect(toastUndo()).toBeTruthy();
     const detail = await findPanel('B8 桌');
     expect(within(detail).getByText('0/10 人')).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole('button', { name: 'B8 未放桌' })).toBeNull());
@@ -218,7 +225,7 @@ describe('「未放桌」的位置（2.1.9、2.3.8、SEAT-R95、SEAT-R96、SEAT-
     const { user, operations } = renderPage();
     await user.click(screen.getByRole('button', { name: 'B8 未放桌' }));
     await user.click(within(await findPanel('B8')).getByRole('button', { name: '新增桌' }));
-    await user.click(await screen.findByRole('button', { name: '復原' }));
+    await user.click(await findToastUndo());
 
     await waitFor(() => expect(operations).toHaveLength(2));
     const restore = operations[1] as Extract<SeatingOperation, { type: 'restore' }>;
@@ -253,7 +260,7 @@ describe('桌次詳情的「移到暫存區」「刪除桌」（2.3.1、2.3.10�
     await waitFor(() => expect(operations).toHaveLength(1));
     expect(operations[0]).toEqual({ type: 'moveTable', tableId: B4, to: 'staging', expectedTableId: null });
     expect(await screen.findByText('已把 B4 桌移到暫存區。')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '復原' })).toBeTruthy();
+    expect(toastUndo()).toBeTruthy();
     await waitFor(() => noPanel('B4 桌'));
     expect(await screen.findByRole('button', { name: 'B4 未放桌' })).toBeTruthy();
     expect(stagedButtons().map((b) => b.getAttribute('aria-label'))).toContain('暫存，主桌，研發一部，2/10');
@@ -283,7 +290,7 @@ describe('桌次詳情的「移到暫存區」「刪除桌」（2.3.1、2.3.10�
     await waitFor(() => expect(operations).toHaveLength(1));
     expect(operations[0]).toEqual({ type: 'deleteTable', tableId: B4 });
     expect(await screen.findByText('已刪除 B4 桌。')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '復原' })).toBeTruthy();
+    expect(toastUndo()).toBeTruthy();
     await waitFor(() => noPanel('B4 桌'));
     expect(await screen.findByRole('button', { name: 'B4 未放桌' })).toBeTruthy();
   });

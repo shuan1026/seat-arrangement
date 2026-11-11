@@ -32,6 +32,16 @@ export const seatingSnapshotSchema = z.object({
       exists: z.boolean(),
     }),
   ),
+  /**
+   * 這一步做完時，動到的人與桌應該在哪裡（D-028）：復原或重做前和現在比對，別人改過就回 409 CONFLICT（SEAT-R100）。
+   * 只比對人的所在桌（不比座號，別人坐進同一桌不算）與桌子的有無、位置。舊的快照沒有這一項時不比對
+   */
+  expect: z
+    .object({
+      participants: z.array(z.object({ id: z.number().int(), tableId: z.number().int().nullable() })),
+      tables: z.array(z.object({ id: z.number().int(), position: z.number().int().nullable(), exists: z.boolean() })),
+    })
+    .optional(),
 });
 export type SeatingSnapshot = z.infer<typeof seatingSnapshotSchema>;
 

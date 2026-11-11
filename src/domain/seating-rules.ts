@@ -128,26 +128,34 @@ class Draft {
   }
 
   result(): Extract<SeatingRuleResult, { ok: true }> {
-    const undo: SeatingSnapshot = { participants: [], tables: [] };
+    const expect: NonNullable<SeatingSnapshot['expect']> = { participants: [], tables: [] };
+    const undo: SeatingSnapshot = { participants: [], tables: [], expect };
     const participants = this.before.participants.map((p) => {
       const next = this.pos.get(p.id)!;
       if (next.tableId === p.tableId && next.seatOrder === p.seatOrder) return p;
       undo.participants.push({ id: p.id, tableId: p.tableId, seatOrder: p.seatOrder });
+      expect.participants.push({ id: p.id, tableId: next.tableId });
       return { ...p, tableId: next.tableId, seatOrder: next.seatOrder };
     });
     const tables: SeatTable[] = [];
     for (const t of this.before.tables) {
       const cur = this.tables.get(t.id);
       const same = cur && cur.position === t.position && cur.stagedAt === t.stagedAt && cur.noteName === t.noteName;
-      if (!same) undo.tables.push({ id: t.id, kind: t.kind, position: t.position, stagedAt: t.stagedAt, noteName: t.noteName, exists: true });
+      if (!same) {
+        undo.tables.push({ id: t.id, kind: t.kind, position: t.position, stagedAt: t.stagedAt, noteName: t.noteName, exists: true });
+        expect.tables.push({ id: t.id, position: cur?.position ?? null, exists: !!cur });
+      }
       if (cur) tables.push(same ? t : { ...t, ...cur });
     }
     const beforeIds = new Set(this.before.tables.map((t) => t.id));
     for (const [id, cur] of this.tables) {
       if (beforeIds.has(id)) continue;
       undo.tables.push({ id, kind: cur.kind, position: null, stagedAt: null, noteName: null, exists: false });
+      expect.tables.push({ id, position: cur.position, exists: true });
       tables.push({ id, ...cur });
     }
+    // 沒有任何改變時不帶 expect，快照只有空的 participants 與 tables
+    if (!expect.participants.length && !expect.tables.length) delete undo.expect;
     return { ok: true, data: { participants, tables }, undo };
   }
 }
@@ -318,17 +326,30 @@ function seatMany(d: Draft, tableId: number, participantIds: readonly number[], 
 function restore(d: Draft, snapshot: SeatingSnapshot): SeatingRuleResult {
   if (snapshot.participants.some((s) => !d.byId.has(s.id))) return fail('NOT_FOUND');
 
-  // 先還原桌子（D-027）：這次新增的桌刪掉、這次刪掉的桌以原本的 id 重建、搬動的桌放回原位
-  for (const t of snapshot.tables) {
-    const cur = d.tables.get(t.id);
-    if (!t.exists) {
-      if (!cur) continue;
-      // 新增之後已經有人坐進去（別人做的）：不能復原
-      if (d.roster(t.id).length > 0) return fail('CONFLICT');
-      d.tables.delete(t.id);
-      continue;
+  // 這一步做完之後，動到的人或桌被別人改過：不能復原或重做（SEAT-R100、D-028）。
+  // 只比人的所在桌與桌子的有無、位置；別人坐進同一桌、調整同一桌的順序不算
+  if (snapshot.expect) {
+    for (const e of snapshot.expect.participants) {
+      if (!d.byId.has(e.id)) return fail('NOT_FOUND');
+      if (d.pos.get(e.id)!.tableId !== e.tableId) return fail('CONFLICT');
     }
+    for (const e of snapshot.expect.tables) {
+      const cur = d.tables.get(e.id);
+      if (!!cur !== e.exists || (cur && cur.position !== e.position)) return fail('CONFLICT');
+    }
+  }
+
+  // 先還原要留下的桌子（D-027）：這次刪掉的桌以原本的 id 重建、搬動的桌放回原位。
+  // 這次新增的桌（exists 是 false）等人都移回去之後再刪
+  const removing = snapshot.tables.filter((t) => !t.exists && d.tables.has(t.id));
+  for (const t of snapshot.tables) {
+    if (!t.exists) continue;
+    const cur = d.tables.get(t.id);
     d.tables.set(t.id, { kind: cur?.kind ?? t.kind, position: t.position, stagedAt: t.stagedAt, noteName: t.noteName });
+  }
+  for (const t of removing) {
+    const cur = d.tables.get(t.id)!;
+    d.tables.set(t.id, { ...cur, position: null, stagedAt: null });
   }
   // 位置被別的桌佔走（例如別人在這之間放了桌）：不能復原
   const used = new Map<number, number>();
@@ -338,7 +359,10 @@ function restore(d: Draft, snapshot: SeatingSnapshot): SeatingRuleResult {
     used.set(t.position, id);
   }
 
-  if (snapshot.participants.some((s) => s.tableId !== null && !d.tables.has(s.tableId))) return fail('CONFLICT');
+  const removingIds = new Set(removing.map((t) => t.id));
+  if (snapshot.participants.some((s) => s.tableId !== null && (!d.tables.has(s.tableId) || removingIds.has(s.tableId)))) {
+    return fail('CONFLICT');
+  }
   const restored = new Set<number>();
   const touched = new Set<number>();
   for (const s of snapshot.participants) {
@@ -368,6 +392,11 @@ function restore(d: Draft, snapshot: SeatingSnapshot): SeatingRuleResult {
       tableId,
       members.map(([id]) => id),
     );
+  }
+  // 最後刪掉這次新增的桌：桌上的人應該都已經移回原處；還有人（別人坐進去的）就不能復原
+  for (const t of removing) {
+    if (d.roster(t.id).length > 0) return fail('CONFLICT');
+    d.tables.delete(t.id);
   }
   return d.result();
 }
