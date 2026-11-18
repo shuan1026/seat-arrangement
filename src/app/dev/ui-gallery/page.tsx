@@ -407,7 +407,7 @@ function Gallery() {
                   </span>
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate type-sm-semi-bold">王小明</span>
-                    <span className="truncate type-xs-regular text-muted-foreground">wang@program.com.tw</span>
+                    <span className="truncate type-xs-regular text-muted-foreground">wang.xm@example.com</span>
                   </span>
                 </button>
               </DropdownMenuTrigger>
